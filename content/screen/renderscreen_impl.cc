@@ -4,6 +4,7 @@
 
 #include "content/screen/renderscreen_impl.h"
 
+#include <thread>
 #include <unordered_map>
 
 #include "SDL3/SDL_events.h"
@@ -128,6 +129,19 @@ void RenderScreenImpl::CreateButtonGUISettings() {
 }
 
 void RenderScreenImpl::Update(ExceptionState& exception_state) {
+  // Guard: GL/GLES contexts are thread-bound. Calling Graphics.update from
+  // a background thread (e.g. Ruby Thread.new) has no current EGL context,
+  // making GL calls fail and crash the process. Throw a readable error
+  // instead of letting Diligent abort with SIGTRAP.
+  if (context()->render_thread_id != std::this_thread::get_id()) {
+    exception_state.ThrowError(
+        ExceptionCode::GPU_ERROR,
+        "Graphics.update must be called from the main thread; calling it "
+        "from a background thread (e.g. Thread.new) crashes OpenGL/GLES "
+        "backends due to a missing EGL context.");
+    return;
+  }
+
   const bool frozen_render = frozen_;
   const bool need_skip_frame = limiter_.RequireFrameSkip() &&
                                context()->engine_profile->allow_skip_frame;
@@ -592,17 +606,20 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
       **context()->render_device, &gpu_.screen_depth_stencil,
       "screen.main.depth_stencil", context()->resolution,
       Diligent::USAGE_DEFAULT, Diligent::BIND_DEPTH_STENCIL,
-      Diligent::CPU_ACCESS_NONE, Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
+      Diligent::CPU_ACCESS_NONE,
+      context()->render_device->DepthStencilFormat());
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.frozen_depth_stencil,
       "screen.frozen.depth_stencil", context()->resolution,
       Diligent::USAGE_DEFAULT, Diligent::BIND_DEPTH_STENCIL,
-      Diligent::CPU_ACCESS_NONE, Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
+      Diligent::CPU_ACCESS_NONE,
+      context()->render_device->DepthStencilFormat());
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.transition_depth_stencil,
       "screen.transition.depth_stencil", context()->resolution,
       Diligent::USAGE_DEFAULT, Diligent::BIND_DEPTH_STENCIL,
-      Diligent::CPU_ACCESS_NONE, Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
+      Diligent::CPU_ACCESS_NONE,
+      context()->render_device->DepthStencilFormat());
 
   // Root transform
   renderer::WorldTransform world_transform;

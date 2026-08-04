@@ -47,6 +47,11 @@ class RenderDevice {
   // Max texture size
   int32_t MaxTextureSize() const { return max_texture_size_; }
 
+  // Best supported depth-stencil format (probed at device creation)
+  Diligent::TEXTURE_FORMAT DepthStencilFormat() const {
+    return depth_stencil_format_;
+  }
+
   // Managed mobile rendering context
   void SuspendContext();
   int32_t ResumeContext(Diligent::IDeviceContext* immediate_context);
@@ -57,11 +62,13 @@ class RenderDevice {
                const Diligent::SwapChainDesc& swapchain_desc,
                Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device,
                Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapchain,
-               SDL_GLContext gl_context);
+               SDL_GLContext gl_context,
+               Diligent::TEXTURE_FORMAT depth_stencil_format);
 
   base::WeakPtr<ui::Widget> window_;
   Diligent::SwapChainDesc swapchain_desc_;
   int32_t max_texture_size_;
+  Diligent::TEXTURE_FORMAT depth_stencil_format_;
 
   Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device_;
   Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapchain_;

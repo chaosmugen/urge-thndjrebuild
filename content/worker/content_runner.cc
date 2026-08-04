@@ -4,6 +4,8 @@
 
 #include "content/worker/content_runner.h"
 
+#include <thread>
+
 #include "imgui/backends/imgui_impl_sdl3.h"
 #include "imgui/imgui.h"
 #include "magic_enum/magic_enum.hpp"
@@ -69,6 +71,10 @@ ContentRunner::~ContentRunner() {
 }
 
 void ContentRunner::RunMainLoop() {
+  // Record the main-loop thread id; the EGL context is current on this
+  // thread, so all GPU entry points must run here.
+  execution_context_->render_thread_id = std::this_thread::get_id();
+
 #if defined(OS_EMSCRIPTEN)
   using EmscriptenClosure = std::function<void()>;
   auto main_loop_proc = EmscriptenClosure([this]() {
@@ -277,7 +283,8 @@ void ContentRunner::CreateRenderComponents() {
   // Pipeline states
   auto* loader = execution_context_->render.pipeline_loader.get();
   execution_context_->render.pipeline_states =
-      std::make_unique<PipelineCollection>(loader);
+      std::make_unique<PipelineCollection>(
+          loader, execution_context_->render_device->DepthStencilFormat());
 }
 
 void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {

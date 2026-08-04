@@ -57,7 +57,8 @@ struct PipelineCollection {
     PipelineObject base;
   } window2;
 
-  PipelineCollection(renderer::PipelineSet* loader);
+  PipelineCollection(renderer::PipelineSet* loader,
+                     Diligent::TEXTURE_FORMAT depth_stencil_format);
 };
 
 }  // namespace content

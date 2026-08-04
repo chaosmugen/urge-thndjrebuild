@@ -84,9 +84,11 @@ Diligent::RasterizerStateDesc Get2DRasterizerState() {
 ///////////////////////////////////////////////////////////////////////////////
 // PipelineCollection Implement
 
-PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
+PipelineCollection::PipelineCollection(
+    renderer::PipelineSet* loader,
+    Diligent::TEXTURE_FORMAT depth_stencil_format_in) {
   constexpr auto target_format = Diligent::TEX_FORMAT_RGBA8_UNORM;
-  constexpr auto depth_stencil_format = Diligent::TEX_FORMAT_D24_UNORM_S8_UINT;
+  const auto depth_stencil_format = depth_stencil_format_in;
   constexpr auto primitive_topology =
       Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   constexpr Diligent::SampleDesc default_sample;
