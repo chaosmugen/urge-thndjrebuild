@@ -5,13 +5,10 @@
 #ifndef CONTENT_INPUT_KEYBOARD_CONTROLLER_H_
 #define CONTENT_INPUT_KEYBOARD_CONTROLLER_H_
 
-#include <optional>
-
 #include "content/context/engine_object.h"
 #include "content/profile/content_profile.h"
 #include "content/profile/i18n_profile.h"
 #include "content/public/engine_input.h"
-#include "content/worker/event_controller.h"
 #include "ui/widget/widget.h"
 
 namespace content {
@@ -28,11 +25,11 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   };
 
   using KeySymMap = std::vector<KeyBinding>;
-  struct KeyState {
-    bool pressed = false;
-    bool trigger = false;
-    bool repeat = false;
-    int32_t repeat_count = 0;
+  using KeyState = struct {
+    bool pressed;
+    bool trigger;
+    bool repeat;
+    int32_t repeat_count;
   };
 
   KeyboardControllerImpl(ExecutionContext* execution_context);
@@ -41,8 +38,8 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   KeyboardControllerImpl(const KeyboardControllerImpl&) = delete;
   KeyboardControllerImpl& operator=(const KeyboardControllerImpl&) = delete;
 
-  void ProcessEvent(const std::optional<EventController::KeyEventData>& event);
   void ApplyKeySymBinding(const KeySymMap& keysyms);
+  bool CreateButtonGUISettings();
 
  public:
   void Update(ExceptionState& exception_state) override;
@@ -88,8 +85,9 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   void StorageBindingsInternal();
 
   KeySymMap key_bindings_;
+  KeySymMap setting_bindings_;
+  bool disable_gui_key_input_;
 
-  std::array<bool, SDL_SCANCODE_COUNT> raw_states_;
   std::array<KeyState, SDL_SCANCODE_COUNT> key_states_;
   std::array<KeyState, SDL_SCANCODE_COUNT> recent_key_states_;
 

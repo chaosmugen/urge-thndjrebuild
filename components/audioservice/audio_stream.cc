@@ -47,15 +47,28 @@ ma_result AudioStream::Play(const std::string& filename,
   // Start if need
   ma_sound_start(&handle_);
 
+  // A new play clears any paused/seek state.
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cursor_ = 0;
+    paused_ = false;
+  }
+
   return MA_SUCCESS;
 }
 
 void AudioStream::Stop() {
   ma_sound_stop(&handle_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  cursor_ = 0;
+  paused_ = false;
 }
 
 void AudioStream::Fade(int32_t time) {
   ma_sound_stop_with_fade_in_milliseconds(&handle_, time);
+  std::lock_guard<std::mutex> lock(mutex_);
+  cursor_ = 0;
+  paused_ = false;
 }
 
 uint64_t AudioStream::Pos() {
@@ -69,18 +82,23 @@ bool AudioStream::IsPlaying() {
 }
 
 bool AudioStream::IsPausing() {
-  return cursor_ > 0;
+  std::lock_guard<std::mutex> lock(mutex_);
+  return paused_;
 }
 
 void AudioStream::Pause() {
+  std::lock_guard<std::mutex> lock(mutex_);
   ma_sound_get_cursor_in_pcm_frames(&handle_, &cursor_);
   ma_sound_stop(&handle_);
+  paused_ = true;
 }
 
 void AudioStream::Resume() {
+  std::lock_guard<std::mutex> lock(mutex_);
   ma_sound_seek_to_pcm_frame(&handle_, cursor_);
   ma_sound_start(&handle_);
   cursor_ = 0;
+  paused_ = false;
 }
 
 bool AudioStream::IsLooping() {

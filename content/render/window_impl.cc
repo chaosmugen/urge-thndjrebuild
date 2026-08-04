@@ -778,42 +778,7 @@ void WindowImpl::GPURenderControlLayerInternal(
 
     if (clipping_region()) {
       auto* pipeline =
-          context()->render.pipeline_states->color_write_stencil.RawPtr();
-
-      // Clear stencil buffer
-      render_context->ClearDepthStencil(
-          depth_stencil->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL),
-          Diligent::CLEAR_STENCIL_FLAG, 0.0f, 0,
-          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-      // Shader resource
-      gpu_.color_binding.u_transform->Set(world_binding);
-
-      render_context->SetPipelineState(pipeline);
-      render_context->CommitShaderResources(
-          *gpu_.color_binding,
-          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-      // Set stencil ref value
-      render_context->SetStencilRef(0xFF);
-
-      // Execute render command
-      Diligent::DrawIndexedAttribs draw_indexed_attribs;
-      draw_indexed_attribs.NumIndices = 6;
-      draw_indexed_attribs.IndexType =
-          context()->render.quad_index->GetIndexType();
-      draw_indexed_attribs.FirstIndexLocation = gpu_.mask_quad_offset * 6;
-      render_context->DrawIndexed(draw_indexed_attribs);
-    } else {
-      return;
-    }
-
-    {
-      auto* pipeline =
-          context()->render.pipeline_states->window_with_stencil.RawPtr();
-
-      // Set stencil value
-      render_context->SetStencilRef(0xFF);
+          context()->render.pipeline_states->window.RawPtr();
 
       // Setup shader resource
       gpu_.content_binding.u_transform->Set(world_binding);
@@ -841,6 +806,8 @@ void WindowImpl::GPURenderControlLayerInternal(
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = gpu_.contents_quad_offset * 6;
       render_context->DrawIndexed(draw_indexed_attribs);
+    } else {
+      return;
     }
   }
 }

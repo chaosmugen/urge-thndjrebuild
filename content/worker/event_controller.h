@@ -5,97 +5,111 @@
 #ifndef CONTENT_WORKER_EVENT_CONTROLLER_H_
 #define CONTENT_WORKER_EVENT_CONTROLLER_H_
 
-#include <array>
 #include <vector>
 
 #include "SDL3/SDL_events.h"
 
-#include "base/math/rectangle.h"
 #include "content/public/engine_keyevent.h"
 #include "content/public/engine_mouseevent.h"
 #include "content/public/engine_textinputevent.h"
 #include "content/public/engine_touchevent.h"
+#include "ui/widget/widget.h"
 
 namespace content {
 
-#define MOUSE_BUTTON_COUNT 5
-
 class EventController {
  public:
-  // Custom event handler data
-  struct CommonData {
+  using KeyEventData = struct {
     uint64_t timestamp;
-  };
-
-  // Keyboard event data
-  struct KeyEventData : public CommonData {
-    KeyEvent::Type type;
     SDL_KeyboardID keyboard_id;
+
+    KeyEvent::Type type;
+
     SDL_Scancode scancode;
     SDL_Keycode keycode;
     SDL_Keymod modifier;
-    int32_t is_down;
-    int32_t is_repeat;
+    bool down;
+    bool repeat;
   };
 
-  // Mouse event data
-  struct MouseEventData : public CommonData {
-    MouseEvent::Type type;
+  using MouseEventData = struct {
+    uint64_t timestamp;
     SDL_MouseID mouse_id;
-    base::Vec2 relative_position;
+
+    MouseEvent::Type type;
+
+    int32_t x;
+    int32_t y;
+
     int32_t button_id;
-    int32_t button_is_down;
+    int32_t button_down;
     int32_t button_clicks;
+
     int32_t motion_state;
-    base::Vec2 relative_offset;
+    int32_t motion_relx;
+    int32_t motion_rely;
+
     MouseEvent::WheelState wheel_dir;
-    base::Vec2 wheel_offset;
+    int32_t wheel_x;
+    int32_t wheel_y;
   };
 
-  // Touch event data
-  struct TouchEventData : public CommonData {
-    TouchEvent::Type type;
+  using TouchEventData = struct {
+    uint64_t timestamp;
     SDL_TouchID touch_id;
+
+    TouchEvent::Type type;
+
     SDL_FingerID finger;
-    base::Vec2 relative_position;
-    base::Vec2 delta_offset;
+    int32_t x;
+    int32_t y;
+    int32_t dx;
+    int32_t dy;
     float pressure;
   };
 
-  // IME input event data
-  struct TextInputEventData : public CommonData {
+  using TextInputEventData = struct {
+    uint64_t timestamp;
+
     TextInputEvent::Type type;
+
     std::string text;
     int32_t select_start;
     int32_t select_length;
   };
 
-  EventController();
+  EventController(base::WeakPtr<ui::Widget> window);
   ~EventController();
 
   EventController(const EventController&) = delete;
   EventController& operator=(const EventController&) = delete;
 
-  // Process game window
-  void ClearPendingEvents();
-  void DispatchEvent(const SDL_Event* event,
-                     const base::Vec2i& window_size,
-                     const base::Vec2i& screen_size,
-                     const base::Rect& bound_in_screen);
+  base::WeakPtr<ui::Widget> GetHostWidget() const { return window_; }
 
-  // For event reference (readonly)
-  const std::vector<KeyEventData>& key_events() const { return key_events_; }
-  const std::vector<MouseEventData>& mouse_events() const {
-    return mouse_events_;
+  void DispatchEvent(SDL_Event* event);
+
+  void PollKeyEvents(std::vector<KeyEventData>& out) {
+    out = key_events_;
+    key_events_.clear();
   }
-  const std::vector<TouchEventData>& touch_events() const {
-    return touch_events_;
+
+  void PollMouseEvents(std::vector<MouseEventData>& out) {
+    out = mouse_events_;
+    mouse_events_.clear();
   }
-  const std::vector<TextInputEventData>& text_input_events() const {
-    return text_input_events_;
+
+  void PollTouchEvents(std::vector<TouchEventData>& out) {
+    out = touch_events_;
+    touch_events_.clear();
+  }
+
+  void PollTextInputEvents(std::vector<TextInputEventData>& out) {
+    out = text_input_events_;
+    text_input_events_.clear();
   }
 
  private:
+  base::WeakPtr<ui::Widget> window_;
   std::vector<KeyEventData> key_events_;
   std::vector<MouseEventData> mouse_events_;
   std::vector<TouchEventData> touch_events_;

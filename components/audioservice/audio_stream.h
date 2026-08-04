@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_AUDIOSERVICE_AUDIO_STREAM_H_
 #define COMPONENTS_AUDIOSERVICE_AUDIO_STREAM_H_
 
+#include <mutex>
 #include <stdint.h>
 #include <string>
 
@@ -44,11 +45,22 @@ class AudioStream {
   friend class AudioService;
   AudioStream(ma_engine* engine);
 
+#ifdef AUDIO_STREAM_UNIT_TEST
+ public:
+  // Test-only factory so the standalone unit test can construct an
+  // AudioStream without going through AudioService (which pulls in
+  // SDL3 / engine_base). Compiled out unless AUDIO_STREAM_UNIT_TEST is set.
+  static AudioStream* TestNew(ma_engine* engine) { return new AudioStream(engine); }
+  static void TestDelete(AudioStream* s) { delete s; }
+#endif
+
   ma_engine* engine_;
   std::string filename_;
   ma_sound handle_;
   ma_uint64 cursor_;
   ma_bool32 looping_;
+  bool paused_ = false;
+  std::mutex mutex_;
 };
 
 }  // namespace audioservice

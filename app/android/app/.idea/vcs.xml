@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/../../.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/SPIRV-Cross" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/SPIRV-Headers" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/SPIRV-Tools" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/Vulkan-Headers" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/glslang" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/volk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/DiligentCore/ThirdParty/xxHash" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/SDL" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/freetype" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/freetype/subprojects/dlg" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/harfbuzz" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/libwebp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ogg" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/opus" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/opusfile" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/spdlog" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/vorbis" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/zlib" vcs="Git" />
+  </component>
+</project>

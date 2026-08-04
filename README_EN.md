@@ -13,15 +13,6 @@
 - The project style is inspired by The Chromium Project.
 - It is inspired by Chromium and RGModern.
 
-## Screenshots
-
-<img src="app/test/1.png" height="400">
-<img src="app/test/2.png" height="400">
-<img src="app/test/3.png" height="400">
-<img src="app/test/4.png" height="400">
-<img src="app/test/5.png" height="400">
-<img src="app/test/6.png" height="400">
-
 ## Build Instructions
 
 ### Environment
@@ -84,10 +75,3 @@
 - spdlog - https://github.com/gabime/spdlog  
 - vorbis - https://github.com/xiph/vorbis  
 - zlib - https://github.com/madler/zlib  
-
-## Contact me
-
-- Email: admenri@qq.com  
-- Website: https://admenri.com/  
-
-© 2015-2025 Admenri

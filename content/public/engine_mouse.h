@@ -21,14 +21,14 @@ class URGE_OBJECT(Mouse) {
   virtual void Update(ExceptionState& exception_state) = 0;
 
   /*--urge(name:x)--*/
-  virtual float GetX(ExceptionState& exception_state) = 0;
+  virtual int32_t GetX(ExceptionState& exception_state) = 0;
 
   /*--urge(name:y)--*/
-  virtual float GetY(ExceptionState& exception_state) = 0;
+  virtual int32_t GetY(ExceptionState& exception_state) = 0;
 
   /*--urge(name:set_pos)--*/
-  virtual void SetPosition(float x,
-                           float y,
+  virtual void SetPosition(int32_t x,
+                           int32_t y,
                            ExceptionState& exception_state) = 0;
 
   /*--urge(name:down?)--*/
@@ -47,10 +47,10 @@ class URGE_OBJECT(Mouse) {
   virtual bool IsMoved(ExceptionState& exception_state) = 0;
 
   /*--urge(name:scroll_x)--*/
-  virtual float GetScrollX(ExceptionState& exception_state) = 0;
+  virtual int32_t GetScrollX(ExceptionState& exception_state) = 0;
 
   /*--urge(name:scroll_y)--*/
-  virtual float GetScrollY(ExceptionState& exception_state) = 0;
+  virtual int32_t GetScrollY(ExceptionState& exception_state) = 0;
 
   /*--urge(name:set_cursor,optional:hot_x=0,optional:hot_y=0)--*/
   virtual void SetCursor(scoped_refptr<Bitmap> cursor,
