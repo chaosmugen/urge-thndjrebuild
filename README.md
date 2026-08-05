@@ -5,7 +5,7 @@
 - [简体中文](README.md)
 
 ## 概览
- - 本仓库是特定的修改版本，源代码在https://github.com/Admenri/urge/tree/legacy
+
  - URGE 是一款兼容 RGSS 1/2/3 系的 2D/3D 游戏引擎。
  - 使用了 SDL3 作为底层库，支持运行于 Windows, Linux, Android, WASM/Emscripten 等平台。
  - 使用了 DiligentCore 作为渲染RHI，提供了 D3D12/Vulkan 等现代API的支持。  
@@ -13,6 +13,14 @@
  - 项目风格来自 The Chromium Project。  
  - 项目启发于 Chromium，RGModern。  
  
+## 截图
+
+<img src="app/test/1.png" height="400">
+<img src="app/test/2.png" height="400">
+<img src="app/test/3.png" height="400">
+<img src="app/test/4.png" height="400">
+<img src="app/test/5.png" height="400">
+<img src="app/test/6.png" height="400">
 
 ## 构建方式
 
@@ -76,3 +84,10 @@ cmake --build out --target Game
 - spdlog - https://github.com/gabime/spdlog  
 - vorbis - https://github.com/xiph/vorbis  
 - zlib - https://github.com/madler/zlib  
+
+## 联系方式
+
+- 邮箱: admenri@qq.com  
+- 网站: https://admenri.com/  
+
+© 2015-2025 Admenri
