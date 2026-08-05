@@ -23,7 +23,6 @@ class Window2Impl : public Window2, public EngineObject, public Disposable {
     renderer::QuadBatch batch;
     std::vector<renderer::Quad> cache;
 
-    renderer::Binding_Color color_binding;
     renderer::Binding_Flat flat_binding;
     renderer::Binding_Base base_binding;
     renderer::Binding_Base background_binding;
@@ -35,7 +34,6 @@ class Window2Impl : public Window2, public EngineObject, public Disposable {
     RRefPtr<Diligent::IBuffer> uniform;
 
     int32_t background_quad_offset = 0;
-    int32_t mask_quad_offset = 0;
     int32_t controls_quad_offset = 0;
     int32_t controls_draw_count = 0;
     int32_t cursor_quad_offset = 0;
@@ -98,11 +96,11 @@ class Window2Impl : public Window2, public EngineObject, public Disposable {
                                        BitmapTexture* windowskin,
                                        const base::Rect& padding_rect);
   void GPURenderWindowQuadsInternal(Diligent::IDeviceContext* render_context,
-                                    Diligent::ITexture* depth_stencil,
                                     Diligent::IBuffer* world_binding,
                                     BitmapTexture* contents,
                                     BitmapTexture* windowskin,
-                                    const base::Rect& padding_rect);
+                                    const base::Rect& padding_rect,
+                                    ScissorStack* scissor_stack);
 
   bool rgss3_style_ = false;
   GPUData gpu_;

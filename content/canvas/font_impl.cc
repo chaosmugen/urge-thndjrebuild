@@ -15,10 +15,7 @@ constexpr float kFontRealScale = 0.9f;
 
 namespace {
 
-void RenderShadowSurface(SDL_Surface*& in) {
-  if (in->w < 4 || in->h < 4)
-    return;
-
+void RenderShadowSurface(SDL_Surface*& in, const SDL_Color& color) {
   auto* dest = SDL_CreateSurface(in->w, in->h, in->format);
 
   SDL_Rect dest_rect{1, 1, 0, 0};
@@ -353,7 +350,7 @@ SDL_Surface* FontImpl::RenderText(const std::string& text,
 
   EnsureFontSurfaceFormatInternal(text_surface);
   if (shadow_)
-    RenderShadowSurface(text_surface);
+    RenderShadowSurface(text_surface, font_color);
 
   return text_surface;
 }

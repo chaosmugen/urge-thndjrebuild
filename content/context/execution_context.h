@@ -6,7 +6,6 @@
 #define CONTENT_CONTEXT_EXECUTION_CONTEXT_H_
 
 #include <memory>
-#include <thread>
 
 #include "components/audioservice/audio_service.h"
 #include "components/filesystem/io_service.h"
@@ -28,9 +27,6 @@ namespace content {
 
 struct ExecutionContext {
   base::Vec2i resolution;
-  // Thread id of the engine main loop (where the EGL context is current).
-  // Used to guard GPU entry points against background-thread calls.
-  std::thread::id render_thread_id;
   base::WeakPtr<ui::Widget> window;
   renderer::RenderDevice* render_device;
   Diligent::IDeviceContext* primary_render_context;

@@ -271,25 +271,8 @@ int main(int argc, char* argv[]) {
       // Initialize engine main widget
       std::unique_ptr<ui::Widget> widget(new ui::Widget(true));
       ui::Widget::InitParams widget_params;
-      // Create an OpenGL-backed SDL window when the user selects the OpenGL
-      // backend, so that RenderDevice::Create can obtain a valid GL context on
-      // desktop platforms. On Android, Diligent's GLES backend manages its own
-      // EGL context/surface via the ANativeWindow; if SDL also creates an
-      // OpenGL surface on the same native window, the two conflict and
-      // eglCreateWindowSurface fails (NATIVE_WINDOW_IN_USE). So on Android we
-      // must NOT set the SDL OpenGL flag and let Diligent own the EGLSurface
-      // (or the WGL pixel format on Windows). If SDL also creates a GL surface
-      // / sets the pixel format on the same native window, the two conflict:
-      // on Android eglCreateWindowSurface fails (NATIVE_WINDOW_IN_USE), and on
-      // Windows Diligent's GLContext fails with "Failed to set Pixel Format"
-      // because SetPixelFormat can only succeed once per HWND. So on Android
-      // and Windows we must NOT set the SDL OpenGL flag and let Diligent own
-      // the context/surface.
-#if defined(OS_ANDROID) || defined(OS_WIN)
-      widget_params.opengl = false;
-#else
-      widget_params.opengl = SDL_strcasecmp(profile->driver_backend.c_str(),
-                                            "OPENGL") == 0;
+#if defined(OS_LINUX)
+      widget_params.opengl = profile->driver_backend == "OPENGL";
 #endif
       widget_params.size = profile->window_size;
       widget_params.resizable = true;

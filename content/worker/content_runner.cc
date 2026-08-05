@@ -4,8 +4,6 @@
 
 #include "content/worker/content_runner.h"
 
-#include <thread>
-
 #include "imgui/backends/imgui_impl_sdl3.h"
 #include "imgui/imgui.h"
 #include "magic_enum/magic_enum.hpp"
@@ -71,10 +69,6 @@ ContentRunner::~ContentRunner() {
 }
 
 void ContentRunner::RunMainLoop() {
-  // Record the main-loop thread id; the EGL context is current on this
-  // thread, so all GPU entry points must run here.
-  execution_context_->render_thread_id = std::this_thread::get_id();
-
 #if defined(OS_EMSCRIPTEN)
   using EmscriptenClosure = std::function<void()>;
   auto main_loop_proc = EmscriptenClosure([this]() {
@@ -283,8 +277,7 @@ void ContentRunner::CreateRenderComponents() {
   // Pipeline states
   auto* loader = execution_context_->render.pipeline_loader.get();
   execution_context_->render.pipeline_states =
-      std::make_unique<PipelineCollection>(
-          loader, execution_context_->render_device->DepthStencilFormat());
+      std::make_unique<PipelineCollection>(loader);
 }
 
 void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {
@@ -577,7 +570,6 @@ void ContentRunner::CreateIMGUIContextInternal() {
   io.IniFilename = nullptr;
   io.ConfigFlags |=
       ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
-  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
   // Apply DPI Settings
   int32_t display_w, display_h;
@@ -586,8 +578,7 @@ void ContentRunner::CreateIMGUIContextInternal() {
   io.DisplaySize =
       ImVec2(static_cast<float>(display_w), static_cast<float>(display_h));
   io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-
-  const float window_scale =
+  float window_scale =
       SDL_GetWindowDisplayScale(execution_context_->window->AsSDLWindow());
   ImGui::GetStyle().ScaleAllSizes(window_scale);
 
@@ -606,7 +597,7 @@ void ContentRunner::CreateIMGUIContextInternal() {
                                  io.Fonts->GetGlyphRangesChineseFull());
 
   // Setup Dear ImGui style
-  ImGui::StyleColorsClassic();
+  ImGui::StyleColorsDark();
 
   // Setup imgui platform backends
   ImGui_ImplSDL3_InitForOther(execution_context_->window->AsSDLWindow());
@@ -625,7 +616,6 @@ void ContentRunner::CreateIMGUIContextInternal() {
 void ContentRunner::DestroyIMGUIContextInternal() {
   imgui_.reset();
 
-  ImGui::DestroyPlatformWindows();
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext();
 }

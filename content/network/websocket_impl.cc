@@ -2,12 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// 让 websocketpp 走完整 C++11 标准库路径（项目不依赖 boost）
-#ifndef _WEBSOCKETPP_CPP11_STL_
-#define _WEBSOCKETPP_CPP11_STL_
-#endif
-#pragma warning(disable : 4127)  // websocketpp/frame.hpp: if(sizeof(size_t)==8) 常量条件
-
 #include "content/network/websocket_impl.h"
 
 #include "content/context/execution_context.h"

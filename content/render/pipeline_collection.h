@@ -49,16 +49,13 @@ struct PipelineCollection {
   PipelineObject yuv;
 
   PipelineObject window;
-  PipelineObject window_with_stencil;
-  PipelineObject color_write_stencil;
   struct {
     PipelineObject viewport;
     PipelineObject viewport_alpha;
     PipelineObject base;
   } window2;
 
-  PipelineCollection(renderer::PipelineSet* loader,
-                     Diligent::TEXTURE_FORMAT depth_stencil_format);
+  PipelineCollection(renderer::PipelineSet* loader);
 };
 
 }  // namespace content

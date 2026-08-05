@@ -4,8 +4,6 @@
 
 #include "renderer/device/render_device.h"
 
-#include <vector>
-
 #include "SDL3/SDL_hints.h"
 #include "SDL3/SDL_loadso.h"
 #include "SDL3/SDL_video.h"
@@ -72,32 +70,6 @@ DebugMessageOutputFunc(Diligent::DEBUG_MESSAGE_SEVERITY Severity,
       LOG(FATAL) << "[Renderer] " << Message;
       break;
   }
-}
-
-// Probe the best supported depth-stencil format for current device.
-// Some GLES drivers (e.g. Adreno) do not support D24S8 as a renderable
-// texture attachment, which makes the FBO creation fail at the first
-// render pass. Falling back keeps mobile backends alive.
-Diligent::TEXTURE_FORMAT ProbeDepthStencilFormat(
-    Diligent::IRenderDevice* device) {
-  const Diligent::TEXTURE_FORMAT candidates[] = {
-      Diligent::TEX_FORMAT_D24_UNORM_S8_UINT,
-      Diligent::TEX_FORMAT_D32_FLOAT_S8X24_UINT,
-      Diligent::TEX_FORMAT_D16_UNORM,
-  };
-
-  for (auto format : candidates) {
-    const auto& format_info = device->GetTextureFormatInfoExt(format);
-    if (format_info.Supported &&
-        (format_info.BindFlags & Diligent::BIND_DEPTH_STENCIL)) {
-      LOG(INFO) << "[Renderer] Depth-Stencil Format: " << format_info.Name;
-      return format;
-    }
-  }
-
-  LOG(WARNING) << "[Renderer] No supported depth-stencil format was found, "
-                  "falling back to D16_UNORM.";
-  return Diligent::TEX_FORMAT_D16_UNORM;
 }
 
 }  // namespace
@@ -229,30 +201,9 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   swap_chain_desc.PreTransform = Diligent::SURFACE_TRANSFORM_OPTIMAL;
   swap_chain_desc.IsPrimary = Diligent::True;
 
-  // Build a fallback candidate list.
-  // The first element is the user-requested backend (already corrected to a
-  // valid platform default above). The remaining candidates are ordered by
-  // platform preference so that a failed backend degrades gracefully instead
-  // of blindly incrementing the DriverType enum value.
-  std::vector<DriverType> candidates;
-#if defined(OS_WIN)
-  candidates = {driver_type, DriverType::D3D11, DriverType::D3D12,
-                DriverType::VULKAN, DriverType::OPENGL};
-#elif defined(OS_LINUX)
-  candidates = {driver_type, DriverType::OPENGL, DriverType::VULKAN};
-#elif defined(OS_ANDROID)
-  candidates = {driver_type, DriverType::OPENGL, DriverType::VULKAN};
-#elif defined(OS_EMSCRIPTEN)
-  candidates = {driver_type, DriverType::OPENGL, DriverType::WEBGPU};
-#else
-#error "Unsupport Platform"
-#endif
-
   // Create device and fallback when error
-  for (size_t candidate_index = 0; candidate_index < candidates.size();
-       ++candidate_index) {
-    driver_type = candidates[candidate_index];
-
+  size_t creating_retry_count = 0;
+  do {
 #if GL_SUPPORTED || GLES_SUPPORTED
     if (driver_type == DriverType::OPENGL) {
 #if ENGINE_DLL
@@ -355,33 +306,12 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
       break;
     }
 
-    // Fallback to next candidate backend
-    if (candidate_index + 1 < candidates.size()) {
-      LOG(WARNING) << "[Renderer] Failed to create backend "
-                   << magic_enum::enum_name(driver_type)
-                   << ", trying fallback backend "
-                   << magic_enum::enum_name(candidates[candidate_index + 1])
-                   << ".";
-    }
-  }
+    // Fallback
+    driver_type = static_cast<DriverType>(creating_retry_count++);
+  } while (creating_retry_count < static_cast<size_t>(DriverType::kNums));
 
   if (!device || !context || !swapchain) {
-    LOG(ERROR) << "[Renderer] Failed to create renderer. None of the backend "
-                  "candidates could be initialized.";
-#if !defined(GL_SUPPORTED) && !defined(GLES_SUPPORTED)
-    LOG(ERROR) << "[Renderer] NOTE: the OpenGL/GLES backend was NOT compiled "
-                  "into this build (GL_SUPPORTED/GLES_SUPPORTED undefined). If "
-                  "you requested the OpenGL backend, it will never be available "
-                  "on this platform.";
-#endif
-#if !defined(D3D11_SUPPORTED)
-    LOG(ERROR) << "[Renderer] NOTE: the D3D11 backend was NOT compiled into "
-                  "this build. On Windows this is the preferred fallback.";
-#endif
-#if !defined(VULKAN_SUPPORTED)
-    LOG(ERROR) << "[Renderer] NOTE: the Vulkan backend was NOT compiled into "
-                  "this build.";
-#endif
+    LOG(ERROR) << "[Renderer] Failed to create renderer.";
     return CreateDeviceResult(nullptr, nullptr);
   }
 
@@ -399,14 +329,10 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   LOG(INFO) << "[Renderer] Adapter: " << adapter_info.Description;
   LOG(INFO) << "[Renderer] MaxTexture Size: " << max_texture_size;
 
-  // Probe device supported depth-stencil format
-  const Diligent::TEXTURE_FORMAT depth_stencil_format =
-      ProbeDepthStencilFormat(device);
-
   // Global render device
   std::unique_ptr<RenderDevice> render_device(
       new RenderDevice(max_texture_size, window_target, swap_chain_desc, device,
-                       swapchain, glcontext, depth_stencil_format));
+                       swapchain, glcontext));
 
   return std::make_tuple(std::move(render_device), std::move(context));
 }
@@ -417,12 +343,10 @@ RenderDevice::RenderDevice(
     const Diligent::SwapChainDesc& swapchain_desc,
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device,
     Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapchain,
-    SDL_GLContext gl_context,
-    Diligent::TEXTURE_FORMAT depth_stencil_format)
+    SDL_GLContext gl_context)
     : window_(std::move(window)),
       swapchain_desc_(swapchain_desc),
       max_texture_size_(max_texture_size),
-      depth_stencil_format_(depth_stencil_format),
       device_(device),
       swapchain_(swapchain),
       device_type_(device_->GetDeviceInfo().Type),

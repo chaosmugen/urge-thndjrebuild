@@ -945,7 +945,7 @@ void CanvasImpl::GPUCreateTextureInternal(SDL_Surface* texture_data) {
   renderer::CreateTexture2D(
       *render_device, &gpu_.depth, gpu_.name, gpu_.size,
       Diligent::USAGE_DEFAULT, Diligent::BIND_DEPTH_STENCIL,
-      Diligent::CPU_ACCESS_NONE, render_device.DepthStencilFormat());
+      Diligent::CPU_ACCESS_NONE, Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
 
   // Setup access texture view
   gpu_.shader_resource_view =
