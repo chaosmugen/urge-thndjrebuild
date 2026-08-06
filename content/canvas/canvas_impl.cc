@@ -133,7 +133,7 @@ scoped_refptr<Bitmap> Bitmap::Copy(ExecutionContext* execution_context,
     return nullptr;
 
   duplicate_bitmap->Blt(0, 0, other_obj, other_obj->GetRect(exception_state),
-                        255, BLEND_TYPE_NO_BLEND, exception_state);
+                        255, -1, exception_state);
 
   return duplicate_bitmap;
 }
@@ -294,10 +294,20 @@ CanvasImpl::CanvasImpl(ExecutionContext* execution_context,
                        const std::string& debug_name)
     : EngineObject(execution_context),
       Disposable(execution_context->disposable_parent),
-      surface_cache_(has_ownership ? memory_surface : nullptr),
+      surface_cache_(nullptr),
       font_(base::MakeRefCounted<FontImpl>(execution_context->font_context)) {
   // Link with scheduler node
   context()->canvas_scheduler->children_.Append(this);
+
+  // Normalize the surface format before anything else takes a reference on it.
+  // The conversion destroys the original surface and replaces the pointer, so
+  // it must happen before |surface_cache_| is bound, otherwise the cache would
+  // dangle for any source image that is not already in the internal format
+  // (e.g. 24-bit JPEG or palette-based PNG).
+  if (memory_surface)
+    MakeSureSurfaceFormat(memory_surface);
+
+  surface_cache_ = has_ownership ? memory_surface : nullptr;
 
   // Create renderer texture
   gpu_.name = debug_name;
@@ -671,8 +681,8 @@ void CanvasImpl::HueChange(int32_t hue, ExceptionState& exception_state) {
   if (hue % 360 == 0)
     return;
   while (hue < 0)
-    hue += 359;
-  hue %= 359;
+    hue += 360;
+  hue %= 360;
 
   auto* command = AllocateCommand<Command_HueChange>();
   command->hue = hue;
