@@ -533,7 +533,7 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     },
     {
       DISPOSE_CHECK;
-      if (repeat_.x != value) {
+      if (repeat_.x != (value ? 1 : 0)) {
         repeat_.x = value;
         map_buffer_dirty_ = true;
       }
@@ -549,7 +549,7 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     },
     {
       DISPOSE_CHECK;
-      if (repeat_.y != value) {
+      if (repeat_.y != (value ? 1 : 0)) {
         repeat_.y = value;
         map_buffer_dirty_ = true;
       }

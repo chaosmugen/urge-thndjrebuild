@@ -605,6 +605,9 @@ void ContentRunner::CreateIMGUIContextInternal() {
   // Setup renderer backend
   Diligent::ImGuiDiligentCreateInfo imgui_create_info(
       **render_device, render_device->GetSwapChain()->GetDesc());
+  // ImGUI 不读写深度（DepthEnable=False），present 时也不绑定深度缓冲，
+  // 因此让 PSO 的 DSVFormat 与实际绑定的 UNKNOWN 一致，消除格式不匹配警告。
+  imgui_create_info.DepthBufferFmt = Diligent::TEX_FORMAT_UNKNOWN;
   imgui_create_info.MinFilter = profile_->smooth_scale_present
                                     ? Diligent::FILTER_TYPE_LINEAR
                                     : Diligent::FILTER_TYPE_POINT;
@@ -614,6 +617,21 @@ void ContentRunner::CreateIMGUIContextInternal() {
 }
 
 void ContentRunner::DestroyIMGUIContextInternal() {
+  if (ImGui::GetCurrentContext()) {
+    // 手动清理 renderer 后端数据，避免 Shutdown 时遗留 viewport 数据触发断言
+    ImGuiIO& io = ImGui::GetIO();
+    io.BackendRendererName = nullptr;
+    io.BackendRendererUserData = nullptr;
+
+    // 清除所有 viewport 上的后端关联数据（DestroyPlatformWindows 不会清理主视口）
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    for (ImGuiViewport* viewport : platform_io.Viewports) {
+      viewport->RendererUserData = nullptr;
+      viewport->PlatformUserData = nullptr;
+      viewport->PlatformHandle = nullptr;
+    }
+  }
+
   imgui_.reset();
 
   ImGui_ImplSDL3_Shutdown();

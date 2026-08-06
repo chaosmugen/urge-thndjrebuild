@@ -40,6 +40,7 @@ mkdir "%BUILD_DIR%" 2>nul
 
 echo [STEP] cmake configure MSVC cl + Ninja
 cmake -S . -B "%BUILD_DIR%" -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_C_COMPILER=cl ^
   -DCMAKE_CXX_COMPILER=cl ^
   -DRuby_EXECUTABLE="%Ruby_EXECUTABLE%" ^
