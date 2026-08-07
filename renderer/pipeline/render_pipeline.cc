@@ -396,7 +396,7 @@ PIPELINE_HEADER(VagueTransition) {
       {
           Diligent::SHADER_TYPE_PIXEL,
           "u_TransTexture",
-          init_params.immutable_sampler,
+          init_params.transition_sampler,
       },
   };
 

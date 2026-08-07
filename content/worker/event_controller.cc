@@ -5,6 +5,7 @@
 #include "content/worker/event_controller.h"
 
 #include "SDL3/SDL_gamepad.h"
+#include "content/input/keyboard_controller.h"
 
 namespace content {
 
@@ -12,6 +13,11 @@ EventController::EventController(base::WeakPtr<ui::Widget> window)
     : window_(window) {}
 
 EventController::~EventController() = default;
+
+void EventController::SetKeyboardController(
+    KeyboardControllerImpl* keyboard_controller) {
+  keyboard_controller_ = keyboard_controller;
+}
 
 void EventController::DispatchEvent(SDL_Event* event) {
   // Dispatch event with filter

@@ -24,6 +24,10 @@ namespace renderer {
 struct PipelineInitParams {
   Diligent::IRenderDevice* render_device;
   Diligent::SamplerDesc immutable_sampler;
+  // Sampler for transition/effect textures that benefit from
+  // linear filtering (mapping bitmaps, etc.). Defaults to the
+  // same POINT+CLAMP as immutable_sampler for compatibility.
+  Diligent::SamplerDesc transition_sampler;
 };
 
 /// Pipeline base manager

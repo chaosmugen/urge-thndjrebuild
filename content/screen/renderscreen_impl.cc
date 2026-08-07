@@ -159,17 +159,13 @@ void RenderScreenImpl::FadeOut(uint32_t duration,
   float current_brightness = static_cast<float>(brightness_);
   for (uint32_t i = 0; i < duration; ++i) {
     brightness_ = current_brightness -
-                  current_brightness * (i / static_cast<float>(duration));
+                  current_brightness * ((i + 1) / static_cast<float>(duration));
     if (frozen_) {
       FrameProcessInternal(gpu_.frozen_buffer);
     } else {
       Update(exception_state);
     }
   }
-
-  // Set final brightness
-  brightness_ = 0;
-  Update(exception_state);
 }
 
 void RenderScreenImpl::FadeIn(uint32_t duration,
@@ -180,7 +176,7 @@ void RenderScreenImpl::FadeIn(uint32_t duration,
   float diff = 255.0f - current_brightness;
   for (uint32_t i = 0; i < duration; ++i) {
     brightness_ =
-        current_brightness + diff * (i / static_cast<float>(duration));
+        current_brightness + diff * ((i + 1) / static_cast<float>(duration));
 
     if (frozen_) {
       FrameProcessInternal(gpu_.frozen_buffer);
@@ -188,10 +184,6 @@ void RenderScreenImpl::FadeIn(uint32_t duration,
       Update(exception_state);
     }
   }
-
-  // Set final brightness
-  brightness_ = 255;
-  Update(exception_state);
 }
 
 void RenderScreenImpl::Freeze(ExceptionState& exception_state) {

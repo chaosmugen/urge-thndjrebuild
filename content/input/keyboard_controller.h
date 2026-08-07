@@ -99,7 +99,7 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   // Gamepad support. Buttons are bound to existing symbols via BindGamepad and
   // merged into the keyboard state on Update(). D-pad and left stick always map
   // to the arrow keys regardless of configuration.
-  static constexpr int16_t kGamepadDeadzone = 8000;
+  static constexpr int16_t kGamepadDeadzone = 9830;
   static constexpr int16_t kGamepadTriggerThreshold = 8192;
 
   KeySymMap key_bindings_;

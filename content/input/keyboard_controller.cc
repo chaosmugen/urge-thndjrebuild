@@ -734,92 +734,132 @@ void KeyboardControllerImpl::TryReadBindingsInternal() {
 
   filesystem::IOState io_state;
   auto* fstream = context()->io_service->OpenReadRaw(filepath, &io_state);
-  if (fstream) {
-    /* Read cfg into a temporary list, then merge with the default bindings so
-       that symbols present in kDefaultKeyboardBindings but absent from the
-       saved file (e.g. a user-customized file that omits some default symbol)
-       are preserved instead of being dropped. */
-    std::vector<KeyBinding> loaded;
+  if (!fstream)
+    return;
 
-    const Uint32 kBindingMagic = 0x4B424E44;  // "KBND"
-    Uint32 magic = 0;
-    SDL_ReadIO(fstream, &magic, sizeof(magic));
+  /* Obtain file size so we can sanity-check offsets before seeking. */
+  Sint64 file_size = SDL_GetIOSize(fstream);
+  if (file_size < 0)
+    file_size = 0;
 
-    if (magic == kBindingMagic) {
-      Uint32 item_size;
-      SDL_ReadIO(fstream, &item_size, sizeof(item_size));
-      for (uint32_t i = 0; i < item_size; ++i) {
-        Uint32 token_size;
-        SDL_ReadIO(fstream, &token_size, sizeof(token_size));
+  /* Read cfg into a temporary list, then merge with the default bindings so
+     that symbols present in kDefaultKeyboardBindings but absent from the
+     saved file (e.g. a user-customized file that omits some default symbol)
+     are preserved instead of being dropped. */
+  std::vector<KeyBinding> loaded;
 
-        std::string token(token_size, 0);
-        SDL_ReadIO(fstream, token.data(), token_size);
+  /* Reasonable upper bound per item: 256-byte symbol + scancode + token_size
+     header.  512 items × 272 bytes ≈ 136 KB, far above any real config. */
+  static constexpr uint32_t kMaxItemCount = 512;
+  /* Maximum length of a single symbol string stored in the config. */
+  static constexpr uint32_t kMaxTokenSize = 256;
+  /* Maximum number of gamepad binding entries. */
+  static constexpr uint32_t kMaxGpCount = 64;
 
-        SDL_Scancode scancode;
-        SDL_ReadIO(fstream, &scancode, sizeof(scancode));
+  const Uint32 kBindingMagic = 0x4B424E44;  // "KBND"
+  const Uint32 kGpMagic = 0x47504E44;        // "GPND"
 
-        /* Gamepad bindings live in the separate GPND block (read below),
-           so the KBND entry only stores <sym, scancode>. */
-        loaded.push_back({token, scancode});
-      }
-    } else {
-      /* Legacy format: only <sym, scancode>, gamepad binding is INVALID. */
-      Uint32 item_size = magic;
-      for (uint32_t i = 0; i < item_size; ++i) {
-        Uint32 token_size;
-        SDL_ReadIO(fstream, &token_size, sizeof(token_size));
+  Uint32 item_size = 0;
+  Uint32 magic = 0;
+  if (SDL_ReadIO(fstream, &magic, sizeof(magic)) != sizeof(magic))
+    goto done;
 
-        std::string token(token_size, 0);
-        SDL_ReadIO(fstream, token.data(), token_size);
-
-        SDL_Scancode scancode;
-        SDL_ReadIO(fstream, &scancode, sizeof(scancode));
-
-        loaded.push_back({token, scancode});
-      }
-    }
-
-    /* Read optional gamepad binding block (GPND) appended after the KBND
-       data. Each entry is <button int32, scancode int32>. */
-    {
-      Uint32 gp_magic = 0;
-      Sint64 cur = SDL_SeekIO(fstream, 0, SDL_IO_SEEK_CUR);
-      SDL_ReadIO(fstream, &gp_magic, sizeof(gp_magic));
-      if (gp_magic == 0x47504E44) {  // "GPND"
-        Uint32 gp_size;
-        SDL_ReadIO(fstream, &gp_size, sizeof(gp_size));
-        for (uint32_t i = 0; i < gp_size; ++i) {
-          int32_t btn, sc;
-          SDL_ReadIO(fstream, &btn, sizeof(btn));
-          SDL_ReadIO(fstream, &sc, sizeof(sc));
-          if (btn >= 0 && btn < SDL_GAMEPAD_BUTTON_COUNT && sc >= 0 &&
-              sc < SDL_SCANCODE_COUNT)
-            gamepad_scancode_map_[btn] = static_cast<SDL_Scancode>(sc);
-        }
-      } else {
-        SDL_SeekIO(fstream, cur, SDL_IO_SEEK_SET);
-      }
-    }
-
-    SDL_CloseIO(fstream);
-
-    /* Merge: keep every default binding, overriding its scancode when the
-       saved file contains the same symbol; append saved symbols that are not
-       part of the defaults. This prevents a saved file that omits a default
-       symbol from silently dropping it. */
-    for (const auto& def : key_bindings_) {
-      bool found = false;
-      for (const auto& l : loaded) {
-        if (l.sym == def.sym) {
-          found = true;
-          break;
-        }
-      }
-      if (!found)
-        loaded.push_back(def);
-    }
-    key_bindings_ = std::move(loaded);
+  if (magic == kBindingMagic) {
+    if (SDL_ReadIO(fstream, &item_size, sizeof(item_size)) != sizeof(item_size))
+      goto done;
+  } else {
+    /* Legacy format: first u32 is the item count directly. */
+    item_size = magic;
   }
+
+  /* Clamp to a reasonable maximum to reject obviously corrupt files. */
+  if (item_size > kMaxItemCount)
+    item_size = kMaxItemCount;
+
+  for (uint32_t i = 0; i < item_size; ++i) {
+    Uint32 token_size;
+    if (SDL_ReadIO(fstream, &token_size, sizeof(token_size)) !=
+        sizeof(token_size))
+      break;
+
+    /* Guard against huge or obviously invalid string sizes. */
+    if (token_size > kMaxTokenSize)
+      token_size = kMaxTokenSize;
+
+    std::string token(token_size, 0);
+    if (SDL_ReadIO(fstream, token.data(), token_size) !=
+        static_cast<size_t>(token_size))
+      break;
+
+    SDL_Scancode scancode = SDL_SCANCODE_UNKNOWN;
+    if (SDL_ReadIO(fstream, &scancode, sizeof(scancode)) != sizeof(scancode))
+      break;
+
+    loaded.push_back({std::move(token), scancode});
+  }
+
+  /* Read optional gamepad binding block (GPND) appended after the KBND
+     data. Each entry is <button int32, scancode int32>. */
+  {
+    /* Determine how many bytes are left in the stream.  The GPND block
+       (magic + count + entries) needs at least 12 bytes to be valid. */
+    Sint64 pos_after_kbnd = SDL_SeekIO(fstream, 0, SDL_IO_SEEK_CUR);
+    if (pos_after_kbnd < 0 ||
+        file_size - pos_after_kbnd < static_cast<Sint64>(sizeof(Uint32) * 2)) {
+      /* Not enough data remaining for even a GPND header. */
+    } else {
+      Uint32 gp_magic = 0;
+      if (SDL_ReadIO(fstream, &gp_magic, sizeof(gp_magic)) ==
+          sizeof(gp_magic)) {
+        if (gp_magic == kGpMagic) {
+          Uint32 gp_size;
+          if (SDL_ReadIO(fstream, &gp_size, sizeof(gp_size)) ==
+              sizeof(gp_size)) {
+            if (gp_size > kMaxGpCount)
+              gp_size = kMaxGpCount;
+
+            for (uint32_t i = 0; i < gp_size; ++i) {
+              int32_t btn, sc;
+              if (SDL_ReadIO(fstream, &btn, sizeof(btn)) != sizeof(btn))
+                break;
+              if (SDL_ReadIO(fstream, &sc, sizeof(sc)) != sizeof(sc))
+                break;
+              if (btn >= 0 && btn < SDL_GAMEPAD_BUTTON_COUNT && sc >= 0 &&
+                  sc < SDL_SCANCODE_COUNT)
+                gamepad_scancode_map_[btn] = static_cast<SDL_Scancode>(sc);
+            }
+          }
+        }
+        /* Not a GPND block — seek back so the stream is positioned where
+           the caller would expect (end of KBND). */
+        SDL_SeekIO(fstream, pos_after_kbnd, SDL_IO_SEEK_SET);
+      }
+    }
+  }
+
+done:
+  SDL_CloseIO(fstream);
+
+  /* If loading produced no usable entries, keep the existing defaults. */
+  if (loaded.empty())
+    return;
+
+  /* Merge: keep every default binding, overriding its scancode when the
+     saved file contains the same symbol; append saved symbols that are not
+     part of the defaults. This prevents a saved file that omits a default
+     symbol from silently dropping it. */
+  for (const auto& def : key_bindings_) {
+    bool found = false;
+    for (const auto& l : loaded) {
+      if (l.sym == def.sym) {
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+      loaded.push_back(def);
+  }
+  key_bindings_ = std::move(loaded);
 }
 
 void KeyboardControllerImpl::StorageBindingsInternal() {

@@ -279,6 +279,17 @@ void ContentRunner::CreateRenderComponents() {
                             Diligent::TEXTURE_ADDRESS_CLAMP,
                             Diligent::TEXTURE_ADDRESS_CLAMP,
                             Diligent::TEXTURE_ADDRESS_CLAMP};
+
+  // Transition sampler: always use LINEAR filtering for transition
+  // mapping textures to produce smooth edges, with CLAMP addressing
+  // to prevent border-color bleeding at screen edges.
+  pipeline_params.transition_sampler =
+      Diligent::SamplerDesc{Diligent::FILTER_TYPE_LINEAR,
+                            Diligent::FILTER_TYPE_LINEAR,
+                            Diligent::FILTER_TYPE_LINEAR,
+                            Diligent::TEXTURE_ADDRESS_CLAMP,
+                            Diligent::TEXTURE_ADDRESS_CLAMP,
+                            Diligent::TEXTURE_ADDRESS_CLAMP};
   execution_context_->render.pipeline_loader =
       std::make_unique<renderer::PipelineSet>(pipeline_params);
 
