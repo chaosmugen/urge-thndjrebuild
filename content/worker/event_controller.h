@@ -13,6 +13,7 @@
 #include "content/public/engine_mouseevent.h"
 #include "content/public/engine_textinputevent.h"
 #include "content/public/engine_touchevent.h"
+#include "content/input/keyboard_controller.h"
 #include "ui/widget/widget.h"
 
 namespace content {
@@ -88,6 +89,10 @@ class EventController {
 
   void DispatchEvent(SDL_Event* event);
 
+  void SetKeyboardController(KeyboardControllerImpl* keyboard_controller) {
+    keyboard_controller_ = keyboard_controller;
+  }
+
   void PollKeyEvents(std::vector<KeyEventData>& out) {
     out = key_events_;
     key_events_.clear();
@@ -110,6 +115,7 @@ class EventController {
 
  private:
   base::WeakPtr<ui::Widget> window_;
+  KeyboardControllerImpl* keyboard_controller_ = nullptr;
   std::vector<KeyEventData> key_events_;
   std::vector<MouseEventData> mouse_events_;
   std::vector<TouchEventData> touch_events_;

@@ -9,6 +9,7 @@
 #include "content/profile/content_profile.h"
 #include "content/profile/i18n_profile.h"
 #include "content/public/engine_input.h"
+#include "SDL3/SDL_gamepad.h"
 #include "ui/widget/widget.h"
 
 namespace content {
@@ -77,12 +78,29 @@ class KeyboardControllerImpl : public Input, public EngineObject {
                bool repeat,
                ExceptionState& exception_state) override;
 
+  void BindGamepad(int32_t button,
+                   int32_t scancode,
+                   ExceptionState& exception_state) override;
+  void UnbindGamepad(int32_t button,
+                     ExceptionState& exception_state) override;
+
+  void OpenGamepad();
+  void CloseGamepad();
+  void FeedGamepadButton(SDL_GamepadButton button, bool down);
+  void FeedGamepadAxis(SDL_GamepadAxis axis, int16_t value);
+
  private:
   void UpdateDir4Internal();
   void UpdateDir8Internal();
 
   void TryReadBindingsInternal();
   void StorageBindingsInternal();
+
+  // Gamepad support. Buttons are bound to existing symbols via BindGamepad and
+  // merged into the keyboard state on Update(). D-pad and left stick always map
+  // to the arrow keys regardless of configuration.
+  static constexpr int16_t kGamepadDeadzone = 8000;
+  static constexpr int16_t kGamepadTriggerThreshold = 8192;
 
   KeySymMap key_bindings_;
   KeySymMap setting_bindings_;
@@ -99,6 +117,20 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   struct {
     int32_t active = 0;
   } dir8_state_;
+
+  SDL_Gamepad* gamepad_ = nullptr;
+  std::array<bool, SDL_GAMEPAD_BUTTON_COUNT> gamepad_button_state_{};
+  std::array<bool, 2> gamepad_trigger_state_{};  // [0]=LT, [1]=RT (axis-based)
+  int16_t gamepad_axis_[SDL_GAMEPAD_AXIS_COUNT]{};
+
+  // Per-gamepad-button -> SDL scancode mapping, set via BindGamepad.
+  std::array<SDL_Scancode, SDL_GAMEPAD_BUTTON_COUNT> gamepad_scancode_map_{};
+  std::array<KeyState, SDL_GAMEPAD_BUTTON_COUNT> gamepad_button_prev_{};
+
+  // Repeat counters for the four D-pad / left-stick directions (DOWN, UP,
+  // LEFT, RIGHT), so gamepad direction input drives `repeat` instead of a
+  // continuous `pressed` hold.
+  std::array<int32_t, 4> gamepad_dir_repeat_count_{};
 };
 
 }  // namespace content

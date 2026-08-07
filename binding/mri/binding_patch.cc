@@ -19,8 +19,7 @@ struct BindingSet {
 const BindingSet kKeyboardBindings[] = {
     {"DOWN", 2},   {"LEFT", 4},  {"RIGHT", 6}, {"UP", 8},
 
-    {"A", 11},     {"B", 12},    {"C", 13},    {"X", 14},  {"Y", 15},
-    {"Z", 16},     {"L", 17},    {"R", 18},
+    {"B", 12},     {"C", 13},    {"Z", 16},    {"L", 17},    {"R", 18},
 
     {"SHIFT", 21}, {"CTRL", 22}, {"ALT", 23},
 
@@ -83,6 +82,26 @@ void ApplyInputPatch() {
     auto& binding_set = kKeyboardBindings[i];
     ID key = rb_intern(binding_set.name.c_str());
     rb_const_set(klass, key, INT2FIX(binding_set.key_id));
+  }
+
+  // Gamepad physical button constants (values match SDL_GamepadButton), usable
+  // as the first argument of Input.bind_gamepad / unbind_gamepad. These use a
+  // distinct "GP_" prefix so they never collide with the keyboard symbol
+  // constants (e.g. Input::A), which would otherwise be shadowed and break
+  // symbol-based queries such as Input.press?(Input::A).
+  struct GamepadButtonSet {
+    const char* name;
+    int button_id;
+  };
+  const GamepadButtonSet kGamepadButtonSets[] = {
+      {"GP_A", 0},         {"GP_B", 1},        {"GP_X", 2},        {"GP_Y", 3},
+      {"GP_SELECT", 4},    {"GP_START", 6},    {"GP_L3", 7},       {"GP_R3", 8},
+      {"GP_LB", 9},        {"GP_RB", 10},      {"GP_DPAD_UP", 11}, {"GP_DPAD_DOWN", 12},
+      {"GP_DPAD_LEFT", 13}, {"GP_DPAD_RIGHT", 14}, {"GP_LT", 15},  {"GP_RT", 16},
+  };
+  for (size_t i = 0; i < std::size(kGamepadButtonSets); ++i) {
+    rb_const_set(klass, rb_intern(kGamepadButtonSets[i].name),
+                 INT2FIX(kGamepadButtonSets[i].button_id));
   }
 }
 

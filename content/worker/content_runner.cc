@@ -61,6 +61,10 @@ ContentRunner::ContentRunner(ContentProfile* profile,
 }
 
 ContentRunner::~ContentRunner() {
+  // Close gamepad before other teardown
+  if (keyboard_impl_)
+    keyboard_impl_->CloseGamepad();
+
   // Remove watch
   SDL_RemoveEventWatch(&ContentRunner::EventWatchHandlerInternal, this);
 
@@ -227,6 +231,10 @@ bool ContentRunner::InitializeComponents(filesystem::IOService* io_service,
       base::MakeRefCounted<KeyboardControllerImpl>(execution_context_.get());
   audio_impl_ = base::MakeRefCounted<AudioImpl>(execution_context_.get());
   mouse_impl_ = base::MakeRefCounted<MouseImpl>(execution_context_.get());
+
+  // Route gamepad events from the event dispatcher into the keyboard
+  // controller so they can be merged into the input state.
+  event_controller_->SetKeyboardController(keyboard_impl_.get());
 
   // Create imgui context
   CreateIMGUIContextInternal();

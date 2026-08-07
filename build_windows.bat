@@ -35,8 +35,20 @@ set "BUILD_DIR=%PROJECT_DIR%out\winout"
 set "LOG=%PROJECT_DIR%build_windows.log"
 echo [%date% %time%] Starting URGE build... > "%LOG%"
 
-rmdir /s /q "%BUILD_DIR%" 2>nul
-mkdir "%BUILD_DIR%" 2>nul
+rem Force a clean full rebuild by setting URGE_CLEAN=1 before running.
+if "%URGE_CLEAN%"=="1" (
+  rmdir /s /q "%BUILD_DIR%" 2>nul
+)
+if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%" 2>nul
+
+rem Use sccache as compiler launcher when available to speed up rebuilds.
+rem sccache disabled temporarily to rule out stale cache hits (see 845 error).
+rem where sccache >nul 2>&1
+rem if not errorlevel 1 (
+  set "SCCACHE_CFG=-DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER="
+rem ) else (
+rem   set "SCCACHE_CFG="
+rem )
 
 echo [STEP] cmake configure MSVC cl + Ninja
 cmake -S . -B "%BUILD_DIR%" -G Ninja ^
@@ -47,6 +59,7 @@ cmake -S . -B "%BUILD_DIR%" -G Ninja ^
   -DRuby_LIBRARY="%Ruby_LIBRARY%" ^
   -DRuby_INCLUDE_DIR="%Ruby_INCLUDE_DIR%" ^
   -DRuby_CONFIG_INCLUDE_DIR="%Ruby_CONFIG_INCLUDE_DIR%" ^
+  %SCCACHE_CFG% ^
   >> "%LOG%" 2>&1
 if errorlevel 1 (
     echo [FAIL] cmake configure failed. See %LOG%
@@ -58,6 +71,14 @@ cmake --build "%BUILD_DIR%" --target Game >> "%LOG%" 2>&1
 set "BUILD_RC=%errorlevel%"
 
 echo EXIT_CODE=%BUILD_RC% >> "%LOG%"
+
+rem Print sccache stats (cache hits/misses) when sccache is in use.
+where sccache >nul 2>&1
+if not errorlevel 1 (
+  echo [STAT] sccache statistics >> "%LOG%"
+  sccache --show-stats >> "%LOG%" 2>&1
+)
+
 if %BUILD_RC%==0 (
     echo [DONE] Build succeeded. Log: %LOG%
 ) else (

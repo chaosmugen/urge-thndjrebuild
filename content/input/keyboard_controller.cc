@@ -7,6 +7,7 @@
 #include "components/filesystem/io_service.h"
 
 #include "SDL3/SDL_events.h"
+#include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_timer.h"
 #include "imgui/imgui.h"
 
@@ -23,27 +24,36 @@ const KeyboardControllerImpl::KeyBinding kDefaultKeyboardBindings[] = {
     {"DOWN", SDL_SCANCODE_DOWN},    {"LEFT", SDL_SCANCODE_LEFT},
     {"RIGHT", SDL_SCANCODE_RIGHT},  {"UP", SDL_SCANCODE_UP},
 
+    {"F1", SDL_SCANCODE_F1},        {"F2", SDL_SCANCODE_F2},
+    {"F3", SDL_SCANCODE_F3},        {"F4", SDL_SCANCODE_F4},
     {"F5", SDL_SCANCODE_F5},        {"F6", SDL_SCANCODE_F6},
     {"F7", SDL_SCANCODE_F7},        {"F8", SDL_SCANCODE_F8},
-    {"F9", SDL_SCANCODE_F9},
+    {"F9", SDL_SCANCODE_F9},        {"F10", SDL_SCANCODE_F10},
+    {"F11", SDL_SCANCODE_F11},      {"F12", SDL_SCANCODE_F12},
 
     {"SHIFT", SDL_SCANCODE_LSHIFT}, {"SHIFT", SDL_SCANCODE_RSHIFT},
     {"CTRL", SDL_SCANCODE_LCTRL},   {"CTRL", SDL_SCANCODE_RCTRL},
     {"ALT", SDL_SCANCODE_LALT},     {"ALT", SDL_SCANCODE_RALT},
 
-    {"A", SDL_SCANCODE_LSHIFT},     {"B", SDL_SCANCODE_ESCAPE},
-    {"B", SDL_SCANCODE_KP_0},       {"B", SDL_SCANCODE_X},
-    {"C", SDL_SCANCODE_SPACE},      {"C", SDL_SCANCODE_RETURN},
+    {"C", SDL_SCANCODE_C},          {"C", SDL_SCANCODE_SPACE},
+    {"C", SDL_SCANCODE_RETURN},     {"C", SDL_SCANCODE_KP_ENTER},
+    {"L", SDL_SCANCODE_Q},          {"L", SDL_SCANCODE_PAGEUP},
+    {"R", SDL_SCANCODE_W},          {"R", SDL_SCANCODE_PAGEDOWN},
+
+    /* RGSS button symbols. These were dropped from the default table at some
+       point and must be present so games can query "A"/"B"/"C"/"X"/"Y"/"Z"/
+       "L"/"R" out of the box. Key choices follow the original defaults. */
+    {"A", SDL_SCANCODE_LSHIFT},
+    {"B", SDL_SCANCODE_ESCAPE},    {"B", SDL_SCANCODE_KP_0},
+    {"B", SDL_SCANCODE_X},
     {"X", SDL_SCANCODE_A},          {"Y", SDL_SCANCODE_S},
-    {"Z", SDL_SCANCODE_D},          {"L", SDL_SCANCODE_Q},
-    {"R", SDL_SCANCODE_W},
+    {"Z", SDL_SCANCODE_D},
 };
 
 const int32_t kDefaultKeyboardBindingsSize =
     sizeof(kDefaultKeyboardBindings) / sizeof(kDefaultKeyboardBindings[0]);
 
 const KeyboardControllerImpl::KeyBinding kKeyboardBindings1[] = {
-    {"A", SDL_SCANCODE_Z},
     {"C", SDL_SCANCODE_C},
 };
 
@@ -99,6 +109,8 @@ KeyboardControllerImpl::KeyboardControllerImpl(
 
   TryReadBindingsInternal();
   setting_bindings_ = key_bindings_;
+
+  OpenGamepad();
 }
 
 KeyboardControllerImpl::~KeyboardControllerImpl() = default;
@@ -278,6 +290,110 @@ void KeyboardControllerImpl::Update(ExceptionState& exception_state) {
     recent_key_states_[i].repeat = key_states_[i].repeat;
   }
 
+  /* Merge script-defined gamepad bindings into keyboard state. Each gamepad
+     button maps to a single SDL scancode and drives the full press/trigger/
+     repeat state, just like a physical keyboard key. */
+  /* LT/RT (slots 15/16, matching GP_LT/GP_RT) are reported as axes, so copy
+     their trigger-axis pressed state into the button-state array used below. */
+  gamepad_button_state_[15] = gamepad_trigger_state_[0];
+  gamepad_button_state_[16] = gamepad_trigger_state_[1];
+  for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
+    SDL_Scancode sc = gamepad_scancode_map_[i];
+    if (sc == SDL_SCANCODE_UNKNOWN || sc >= SDL_SCANCODE_COUNT)
+      continue;
+
+      bool down = gamepad_button_state_[i];
+      KeyState& gp = gamepad_button_prev_[i];
+
+    if (down) {
+      key_states_[sc].trigger = !gp.pressed;
+
+      key_states_[sc].pressed = true;
+
+      ++key_states_[sc].repeat_count;
+      key_states_[sc].repeat =
+          key_states_[sc].repeat_count == 1 ||
+          (key_states_[sc].repeat_count >= 23 &&
+           (key_states_[sc].repeat_count + 1) % 6 == 0);
+
+      recent_key_states_[sc].trigger = key_states_[sc].trigger;
+      recent_key_states_[sc].pressed = key_states_[sc].pressed;
+      recent_key_states_[sc].repeat = key_states_[sc].repeat;
+    } else if (gp.pressed) {
+      /* Button just released. */
+      key_states_[sc].pressed = false;
+      key_states_[sc].trigger = false;
+      key_states_[sc].repeat = false;
+      key_states_[sc].repeat_count = 0;
+      recent_key_states_[sc].pressed = false;
+      recent_key_states_[sc].trigger = false;
+      recent_key_states_[sc].repeat = false;
+    }
+
+    gp.pressed = down;
+  }
+
+  /* D-pad and left stick drive the direction symbols (DOWN/UP/LEFT/RIGHT) as
+     configured in key_bindings_, so they follow the same scancodes the game
+     queries (e.g. a config that maps DOWN to Q makes the D-pad press Q). They
+     drive the full press/trigger/repeat state so directional movement (which
+     depends on `pressed`) works from the gamepad. */
+  {
+    struct DirSym {
+      SDL_GamepadButton button;
+      SDL_GamepadAxis axis;
+      int16_t sign;  // +1: positive axis triggers, -1: negative axis triggers
+      const char* sym;
+    };
+    const DirSym kDirSyms[] = {
+        {SDL_GAMEPAD_BUTTON_DPAD_DOWN, SDL_GAMEPAD_AXIS_LEFTY, +1, "DOWN"},
+        {SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_AXIS_LEFTY, -1, "UP"},
+        {SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_AXIS_LEFTX, -1, "LEFT"},
+        {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, SDL_GAMEPAD_AXIS_LEFTX, +1, "RIGHT"},
+    };
+    for (const auto& d : kDirSyms) {
+      SDL_Scancode target = SDL_SCANCODE_UNKNOWN;
+      for (const auto& b : key_bindings_) {
+        if (b.sym == d.sym) {
+          target = b.scancode;
+          break;
+        }
+      }
+      if (target == SDL_SCANCODE_UNKNOWN || target >= SDL_SCANCODE_COUNT)
+        continue;
+
+      bool active = gamepad_button_state_[d.button];
+      if (!active && d.sign > 0)
+        active = gamepad_axis_[d.axis] > kGamepadDeadzone;
+      else if (!active && d.sign < 0)
+        active = gamepad_axis_[d.axis] < -kGamepadDeadzone;
+
+      size_t idx = &d - kDirSyms;
+      if (active) {
+        key_states_[target].trigger = gamepad_dir_repeat_count_[idx] == 0;
+        key_states_[target].pressed = true;
+        ++gamepad_dir_repeat_count_[idx];
+        key_states_[target].repeat =
+            gamepad_dir_repeat_count_[idx] == 1 ||
+            (gamepad_dir_repeat_count_[idx] >= 23 &&
+             (gamepad_dir_repeat_count_[idx] + 1) % 6 == 0);
+        recent_key_states_[target].trigger = key_states_[target].trigger;
+        recent_key_states_[target].pressed = true;
+        recent_key_states_[target].repeat = key_states_[target].repeat;
+      } else if (gamepad_dir_repeat_count_[idx] != 0) {
+        key_states_[target].pressed = false;
+        key_states_[target].trigger = false;
+        key_states_[target].repeat = false;
+        gamepad_dir_repeat_count_[idx] = 0;
+        recent_key_states_[target].pressed = false;
+        recent_key_states_[target].trigger = false;
+        recent_key_states_[target].repeat = false;
+      }
+    }
+  }
+
+  /* Now that all input sources (keyboard, gamepad buttons, D-pad/stick) have
+     updated key_states_, compute the directional states for this frame. */
   UpdateDir4Internal();
   UpdateDir8Internal();
 }
@@ -443,6 +559,75 @@ bool KeyboardControllerImpl::Emulate(int32_t scancode,
   return SDL_PushEvent(&emulate_event);
 }
 
+void KeyboardControllerImpl::OpenGamepad() {
+  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    LOG(ERROR) << "[Keyboard] Failed to init gamepad subsystem: "
+               << SDL_GetError();
+    return;
+  }
+
+  int count = 0;
+  SDL_JoystickID* games = SDL_GetGamepads(&count);
+  if (!games)
+    return;
+
+  if (count > 0)
+    gamepad_ = SDL_OpenGamepad(games[0]);
+  SDL_free(games);
+}
+
+void KeyboardControllerImpl::CloseGamepad() {
+  if (gamepad_) {
+    SDL_CloseGamepad(gamepad_);
+    gamepad_ = nullptr;
+  }
+  std::memset(gamepad_button_state_.data(), 0,
+              gamepad_button_state_.size() * sizeof(bool));
+  std::memset(gamepad_axis_, 0, sizeof(gamepad_axis_));
+}
+
+void KeyboardControllerImpl::FeedGamepadButton(SDL_GamepadButton button,
+                                               bool down) {
+  if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+    return;
+  gamepad_button_state_[button] = down;
+}
+
+void KeyboardControllerImpl::FeedGamepadAxis(SDL_GamepadAxis axis,
+                                             int16_t value) {
+  if (axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
+    return;
+  gamepad_axis_[axis] = value;
+  /* Some gamepads report the triggers (LT/RT) as axes only and never emit
+     button events. SDL3 exposes the triggers purely as axes (LEFT_TRIGGER /
+     RIGHT_TRIGGER), so record their pressed state in gamepad_trigger_state_.
+     The 15/16 indices match the button slots used by BindGamepad for LT/RT. */
+  if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER)
+    gamepad_trigger_state_[0] = value > kGamepadTriggerThreshold;
+  else if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+    gamepad_trigger_state_[1] = value > kGamepadTriggerThreshold;
+}
+
+void KeyboardControllerImpl::BindGamepad(int32_t button,
+                                          int32_t scancode,
+                                          ExceptionState& exception_state) {
+  if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+    return;
+  if (scancode < 0 || scancode >= SDL_SCANCODE_COUNT)
+    return;
+
+  gamepad_scancode_map_[button] = static_cast<SDL_Scancode>(scancode);
+  StorageBindingsInternal();
+}
+
+void KeyboardControllerImpl::UnbindGamepad(int32_t button,
+                                            ExceptionState& exception_state) {
+  if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+    return;
+  gamepad_scancode_map_[button] = SDL_SCANCODE_UNKNOWN;
+  StorageBindingsInternal();
+}
+
 void KeyboardControllerImpl::UpdateDir4Internal() {
   bool key_states[kArrowDirsSymbolSize] = {0};
   for (auto& it : key_bindings_)
@@ -545,29 +730,93 @@ void KeyboardControllerImpl::TryReadBindingsInternal() {
   filepath += std::to_string(
       static_cast<int32_t>(context()->engine_profile->api_version));
 
-  LOG(INFO) << "[Keyboard] Reading key binding table...";
-
   filesystem::IOState io_state;
   auto* fstream = context()->io_service->OpenReadRaw(filepath, &io_state);
   if (fstream) {
-    key_bindings_.clear();
+    /* Read cfg into a temporary list, then merge with the default bindings so
+       that symbols present in kDefaultKeyboardBindings but absent from the
+       saved file (e.g. a user-customized file that omits some default symbol)
+       are preserved instead of being dropped. */
+    std::vector<KeyBinding> loaded;
 
-    Uint32 item_size;
-    SDL_ReadIO(fstream, &item_size, sizeof(item_size));
-    for (uint32_t i = 0; i < item_size; ++i) {
-      Uint32 token_size;
-      SDL_ReadIO(fstream, &token_size, sizeof(token_size));
+    const Uint32 kBindingMagic = 0x4B424E44;  // "KBND"
+    Uint32 magic = 0;
+    SDL_ReadIO(fstream, &magic, sizeof(magic));
 
-      std::string token(token_size, 0);
-      SDL_ReadIO(fstream, token.data(), token_size);
+    if (magic == kBindingMagic) {
+      Uint32 item_size;
+      SDL_ReadIO(fstream, &item_size, sizeof(item_size));
+      for (uint32_t i = 0; i < item_size; ++i) {
+        Uint32 token_size;
+        SDL_ReadIO(fstream, &token_size, sizeof(token_size));
 
-      SDL_Scancode scancode;
-      SDL_ReadIO(fstream, &scancode, sizeof(scancode));
+        std::string token(token_size, 0);
+        SDL_ReadIO(fstream, token.data(), token_size);
 
-      key_bindings_.push_back({token, scancode});
+        SDL_Scancode scancode;
+        SDL_ReadIO(fstream, &scancode, sizeof(scancode));
+
+        /* Gamepad bindings live in the separate GPND block (read below),
+           so the KBND entry only stores <sym, scancode>. */
+        loaded.push_back({token, scancode});
+      }
+    } else {
+      /* Legacy format: only <sym, scancode>, gamepad binding is INVALID. */
+      Uint32 item_size = magic;
+      for (uint32_t i = 0; i < item_size; ++i) {
+        Uint32 token_size;
+        SDL_ReadIO(fstream, &token_size, sizeof(token_size));
+
+        std::string token(token_size, 0);
+        SDL_ReadIO(fstream, token.data(), token_size);
+
+        SDL_Scancode scancode;
+        SDL_ReadIO(fstream, &scancode, sizeof(scancode));
+
+        loaded.push_back({token, scancode});
+      }
+    }
+
+    /* Read optional gamepad binding block (GPND) appended after the KBND
+       data. Each entry is <button int32, scancode int32>. */
+    {
+      Uint32 gp_magic = 0;
+      Sint64 cur = SDL_SeekIO(fstream, 0, SDL_IO_SEEK_CUR);
+      SDL_ReadIO(fstream, &gp_magic, sizeof(gp_magic));
+      if (gp_magic == 0x47504E44) {  // "GPND"
+        Uint32 gp_size;
+        SDL_ReadIO(fstream, &gp_size, sizeof(gp_size));
+        for (uint32_t i = 0; i < gp_size; ++i) {
+          int32_t btn, sc;
+          SDL_ReadIO(fstream, &btn, sizeof(btn));
+          SDL_ReadIO(fstream, &sc, sizeof(sc));
+          if (btn >= 0 && btn < SDL_GAMEPAD_BUTTON_COUNT && sc >= 0 &&
+              sc < SDL_SCANCODE_COUNT)
+            gamepad_scancode_map_[btn] = static_cast<SDL_Scancode>(sc);
+        }
+      } else {
+        SDL_SeekIO(fstream, cur, SDL_IO_SEEK_SET);
+      }
     }
 
     SDL_CloseIO(fstream);
+
+    /* Merge: keep every default binding, overriding its scancode when the
+       saved file contains the same symbol; append saved symbols that are not
+       part of the defaults. This prevents a saved file that omits a default
+       symbol from silently dropping it. */
+    for (const auto& def : key_bindings_) {
+      bool found = false;
+      for (const auto& l : loaded) {
+        if (l.sym == def.sym) {
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+        loaded.push_back(def);
+    }
+    key_bindings_ = std::move(loaded);
   }
 }
 
@@ -577,11 +826,12 @@ void KeyboardControllerImpl::StorageBindingsInternal() {
   filepath += std::to_string(
       static_cast<int32_t>(context()->engine_profile->api_version));
 
-  LOG(INFO) << "[Keyboard] Saving key binding table...";
-
   filesystem::IOState io_state;
   auto* fstream = context()->io_service->OpenWrite(filepath, &io_state);
   if (fstream) {
+    const Uint32 kBindingMagic = 0x4B424E44;  // "KBND"
+    SDL_WriteIO(fstream, &kBindingMagic, sizeof(kBindingMagic));
+
     Uint32 item_size = key_bindings_.size();
     SDL_WriteIO(fstream, &item_size, sizeof(item_size));
     for (const auto& it : key_bindings_) {
@@ -592,6 +842,31 @@ void KeyboardControllerImpl::StorageBindingsInternal() {
 
       SDL_Scancode scancode = it.scancode;
       SDL_WriteIO(fstream, &scancode, sizeof(scancode));
+
+      /* Gamepad bindings are written to the separate GPND block below. */
+    }
+
+    /* Append gamepad binding block (GPND): <button int32, scancode int32>
+       for every button that has a valid scancode mapping. */
+    {
+      const Uint32 gp_magic = 0x47504E44;  // "GPND"
+      SDL_WriteIO(fstream, &gp_magic, sizeof(gp_magic));
+
+      Uint32 gp_size = 0;
+      for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i)
+        if (gamepad_scancode_map_[i] != SDL_SCANCODE_UNKNOWN)
+          ++gp_size;
+      SDL_WriteIO(fstream, &gp_size, sizeof(gp_size));
+
+      for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
+        SDL_Scancode sc = gamepad_scancode_map_[i];
+        if (sc == SDL_SCANCODE_UNKNOWN)
+          continue;
+        int32_t btn = i;
+        int32_t scv = static_cast<int32_t>(sc);
+        SDL_WriteIO(fstream, &btn, sizeof(btn));
+        SDL_WriteIO(fstream, &scv, sizeof(scv));
+      }
     }
 
     SDL_CloseIO(fstream);

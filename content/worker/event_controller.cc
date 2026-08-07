@@ -4,6 +4,8 @@
 
 #include "content/worker/event_controller.h"
 
+#include "SDL3/SDL_gamepad.h"
+
 namespace content {
 
 EventController::EventController(base::WeakPtr<ui::Widget> window)
@@ -133,6 +135,29 @@ void EventController::DispatchEvent(SDL_Event* event) {
         out_event.select_start = -1;
         out_event.select_length = -1;
         text_input_events_.push_back(out_event);
+      }
+      break;
+    case SDL_EVENT_GAMEPAD_ADDED:
+      if (keyboard_controller_)
+        keyboard_controller_->OpenGamepad();
+      break;
+    case SDL_EVENT_GAMEPAD_REMOVED:
+      if (keyboard_controller_)
+        keyboard_controller_->CloseGamepad();
+      break;
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+      if (keyboard_controller_) {
+        keyboard_controller_->FeedGamepadButton(
+            static_cast<SDL_GamepadButton>(event->gbutton.button),
+            event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+      }
+      break;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      if (keyboard_controller_) {
+        keyboard_controller_->FeedGamepadAxis(
+            static_cast<SDL_GamepadAxis>(event->gaxis.axis),
+            event->gaxis.value);
       }
       break;
     default:

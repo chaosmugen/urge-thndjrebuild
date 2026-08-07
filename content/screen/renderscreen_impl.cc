@@ -260,7 +260,7 @@ void RenderScreenImpl::TransitionWithBitmap(uint32_t duration,
     // Transition render loop
     for (uint32_t i = 0; i < duration; ++i) {
       // Norm transition progress
-      float progress = i * (1.0f / duration);
+      float progress = (i + 1) * (1.0f / duration);
 
       // Render per transition frame
       if (transition_mapping)

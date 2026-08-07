@@ -76,6 +76,20 @@ class URGE_OBJECT(Input) {
                        int32_t modifier,
                        bool repeat,
                        ExceptionState& exception_state) = 0;
+
+  // Bind a gamepad physical button to a single SDL scancode. When the button
+  // is pressed, the corresponding scancode slot in the keyboard state is
+  // treated as pressed (with full press/trigger/repeat support), merged with
+  // the real keyboard state.
+  /*--urge(name:bind_gamepad)--*/
+  virtual void BindGamepad(int32_t button,
+                           int32_t scancode,
+                           ExceptionState& exception_state) = 0;
+
+  // Remove any gamepad binding associated with the given physical button.
+  /*--urge(name:unbind_gamepad)--*/
+  virtual void UnbindGamepad(int32_t button,
+                             ExceptionState& exception_state) = 0;
 };
 
 }  // namespace content
