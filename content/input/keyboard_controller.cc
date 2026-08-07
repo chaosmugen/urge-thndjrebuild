@@ -293,17 +293,19 @@ void KeyboardControllerImpl::Update(ExceptionState& exception_state) {
   /* Merge script-defined gamepad bindings into keyboard state. Each gamepad
      button maps to a single SDL scancode and drives the full press/trigger/
      repeat state, just like a physical keyboard key. */
-  /* LT/RT (slots 15/16, matching GP_LT/GP_RT) are reported as axes, so copy
-     their trigger-axis pressed state into the button-state array used below. */
-  gamepad_button_state_[15] = gamepad_trigger_state_[0];
-  gamepad_button_state_[16] = gamepad_trigger_state_[1];
   for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i) {
     SDL_Scancode sc = gamepad_scancode_map_[i];
     if (sc == SDL_SCANCODE_UNKNOWN || sc >= SDL_SCANCODE_COUNT)
       continue;
 
-      bool down = gamepad_button_state_[i];
-      KeyState& gp = gamepad_button_prev_[i];
+    /* LT/RT (slots 15/16, matching GP_LT/GP_RT) are reported as axes, so use
+       their trigger-axis pressed state instead of the button-state array. */
+    bool down = gamepad_button_state_[i];
+    if (i == 15)
+      down = gamepad_trigger_state_[0];
+    else if (i == 16)
+      down = gamepad_trigger_state_[1];
+    KeyState& gp = gamepad_button_prev_[i];
 
     if (down) {
       key_states_[sc].trigger = !gp.pressed;
