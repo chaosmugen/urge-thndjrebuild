@@ -94,7 +94,6 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   void UpdateDir8Internal();
 
   void TryReadBindingsInternal();
-  void DeleteBindingsFileInternal();
   void StorageBindingsInternal();
 
   // Gamepad support. Buttons are bound to existing symbols via BindGamepad and
@@ -103,12 +102,26 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   static constexpr int16_t kGamepadDeadzone = 9830;
   static constexpr int16_t kGamepadTriggerThreshold = 8192;
 
+  // SDL3 exposes the triggers (LT/RT) only as axes, never as buttons, so they
+  // get two "virtual" slots above the physical SDL_GamepadButton range. Scripts
+  // bind them as GP_LT / GP_RT (26 / 27) and they map to a scancode just like
+  // any button slot; the merge loop drives them from the trigger axes.
+  static constexpr int32_t kGamepadVtLT = SDL_GAMEPAD_BUTTON_COUNT;      // 26
+  static constexpr int32_t kGamepadVtRT = SDL_GAMEPAD_BUTTON_COUNT + 1;  // 27
+  static constexpr int32_t kGamepadSlotCount = SDL_GAMEPAD_BUTTON_COUNT + 2;
+
   KeySymMap key_bindings_;
   KeySymMap setting_bindings_;
   bool disable_gui_key_input_;
 
   std::array<KeyState, SDL_SCANCODE_COUNT> key_states_;
   std::array<KeyState, SDL_SCANCODE_COUNT> recent_key_states_;
+
+  // Physical keyboard state from the previous frame. Keyboard trigger
+  // detection uses this (not the merged key_states_, which also carries
+  // gamepad input) so a held gamepad button bound to the same scancode cannot
+  // suppress a keyboard keypress.
+  std::array<bool, SDL_SCANCODE_COUNT> keyboard_prev_state_{};
 
   struct {
     int32_t active = 0;
@@ -120,13 +133,21 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   } dir8_state_;
 
   SDL_Gamepad* gamepad_ = nullptr;
-  std::array<bool, SDL_GAMEPAD_BUTTON_COUNT> gamepad_button_state_{};
+  // Holds physical button state (slots 0..SDL_GAMEPAD_BUTTON_COUNT-1); the two
+  // virtual trigger slots are driven from gamepad_trigger_state_ instead.
+  std::array<bool, kGamepadSlotCount> gamepad_button_state_{};
   std::array<bool, 2> gamepad_trigger_state_{};  // [0]=LT, [1]=RT (axis-based)
   int16_t gamepad_axis_[SDL_GAMEPAD_AXIS_COUNT]{};
 
-  // Per-gamepad-button -> SDL scancode mapping, set via BindGamepad.
-  std::array<SDL_Scancode, SDL_GAMEPAD_BUTTON_COUNT> gamepad_scancode_map_{};
-  std::array<KeyState, SDL_GAMEPAD_BUTTON_COUNT> gamepad_button_prev_{};
+  // Per-slot (physical button or virtual trigger) -> SDL scancode mapping, set
+  // via BindGamepad and persisted in the cfg's GPND block.
+  std::array<SDL_Scancode, kGamepadSlotCount> gamepad_scancode_map_{};
+  std::array<KeyState, kGamepadSlotCount> gamepad_button_prev_{};
+
+  // Independent repeat counters per gamepad input slot, so a held gamepad
+  // button repeats on the same schedule as a held keyboard key without being
+  // reset every frame by the keyboard pass over key_states_.
+  std::array<int32_t, kGamepadSlotCount> gamepad_button_repeat_count_{};
 
   // Repeat counters for the four D-pad / left-stick directions (DOWN, UP,
   // LEFT, RIGHT), so gamepad direction input drives `repeat` instead of a

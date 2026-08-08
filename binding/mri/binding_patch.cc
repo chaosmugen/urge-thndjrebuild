@@ -24,7 +24,11 @@ const BindingSet kKeyboardBindings[] = {
 
     {"SHIFT", 21}, {"CTRL", 22}, {"ALT", 23},
 
-    {"F5", 25},    {"F6", 26},   {"F7", 27},   {"F8", 28}, {"F9", 29},
+    /* F-keys follow id = N + 20 (F5=25..F9=29). F1/F2/F12 are engine-reserved
+       shortcut keys and F3 would collide with ALT(23), so F3/F4/F10/F11 use
+       the collision-free extension range 30-33. */
+    {"F3", 30},    {"F4", 31},   {"F5", 25},   {"F6", 26},   {"F7", 27},
+    {"F8", 28},    {"F9", 29},   {"F10", 32},  {"F11", 33},
 };
 
 std::string GetButtonSymbol(int argc, VALUE* argv) {
@@ -85,11 +89,14 @@ void ApplyInputPatch() {
     rb_const_set(klass, key, INT2FIX(binding_set.key_id));
   }
 
-  // Gamepad physical button constants (values match SDL_GamepadButton), usable
-  // as the first argument of Input.bind_gamepad / unbind_gamepad. These use a
-  // distinct "GP_" prefix so they never collide with the keyboard symbol
-  // constants (e.g. Input::A), which would otherwise be shadowed and break
-  // symbol-based queries such as Input.press?(Input::A).
+  // Gamepad button constants, usable as the first argument of
+  // Input.bind_gamepad / unbind_gamepad. Values 0..25 match SDL_GamepadButton;
+  // GP_LT / GP_RT (26 / 27) are "virtual" slots above the SDL_GamepadButton
+  // range because SDL3 exposes the triggers only as axes — they must match
+  // KeyboardControllerImpl::kGamepadVtLT / kGamepadVtRT. These use a distinct
+  // "GP_" prefix so they never collide with the keyboard symbol constants
+  // (e.g. Input::A), which would otherwise be shadowed and break symbol-based
+  // queries such as Input.press?(Input::A).
   struct GamepadButtonSet {
     const char* name;
     int button_id;
@@ -98,7 +105,7 @@ void ApplyInputPatch() {
       {"GP_A", 0},         {"GP_B", 1},        {"GP_X", 2},        {"GP_Y", 3},
       {"GP_SELECT", 4},    {"GP_START", 6},    {"GP_L3", 7},       {"GP_R3", 8},
       {"GP_LB", 9},        {"GP_RB", 10},      {"GP_DPAD_UP", 11}, {"GP_DPAD_DOWN", 12},
-      {"GP_DPAD_LEFT", 13}, {"GP_DPAD_RIGHT", 14}, {"GP_LT", 15},  {"GP_RT", 16},
+      {"GP_DPAD_LEFT", 13}, {"GP_DPAD_RIGHT", 14}, {"GP_LT", 26},  {"GP_RT", 27},
   };
   for (size_t i = 0; i < std::size(kGamepadButtonSets); ++i) {
     rb_const_set(klass, rb_intern(kGamepadButtonSets[i].name),
