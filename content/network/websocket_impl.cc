@@ -6,7 +6,11 @@
 #ifndef _WEBSOCKETPP_CPP11_STL_
 #define _WEBSOCKETPP_CPP11_STL_
 #endif
-#pragma warning(disable : 4127)  // websocketpp/frame.hpp: if(sizeof(size_t)==8) 常量条件
+// MSVC 专属：websocketpp/frame.hpp 有 if(sizeof(size_t)==8) 常量条件
+// 表达式，触发 C4127。其它编译器（GCC/Clang）会把它当 unknown pragma 报警告。
+#ifdef _MSC_VER
+#pragma warning(disable : 4127)
+#endif
 
 #include "content/network/websocket_impl.h"
 
