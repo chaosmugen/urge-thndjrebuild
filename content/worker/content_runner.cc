@@ -635,24 +635,22 @@ void ContentRunner::CreateIMGUIContextInternal() {
 }
 
 void ContentRunner::DestroyIMGUIContextInternal() {
-  if (ImGui::GetCurrentContext()) {
-    // 手动清理 renderer 后端数据，避免 Shutdown 时遗留 viewport 数据触发断言
-    ImGuiIO& io = ImGui::GetIO();
-    io.BackendRendererName = nullptr;
-    io.BackendRendererUserData = nullptr;
+  if (!ImGui::GetCurrentContext())
+    return;
 
-    // 清除所有 viewport 上的后端关联数据（DestroyPlatformWindows 不会清理主视口）
-    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-    for (ImGuiViewport* viewport : platform_io.Viewports) {
-      viewport->RendererUserData = nullptr;
-      viewport->PlatformUserData = nullptr;
-      viewport->PlatformHandle = nullptr;
-    }
-  }
+  /* Teardown order: destroy the renderer backend first (its resources are held
+     as RefCntAutoPtr members and release on destruction), then shut down the
+     platform backend, then clear per-viewport backend data via the documented
+     API, then destroy the context.
 
+     ImGui::Shutdown() (inside DestroyContext) asserts that no backend data
+     survives, and the SDL3 backend keeps the window id in each viewport's
+     PlatformHandle without clearing it in its own Shutdown(). Neither backend
+     installs Renderer_/Platform_DestroyWindow callbacks, so DestroyPlatformWindows()
+     only resets the viewport fields and never touches real windows. */
   imgui_.reset();
-
   ImGui_ImplSDL3_Shutdown();
+  ImGui::DestroyPlatformWindows();
   ImGui::DestroyContext();
 }
 
