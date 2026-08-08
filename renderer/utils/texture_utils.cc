@@ -34,9 +34,18 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   // 全 0 初始数据，确保所有平台创建时显存都被初始化为透明。
   const uint32_t bytes_per_element =
       Diligent::GetTextureFormatAttribs(texture_desc.Format).GetElementSize();
-  std::vector<uint8_t> zeros(static_cast<size_t>(size.x) * size.y *
-                             bytes_per_element,
-                             0);
+
+  // A zero-sized texture is invalid; reject it early instead of allocating a
+  // zero-length buffer and letting CreateTexture fail on a 0x0 dimension.
+  if (size.x <= 0 || size.y <= 0)
+    return;
+
+  // Reuse a per-thread zero buffer instead of allocating w*h*4 bytes on every
+  // texture creation (screen buffers / atlases can be multi-MB). thread_local
+  // keeps calls from different threads independent.
+  static thread_local std::vector<uint8_t> zeros;
+  zeros.assign(static_cast<size_t>(size.x) * size.y * bytes_per_element, 0);
+
   Diligent::TextureSubResData sub_res_data;
   sub_res_data.pData = zeros.data();
   sub_res_data.Stride = static_cast<uint32_t>(size.x) * bytes_per_element;
