@@ -4,6 +4,8 @@
 
 #include "renderer/utils/texture_utils.h"
 
+#include "Graphics/GraphicsAccessories/interface/GraphicsAccessories.hpp"
+
 namespace renderer {
 
 void CreateTexture2D(Diligent::IRenderDevice* device,
@@ -27,7 +29,22 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   std::memset(texture_desc.ClearValue.Color, 0,
               sizeof(texture_desc.ClearValue.Color));
 
-  device->CreateTexture(texture_desc, nullptr, texture);
+  // Vulkan 不会自动清零新分配的显存（OpenGL 多数驱动会），未初始化的
+  // SRV 纹理（如 tilemap atlas）会呈现随机内容导致花屏。这里显式传入
+  // 全 0 初始数据，确保所有平台创建时显存都被初始化为透明。
+  const uint32_t bytes_per_element =
+      Diligent::GetTextureFormatAttribs(texture_desc.Format).GetElementSize();
+  std::vector<uint8_t> zeros(static_cast<size_t>(size.x) * size.y *
+                             bytes_per_element,
+                             0);
+  Diligent::TextureSubResData sub_res_data;
+  sub_res_data.pData = zeros.data();
+  sub_res_data.Stride = static_cast<uint32_t>(size.x) * bytes_per_element;
+  Diligent::TextureData texture_data;
+  texture_data.pSubResources = &sub_res_data;
+  texture_data.NumSubresources = 1;
+
+  device->CreateTexture(texture_desc, &texture_data, texture);
 }
 
 void CreateTexture2D(Diligent::IRenderDevice* device,

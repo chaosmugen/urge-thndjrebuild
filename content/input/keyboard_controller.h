@@ -94,6 +94,7 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   void UpdateDir8Internal();
 
   void TryReadBindingsInternal();
+  void DeleteBindingsFileInternal();
   void StorageBindingsInternal();
 
   // Gamepad support. Buttons are bound to existing symbols via BindGamepad and

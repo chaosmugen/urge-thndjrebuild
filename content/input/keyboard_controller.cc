@@ -6,6 +6,8 @@
 
 #include "components/filesystem/io_service.h"
 
+#include "physfs.h"
+
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_timer.h"
@@ -619,6 +621,7 @@ void KeyboardControllerImpl::BindGamepad(int32_t button,
     return;
 
   gamepad_scancode_map_[button] = static_cast<SDL_Scancode>(scancode);
+  DeleteBindingsFileInternal();
   StorageBindingsInternal();
 }
 
@@ -627,6 +630,7 @@ void KeyboardControllerImpl::UnbindGamepad(int32_t button,
   if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
     return;
   gamepad_scancode_map_[button] = SDL_SCANCODE_UNKNOWN;
+  DeleteBindingsFileInternal();
   StorageBindingsInternal();
 }
 
@@ -860,6 +864,17 @@ done:
       loaded.push_back(def);
   }
   key_bindings_ = std::move(loaded);
+}
+
+void KeyboardControllerImpl::DeleteBindingsFileInternal() {
+  std::string filepath = context()->engine_profile->program_name;
+  filepath += INPUT_CONFIG_SUBFIX;
+  filepath += std::to_string(
+      static_cast<int32_t>(context()->engine_profile->api_version));
+
+  /* Delete the persisted binding file so the next save starts from a clean
+     state. PHYSFS_delete is safe to call when the file does not exist. */
+  PHYSFS_delete(filepath.c_str());
 }
 
 void KeyboardControllerImpl::StorageBindingsInternal() {

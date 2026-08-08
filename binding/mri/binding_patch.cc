@@ -19,7 +19,8 @@ struct BindingSet {
 const BindingSet kKeyboardBindings[] = {
     {"DOWN", 2},   {"LEFT", 4},  {"RIGHT", 6}, {"UP", 8},
 
-    {"B", 12},     {"C", 13},    {"Z", 16},    {"L", 17},    {"R", 18},
+    {"A", 11},     {"B", 12},    {"C", 13},    {"X", 14},    {"Y", 15},
+    {"Z", 16},     {"L", 17},    {"R", 18},
 
     {"SHIFT", 21}, {"CTRL", 22}, {"ALT", 23},
 
