@@ -31,6 +31,11 @@ struct ServiceKernelData {
   ma_engine_config engine_config;
   ma_engine engine;
   ma_log logger;
+
+  // Reusable pull buffer for the audio callback, allocated once to avoid
+  // per-callback heap allocation on the audio thread.
+  void* audio_buffer = nullptr;
+  size_t audio_buffer_size = 0;
 };
 
 static ma_result VFSOpen(ma_vfs* pVFS,
@@ -167,15 +172,33 @@ static void AudioStreamDataCallback(void* userdata,
 
   (void)total_amount;
 
-  if (additional_amount > 0) {
-    if (auto* buffer = SDL_malloc(additional_amount)) {
-      ma_uint32 buffer_size_in_frames =
-          static_cast<ma_uint32>(additional_amount) /
-          ma_get_bytes_per_frame(ma_format_f32,
-                                 ma_engine_get_channels(&self->engine));
+  if (additional_amount <= 0)
+    return;
+
+  const ma_uint32 bytes_per_frame = static_cast<ma_uint32>(
+      ma_get_bytes_per_frame(ma_format_f32,
+                             ma_engine_get_channels(&self->engine)));
+  const ma_uint32 buffer_size_in_frames =
+      static_cast<ma_uint32>(additional_amount) / bytes_per_frame;
+  if (buffer_size_in_frames == 0)
+    return;
+
+  // Only put back the frames actually read; SDL will request the remainder.
+  const int bytes_to_put =
+      static_cast<int>(buffer_size_in_frames * bytes_per_frame);
+
+  if (self->audio_buffer &&
+      static_cast<size_t>(bytes_to_put) <= self->audio_buffer_size) {
+    // Hot path: reuse the resident buffer, no allocation on the audio thread.
+    ma_engine_read_pcm_frames(&self->engine, self->audio_buffer,
+                              buffer_size_in_frames, nullptr);
+    SDL_PutAudioStreamData(stream, self->audio_buffer, bytes_to_put);
+  } else {
+    // Fallback for oversized requests (should not happen in practice).
+    if (auto* buffer = SDL_malloc(bytes_to_put)) {
       ma_engine_read_pcm_frames(&self->engine, buffer, buffer_size_in_frames,
                                 nullptr);
-      SDL_PutAudioStreamData(stream, buffer, additional_amount);
+      SDL_PutAudioStreamData(stream, buffer, bytes_to_put);
       SDL_free(buffer);
     }
   }
@@ -187,12 +210,26 @@ std::unique_ptr<AudioService> AudioService::Create(
 
   // Device sped
   SDL_AudioSpec device_spec;
+  int device_sample_frames = 0;
   if (!SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &device_spec,
-                                nullptr))
+                                &device_sample_frames))
     return nullptr;
 
   // Set to f32
   device_spec.format = SDL_AUDIO_F32;
+
+  // Preallocate the audio pull buffer to avoid per-callback heap allocation on
+  // the audio thread. Sized for several device periods so the steady-state
+  // callback never allocates; oversized requests fall back to heap allocation.
+  const ma_uint32 bytes_per_frame = static_cast<ma_uint32>(
+      ma_get_bytes_per_frame(ma_format_f32, device_spec.channels));
+  const size_t pull_frames = device_sample_frames > 0
+                                 ? static_cast<size_t>(device_sample_frames) * 8
+                                 : 16384;
+  kernel_data->audio_buffer_size = pull_frames * bytes_per_frame;
+  kernel_data->audio_buffer = SDL_malloc(kernel_data->audio_buffer_size);
+  if (!kernel_data->audio_buffer)
+    kernel_data->audio_buffer_size = 0;
 
   // Init SDL device
   kernel_data->primary_device =
@@ -309,6 +346,7 @@ AudioService::~AudioService() {
   ma_resource_manager_uninit(&kernel_->resource_manager);
   ma_engine_uninit(&kernel_->engine);
   ma_log_uninit(&kernel_->logger);
+  SDL_free(kernel_->audio_buffer);
   delete kernel_;
 }
 

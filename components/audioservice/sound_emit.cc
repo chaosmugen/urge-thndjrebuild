@@ -4,11 +4,15 @@
 
 #include "components/audioservice/sound_emit.h"
 
-#include "base/debug/logging.h"
+#include <algorithm>
 
 namespace audioservice {
 
-SoundEmit::SoundEmit(ma_engine* engine) : engine_(engine) {}
+SoundEmit::SoundEmit(ma_engine* engine) : engine_(engine) {
+  voices_.resize(kMaxVoices);
+  for (auto& voice : voices_)
+    voice = std::make_unique<Voice>();
+}
 
 SoundEmit::~SoundEmit() {
   Stop();
@@ -17,54 +21,89 @@ SoundEmit::~SoundEmit() {
 ma_result SoundEmit::Play(const std::string& filename,
                           int32_t volume,
                           int32_t pitch) {
-  // Clear queued sounds if the queue is too large.
-  if (sound_queue_.size() >= 20) {
-    auto* invalid_voice = sound_queue_.front();
-    sound_queue_.pop();
+  // Guard against out-of-range parameters.
+  volume = std::clamp(volume, 0, 100);
+  pitch = std::clamp(pitch, 50, 200);
 
-    if (!ma_sound_is_playing(invalid_voice)) {
-      ma_sound_uninit(invalid_voice);
-      delete invalid_voice;
-    } else {
-      // Requeued sound handle
-      sound_queue_.push(invalid_voice);
+  // Pick a voice to reuse:
+  //   1. An unused slot.
+  //   2. A voice whose playback has finished.
+  //   3. Otherwise steal the one started earliest.
+  Voice* voice = nullptr;
+  for (auto& candidate : voices_) {
+    if (!candidate->initialized) {
+      voice = candidate.get();
+      break;
     }
   }
+  if (!voice) {
+    for (auto& candidate : voices_) {
+      if (candidate->initialized && !ma_sound_is_playing(&candidate->sound) &&
+          ma_sound_at_end(&candidate->sound)) {
+        voice = candidate.get();
+        break;
+      }
+    }
+  }
+  if (!voice) {
+    uint64_t oldest_seq = UINT64_MAX;
+    for (auto& candidate : voices_) {
+      if (candidate->initialized && candidate->last_start_seq < oldest_seq) {
+        oldest_seq = candidate->last_start_seq;
+        voice = candidate.get();
+      }
+    }
+  }
+  if (!voice)
+    return MA_OUT_OF_MEMORY;  // Unreachable with a fixed-size pool.
 
-  // Create sound playing handle.
-  ma_sound* sound_handle = new ma_sound;
-  auto result = ma_sound_init_from_file(
-      engine_, filename.c_str(), MA_SOUND_FLAG_ASYNC | MA_SOUND_FLAG_STREAM,
-      nullptr, nullptr, sound_handle);
-  if (result == MA_SUCCESS) {
-    // Push in queue
-    sound_queue_.push(sound_handle);
+  // (Re)initialize the sound when targeting a different file.
+  if (!voice->initialized || voice->filename != filename) {
+    if (voice->initialized) {
+      ma_sound_uninit(&voice->sound);
+      voice->initialized = false;
+    }
 
-    // Setup handle
-    ma_sound_set_volume(sound_handle, volume / 100.0f);
-    ma_sound_set_pitch(sound_handle, pitch / 100.0f);
+    const ma_uint32 sound_flags = MA_SOUND_FLAG_ASYNC | MA_SOUND_FLAG_DECODE |
+                                  MA_SOUND_FLAG_NO_SPATIALIZATION;
+    auto result = ma_sound_init_from_file(
+        engine_, filename.c_str(), sound_flags, nullptr, nullptr,
+        &voice->sound);
+    if (result != MA_SUCCESS) {
+      voice->initialized = false;
+      voice->filename.clear();
+      return result;
+    }
 
-    // Start sound playing
-    ma_sound_start(sound_handle);
-
-    return MA_SUCCESS;
+    voice->initialized = true;
+    voice->filename = filename;
+  } else {
+    // Restart the same file from the beginning. Stop is a no-op when the
+    // sound is already stopped; seek failures during async loading are
+    // harmless since miniaudio re-applies the seek on the next read.
+    ma_sound_stop(&voice->sound);
+    (void)ma_sound_seek_to_pcm_frame(&voice->sound, 0);
   }
 
-  // When loading failed
-  ma_sound_uninit(sound_handle);
-  delete sound_handle;
+  // Apply parameters and start playing.
+  ma_sound_set_volume(&voice->sound, volume / 100.0f);
+  ma_sound_set_pitch(&voice->sound, pitch / 100.0f);
+  ma_sound_start(&voice->sound);
+  voice->last_start_seq = ++play_seq_;
 
-  return result;
+  return MA_SUCCESS;
 }
 
 void SoundEmit::Stop() {
-  while (!sound_queue_.empty()) {
-    auto* sound_handle = sound_queue_.front();
-    sound_queue_.pop();
-
-    ma_sound_uninit(sound_handle);
-    delete sound_handle;
+  for (auto& voice : voices_) {
+    if (voice->initialized) {
+      ma_sound_uninit(&voice->sound);
+      voice->initialized = false;
+    }
+    voice->filename.clear();
+    voice->last_start_seq = 0;
   }
+  play_seq_ = 0;
 }
 
 }  // namespace audioservice

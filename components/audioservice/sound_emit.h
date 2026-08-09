@@ -5,9 +5,11 @@
 #ifndef COMPONENTS_AUDIOSERVICE_SOUND_EMIT_H_
 #define COMPONENTS_AUDIOSERVICE_SOUND_EMIT_H_
 
-#include <queue>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 #include "miniaudio.h"
 
@@ -27,10 +29,26 @@ class SoundEmit {
   friend class AudioService;
   SoundEmit(ma_engine* engine);
 
+  // Fixed-size voice pool. Voices are lazily initialized on first use and
+  // recycled afterwards to avoid per-play allocation and file re-opening.
+  static constexpr size_t kMaxVoices = 32;
+
+  struct Voice {
+    ma_sound sound{};
+    std::string filename;          // Last file loaded on this voice.
+    bool initialized = false;      // Whether the ma_sound is initialized.
+    uint64_t last_start_seq = 0;   // Sequence of the last start (for stealing).
+
+    Voice() { memset(&sound, 0, sizeof(sound)); }
+    Voice(const Voice&) = delete;  // ma_sound must not be shallow-copied.
+    Voice& operator=(const Voice&) = delete;
+  };
+
   ma_engine* engine_;
-  std::queue<ma_sound*> sound_queue_;
+  std::vector<std::unique_ptr<Voice>> voices_;
+  uint64_t play_seq_ = 0;
 };
 
 }  // namespace audioservice
 
-#endif  //! COMPONENTS_AUDIOSERVICE_SOUND_EMIT_H_
+#endif  // !COMPONENTS_AUDIOSERVICE_SOUND_EMIT_H_
