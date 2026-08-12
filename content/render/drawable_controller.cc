@@ -4,6 +4,8 @@
 
 #include "content/render/drawable_controller.h"
 
+#include <vector>
+
 #include "Graphics/GraphicsEngine/interface/DeviceContext.h"
 
 namespace content {
@@ -177,10 +179,31 @@ void DrawableNode::ReorderDrawableNodeInternal() {
     return;
 
   // Check node reordering direction
-  bool ascending_order =
-      !previous_node || (next_node ? (next_node->key_ < key_) : false);
-  bool descending_order =
-      !next_node || (previous_node ? (previous_node->key_ > key_) : false);
+  bool next_is_smaller = next_node && next_node->key_ < key_;
+  bool prev_is_bigger = previous_node && previous_node->key_ > key_;
+
+  // Treat absurdly large key gaps as stale/dangling neighbors (freed memory
+  // yields weights like -2^40..-2^46); a valid z is a small integer.
+  constexpr int64_t kAbsurdGap = int64_t{1} << 40;
+  bool next_suspect =
+      next_is_smaller &&
+      (key_.weight[0] - next_node->key_.weight[0]) > kAbsurdGap;
+  bool prev_suspect =
+      prev_is_bigger &&
+      (previous_node->key_.weight[0] - key_.weight[0]) > kAbsurdGap;
+
+  if ((next_is_smaller && prev_is_bigger) || next_suspect || prev_suspect) {
+    // Ambiguous neighbors (e.g. a stale/dangling node nearby produced
+    // inconsistent keys). Fall back to a full remove + sorted re-insert
+    // instead of a local bubble walk that can append the node to the wrong
+    // end of the list.
+    base::LinkNode<DrawableNode>::RemoveFromList();
+    controller_->InsertChildNodeInternal(this);
+    return;
+  }
+
+  bool ascending_order = !previous_node || next_is_smaller;
+  bool descending_order = !next_node || prev_is_bigger;
 
   if (!ascending_order && !descending_order) {
     // No need to reorder, already in correct position
@@ -195,14 +218,17 @@ void DrawableNode::ReorderDrawableNodeInternal() {
     // Remove from current list, and insert before the first node with a greater
     base::LinkNode<DrawableNode>::RemoveFromList();
     while (current_node != controller_->children_list_.end()) {
-      if (current_node->key_ > key_)
-        return base::LinkNode<DrawableNode>::InsertBefore(current_node);
+      if (current_node->key_ > key_) {
+        base::LinkNode<DrawableNode>::InsertBefore(current_node);
+        return;
+      }
 
       current_node = current_node->GetNextNode();
     }
 
     // Reached the end of the list, append to the end.
-    return controller_->children_list_.Append(this);
+    controller_->children_list_.Append(this);
+    return;
   }
 
   // max -> min
@@ -213,14 +239,17 @@ void DrawableNode::ReorderDrawableNodeInternal() {
     // Remove from current list, and insert before the first node with a greater
     base::LinkNode<DrawableNode>::RemoveFromList();
     while (current_node != controller_->children_list_.end()) {
-      if (current_node->key_ < key_)
-        return base::LinkNode<DrawableNode>::InsertAfter(current_node);
+      if (current_node->key_ < key_) {
+        base::LinkNode<DrawableNode>::InsertAfter(current_node);
+        return;
+      }
 
       current_node = current_node->GetPreviousNode();
     }
 
     // Reached the end of the list, append to the end.
-    return controller_->children_list_.Prepend(this);
+    controller_->children_list_.Prepend(this);
+    return;
   }
 
   NOTREACHED();
@@ -229,25 +258,44 @@ void DrawableNode::ReorderDrawableNodeInternal() {
 DrawNodeController::DrawNodeController() = default;
 
 DrawNodeController::~DrawNodeController() {
-  for (auto* it = children_list_.head(); it != children_list_.end();
-       it = it->next()) {
-    // Reset child controller association.
+  // Reset child controller association and fully unlink every child before
+  // the list storage is destroyed. Otherwise children destroyed later (GC)
+  // would call RemoveFromList through a destroyed list / freed memory,
+  // leaving dangling entries that corrupt the render order (e.g. an opaque
+  // plane ending up after the tilemap ground and covering it).
+  for (auto* it = children_list_.head(); it != children_list_.end();) {
+    auto* next_it = it->next();
     it->value()->controller_ = nullptr;
+    it->RemoveFromList();
+    it = next_it;
   }
 }
 
 void DrawNodeController::BroadCastNotification(
     DrawableNode::RenderStage nid,
     DrawableNode::RenderControllerParams* params) {
+  // Snapshot the child list before notifying. Handlers are allowed to mutate
+  // the list (e.g. the tilemap recreates/re-orders its above layers every
+  // frame during BEFORE_RENDER); iterating a live doubly-linked list while it
+  // is being unlinked/relinked can skip nodes or corrupt the render order.
+  std::vector<DrawableNode*> snapshot;
+  snapshot.reserve(64);
   for (auto* it = children_list_.head(); it != children_list_.end();
-       it = it->next()) {
+       it = it->next())
+    snapshot.push_back(it->value());
+
+  for (auto* node : snapshot) {
     // Broadcast render job notification
-    if (it->value()->visible_)
-      it->value()->handler_.Run(nid, params);
+    if (node->visible_)
+      node->handler_.Run(nid, params);
   }
 }
 
 void DrawNodeController::InsertChildNodeInternal(DrawableNode* node) {
+  // Defensive: make sure the node is not still linked into any list before
+  // inserting (no-op when the node is already unlinked).
+  node->RemoveFromList();
+
   // From min to max.
   for (auto* it = children_list_.head(); it != children_list_.end();
        it = it->next()) {
