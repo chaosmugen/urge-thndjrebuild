@@ -51,6 +51,7 @@ SpriteImpl::SpriteImpl(ExecutionContext* execution_context,
   node_.RegisterEventHandler(base::BindRepeating(
       &SpriteImpl::DrawableNodeHandlerInternal, base::Unretained(this)));
   node_.SetupBatchable(this);
+  node_.SetBlendTypeProvider([this] { return blend_type_; });
 
   src_rect_observer_ = src_rect_->AddObserver(base::BindRepeating(
       &SpriteImpl::SrcRectChangedInternal, base::Unretained(this)));

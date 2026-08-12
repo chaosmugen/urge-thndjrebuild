@@ -399,11 +399,14 @@ void ViewportImpl::DrawableNodeHandlerInternal(
       // Setup viewport world uniform
       transient_params.world_binding = gpu_.world_uniform;
 
-      // Notify children for executing rendering commands
+      // Pass 1: render tone-affected drawables (normal blend). The viewport
+      // tone/color effect is applied afterwards, so additive/subtractive
+      // lights drawn in pass 2 are not tinted by it.
       controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
-                                        &transient_params);
+                                        &transient_params,
+                                        /*blend_filter=*/0);
 
-      // Restore scissor and apply viewport effect
+      // Apply viewport effect to the base content
       base::Vec4 composite_color = color_->AsNormColor();
       base::Vec4 flash_color = flash_emitter_.GetColor();
       base::Vec4 target_color = composite_color;
@@ -420,6 +423,12 @@ void ViewportImpl::DrawableNodeHandlerInternal(
                                params->screen_depth_stencil, params->root_world,
                                controller_.CurrentViewport().bound,
                                target_color);
+
+      // Pass 2: render tone-exempt drawables (non-normal blend: additive /
+      // subtractive lights) on top of the toned base.
+      controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
+                                        &transient_params,
+                                        /*blend_filter=*/1);
 
       // Restore scissor region
       params->scissors->Pop();

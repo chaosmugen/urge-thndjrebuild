@@ -35,6 +35,7 @@ PlaneImpl::PlaneImpl(ExecutionContext* execution_context,
       tone_(base::MakeRefCounted<ToneImpl>(base::Vec4())) {
   node_.RegisterEventHandler(base::BindRepeating(
       &PlaneImpl::DrawableNodeHandlerInternal, base::Unretained(this)));
+  node_.SetBlendTypeProvider([this] { return blend_type_; });
 
   GPUCreatePlaneInternal();
 }

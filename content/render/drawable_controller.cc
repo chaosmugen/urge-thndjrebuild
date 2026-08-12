@@ -90,6 +90,14 @@ void DrawableNode::RegisterEventHandler(const NotificationHandler& handler) {
   handler_ = handler;
 }
 
+void DrawableNode::SetBlendTypeProvider(BlendTypeProvider provider) {
+  blend_provider_ = std::move(provider);
+}
+
+int32_t DrawableNode::GetBlendType() const {
+  return blend_provider_ ? blend_provider_() : 0;
+}
+
 void DrawableNode::RebindController(DrawNodeController* controller) {
   if (controller == controller_)
     return;
@@ -273,7 +281,8 @@ DrawNodeController::~DrawNodeController() {
 
 void DrawNodeController::BroadCastNotification(
     DrawableNode::RenderStage nid,
-    DrawableNode::RenderControllerParams* params) {
+    DrawableNode::RenderControllerParams* params,
+    int32_t blend_filter) {
   // Snapshot the child list before notifying. Handlers are allowed to mutate
   // the list (e.g. the tilemap recreates/re-orders its above layers every
   // frame during BEFORE_RENDER); iterating a live doubly-linked list while it
@@ -285,6 +294,9 @@ void DrawNodeController::BroadCastNotification(
     snapshot.push_back(it->value());
 
   for (auto* node : snapshot) {
+    if (blend_filter >= 0 &&
+        (node->GetBlendType() == 0) != (blend_filter == 0))
+      continue;
     // Broadcast render job notification
     if (node->visible_)
       node->handler_.Run(nid, params);

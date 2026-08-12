@@ -5,6 +5,7 @@
 #ifndef CONTENT_RENDER_DRAWABLE_CONTROLLER_H_
 #define CONTENT_RENDER_DRAWABLE_CONTROLLER_H_
 
+#include <functional>
 #include <stack>
 #include <typeindex>
 
@@ -164,6 +165,13 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
   // Register the main executer for current drawable node's host
   void RegisterEventHandler(const NotificationHandler& handler);
 
+  // Blend type provider: drawables with a non-normal blend (additive /
+  // subtractive lights, etc.) are rendered after the viewport tone pass so
+  // they are not tinted by the viewport tone.
+  using BlendTypeProvider = std::function<int32_t()>;
+  void SetBlendTypeProvider(BlendTypeProvider provider);
+  int32_t GetBlendType() const;
+
   // Rebind parent controller
   void RebindController(DrawNodeController* controller);
 
@@ -221,6 +229,7 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
 
   DrawNodeController* controller_;
   NotificationHandler handler_;
+  BlendTypeProvider blend_provider_;
 
   SortKey key_;
   bool visible_;
@@ -241,8 +250,10 @@ class DrawNodeController final {
 
   // Broadcast the notification for all children node,
   // it will raise the handler immediately.
+  // blend_filter: -1 = all nodes, 0 = normal blend only, 1 = non-normal only.
   void BroadCastNotification(DrawableNode::RenderStage nid,
-                             DrawableNode::RenderControllerParams* params);
+                             DrawableNode::RenderControllerParams* params,
+                             int32_t blend_filter = -1);
 
   // Access current viewport info
   ViewportInfo& CurrentViewport() { return viewport_; }
