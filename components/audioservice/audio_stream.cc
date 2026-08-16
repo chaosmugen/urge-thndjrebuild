@@ -20,12 +20,13 @@ ma_result AudioStream::Play(const std::string& filename,
   if (filename.empty())
     return MA_INVALID_ARGS;
 
-  if (!ma_sound_is_playing(&handle_) || filename_ != filename) {
+  if (!ma_sound_is_playing(&handle_) || filename_ != filename || fading_) {
     // Reset cache filename
     filename_ = filename;
 
     // Reset audio stream handle
     ma_sound_uninit(&handle_);
+    fading_ = false;
 
     // Create new handle
     ma_uint32 sound_flags = MA_SOUND_FLAG_ASYNC;
@@ -62,6 +63,7 @@ void AudioStream::Stop() {
   std::lock_guard<std::mutex> lock(mutex_);
   cursor_ = 0;
   paused_ = false;
+  fading_ = false;
 }
 
 void AudioStream::Fade(int32_t time) {
@@ -69,6 +71,7 @@ void AudioStream::Fade(int32_t time) {
   std::lock_guard<std::mutex> lock(mutex_);
   cursor_ = 0;
   paused_ = false;
+  fading_ = true;
 }
 
 uint64_t AudioStream::Pos() {

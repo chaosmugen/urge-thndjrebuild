@@ -51,6 +51,7 @@ class AudioStream {
   ma_uint64 cursor_;
   ma_bool32 looping_;
   bool paused_ = false;
+  bool fading_ = false;  // A fade-out has been scheduled; Play must rebuild the handle.
   std::mutex mutex_;
 };
 

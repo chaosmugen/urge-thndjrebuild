@@ -104,6 +104,9 @@ class URGE_OBJECT(Sprite) {
   /*--urge(name:blend_type)--*/
   URGE_EXPORT_ATTRIBUTE(BlendType, int32_t);
 
+  /*--urge(name:tone_exempt)--*/
+  URGE_EXPORT_ATTRIBUTE(ToneExempt, bool);
+
   /*--urge(name:color)--*/
   URGE_EXPORT_ATTRIBUTE(Color, scoped_refptr<Color>);
 

@@ -44,6 +44,7 @@ class PlaneImpl : public Plane, public EngineObject, public Disposable {
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(ZoomY, float);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Opacity, int32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(BlendType, int32_t);
+  URGE_DECLARE_OVERRIDE_ATTRIBUTE(ToneExempt, bool);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Color, scoped_refptr<Color>);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Tone, scoped_refptr<Tone>);
 
@@ -59,7 +60,8 @@ class PlaneImpl : public Plane, public EngineObject, public Disposable {
                                        const base::Rect& src_rect,
                                        const base::Vec2i& viewport_size,
                                        const base::Vec2& scale,
-                                       const base::Vec2i& origin);
+                                       const base::Vec2i& origin,
+                                       float light_gain);
   void GPUOnViewportRenderingInternal(Diligent::IDeviceContext* render_context,
                                       Diligent::IBuffer* world_binding);
 

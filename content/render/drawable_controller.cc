@@ -90,12 +90,12 @@ void DrawableNode::RegisterEventHandler(const NotificationHandler& handler) {
   handler_ = handler;
 }
 
-void DrawableNode::SetBlendTypeProvider(BlendTypeProvider provider) {
-  blend_provider_ = std::move(provider);
+void DrawableNode::SetToneExempt(bool value) {
+  tone_exempt_ = value;
 }
 
-int32_t DrawableNode::GetBlendType() const {
-  return blend_provider_ ? blend_provider_() : 0;
+bool DrawableNode::IsToneExempt() const {
+  return tone_exempt_;
 }
 
 void DrawableNode::RebindController(DrawNodeController* controller) {
@@ -295,7 +295,7 @@ void DrawNodeController::BroadCastNotification(
 
   for (auto* node : snapshot) {
     if (blend_filter >= 0 &&
-        (node->GetBlendType() == 0) != (blend_filter == 0))
+        node->IsToneExempt() != (blend_filter == 1))
       continue;
     // Broadcast render job notification
     if (node->visible_)

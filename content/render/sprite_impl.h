@@ -73,6 +73,7 @@ class SpriteImpl : public Sprite, public EngineObject, public Disposable {
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(BushOpacity, int32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Opacity, int32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(BlendType, int32_t);
+  URGE_DECLARE_OVERRIDE_ATTRIBUTE(ToneExempt, bool);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Color, scoped_refptr<Color>);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Tone, scoped_refptr<Tone>);
 

@@ -384,6 +384,38 @@ void ViewportImpl::DrawableNodeHandlerInternal(
     // Update effect texture size if need
     GPUResetIntermediateLayer(controller_.CurrentViewport().bound.Size());
 
+    // Compute the attenuation for tone-exempt (non-normal blend, light)
+    // drawables. An ordinary darkening tint keeps lights fully bright, but a
+    // pure-black tint/color (a white pixel would be pushed to black) must
+    // cover the lights as well.
+    {
+      base::Vec4 composite_color = color_->AsNormColor();
+      base::Vec4 flash_color = flash_emitter_.GetColor();
+      base::Vec4 target_color = composite_color;
+      if (flash_emitter_.IsFlashing() && flash_color.w > composite_color.w)
+        target_color = flash_color;
+
+      const auto tone = tone_->AsNormColor();
+      // Mirror the viewport flat shader on a white pixel: grayscale keeps
+      // white white, then add tone and blend with the overlay color.
+      float r = 1.0f + tone.x;
+      float g = 1.0f + tone.y;
+      float b = 1.0f + tone.z;
+      r += (target_color.x - r) * target_color.w;
+      g += (target_color.y - g) * target_color.w;
+      b += (target_color.z - b) * target_color.w;
+      const float luma = 0.299f * r + 0.587f * g + 0.114f * b;
+      const float darken =
+          luma > 1.0f ? 0.0f : (luma < 0.0f ? 1.0f : 1.0f - luma);
+
+      // Only fade lights when the tint is very close to pure black.
+      params->light_gain = 1.0f;
+      if (darken > 0.9f) {
+        const float t = (darken - 0.9f) / 0.1f;
+        params->light_gain = 1.0f - t * t * (3.0f - 2.0f * t);
+      }
+    }
+
     // Notify children for preparing rendering
     controller_.BroadCastNotification(DrawableNode::BEFORE_RENDER, params);
 
@@ -399,14 +431,6 @@ void ViewportImpl::DrawableNodeHandlerInternal(
       // Setup viewport world uniform
       transient_params.world_binding = gpu_.world_uniform;
 
-      // Pass 1: render tone-affected drawables (normal blend). The viewport
-      // tone/color effect is applied afterwards, so additive/subtractive
-      // lights drawn in pass 2 are not tinted by it.
-      controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
-                                        &transient_params,
-                                        /*blend_filter=*/0);
-
-      // Apply viewport effect to the base content
       base::Vec4 composite_color = color_->AsNormColor();
       base::Vec4 flash_color = flash_emitter_.GetColor();
       base::Vec4 target_color = composite_color;
@@ -418,17 +442,33 @@ void ViewportImpl::DrawableNodeHandlerInternal(
       const bool is_effect_valid = custom_pipeline_ || target_color.w != 0 ||
                                    tone.x != 0 || tone.y != 0 || tone.z != 0 ||
                                    tone.w != 0;
+      if (!is_effect_valid) {
+        // No viewport tone/color effect: keep the original single-pass
+        // broadcast so additive content blends exactly as before.
+        controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
+                                          &transient_params);
+      } else {
+
+      // Pass 1: render tone-affected drawables (everything not explicitly
+      // marked tone-exempt). The viewport tone/color effect is applied
+      // afterwards, so explicitly marked lights drawn in pass 2 are not
+      // tinted by it.
+      controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
+                                        &transient_params,
+                                        /*blend_filter=*/0);
+
       if (is_effect_valid)
         GPUApplyViewportEffect(params->context, params->screen_buffer,
                                params->screen_depth_stencil, params->root_world,
                                controller_.CurrentViewport().bound,
                                target_color);
 
-      // Pass 2: render tone-exempt drawables (non-normal blend: additive /
-      // subtractive lights) on top of the toned base.
+      // Pass 2: render tone-exempt drawables (explicitly marked lights) on
+      // top of the toned base.
       controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
                                         &transient_params,
                                         /*blend_filter=*/1);
+      }
 
       // Restore scissor region
       params->scissors->Pop();

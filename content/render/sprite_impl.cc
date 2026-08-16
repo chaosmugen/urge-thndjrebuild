@@ -8,6 +8,9 @@
 #include "content/screen/renderscreen_impl.h"
 #include "content/screen/viewport_impl.h"
 
+#include <cstdio>
+#include <string>
+
 namespace content {
 
 namespace {
@@ -18,6 +21,7 @@ constexpr int32_t kWaveBlockAlign = 8;
 inline float DegreesToRadians(float degrees) {
   return degrees * (kPi / 180.0f);
 }
+
 
 }  // namespace
 
@@ -51,7 +55,6 @@ SpriteImpl::SpriteImpl(ExecutionContext* execution_context,
   node_.RegisterEventHandler(base::BindRepeating(
       &SpriteImpl::DrawableNodeHandlerInternal, base::Unretained(this)));
   node_.SetupBatchable(this);
-  node_.SetBlendTypeProvider([this] { return blend_type_; });
 
   src_rect_observer_ = src_rect_->AddObserver(base::BindRepeating(
       &SpriteImpl::SrcRectChangedInternal, base::Unretained(this)));
@@ -381,6 +384,19 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
+    ToneExempt,
+    bool,
+    SpriteImpl,
+    {
+      DISPOSE_CHECK_RETURN(false);
+      return node_.IsToneExempt();
+    },
+    {
+      DISPOSE_CHECK;
+      node_.SetToneExempt(value);
+    });
+
+URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     Color,
     scoped_refptr<Color>,
     SpriteImpl,
@@ -440,6 +456,10 @@ void SpriteImpl::DrawableNodeHandlerInternal(
     uniform_params_.Color = target_color;
     uniform_params_.Tone = tone_->AsNormColor();
     uniform_params_.Opacity.x = static_cast<float>(opacity_) / 255.0f;
+    // Tone-exempt lights are attenuated when the viewport tint is (near)
+    // pure black, so a pure-black tint still covers them.
+    if (node_.IsToneExempt())
+      uniform_params_.Opacity.x *= params->light_gain;
     uniform_params_.BushDepthAndOpacity.x =
         static_cast<float>(src_rect.y + src_rect.height - bush_.depth) /
         current_texture->size.y;

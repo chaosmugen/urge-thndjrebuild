@@ -35,7 +35,6 @@ PlaneImpl::PlaneImpl(ExecutionContext* execution_context,
       tone_(base::MakeRefCounted<ToneImpl>(base::Vec4())) {
   node_.RegisterEventHandler(base::BindRepeating(
       &PlaneImpl::DrawableNodeHandlerInternal, base::Unretained(this)));
-  node_.SetBlendTypeProvider([this] { return blend_type_; });
 
   GPUCreatePlaneInternal();
 }
@@ -206,6 +205,21 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
+    ToneExempt,
+    bool,
+    PlaneImpl,
+    {
+      DISPOSE_CHECK_RETURN(false);
+
+      return node_.IsToneExempt();
+    },
+    {
+      DISPOSE_CHECK;
+
+      node_.SetToneExempt(value);
+    });
+
+URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     Color,
     scoped_refptr<Color>,
     PlaneImpl,
@@ -255,7 +269,7 @@ void PlaneImpl::DrawableNodeHandlerInternal(
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
     GPUUpdatePlaneQuadArrayInternal(params->context, src_rect_->AsBaseRect(),
                                     node_.GetParentViewport()->bound.Size(),
-                                    scale_, origin_);
+                                    scale_, origin_, params->light_gain);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
     GPUOnViewportRenderingInternal(params->context, params->world_binding);
   }
@@ -276,7 +290,8 @@ void PlaneImpl::GPUUpdatePlaneQuadArrayInternal(
     const base::Rect& src_rect,
     const base::Vec2i& viewport_size,
     const base::Vec2& scale,
-    const base::Vec2i& origin) {
+    const base::Vec2i& origin,
+    float light_gain) {
   // Source texture
   auto* texture = **bitmap_;
 
@@ -305,7 +320,12 @@ void PlaneImpl::GPUUpdatePlaneQuadArrayInternal(
   // Prepare vertex buffer
   const int32_t quad_size = tile_x * tile_y;
   gpu_.cache.resize(quad_size);
-  const base::Vec4 opacity_norm(static_cast<float>(opacity_) / 255.0f);
+  float opacity = static_cast<float>(opacity_) / 255.0f;
+  // Tone-exempt lights are attenuated when the viewport tint is (near)
+  // pure black, so a pure-black tint still covers them.
+  if (node_.IsToneExempt())
+    opacity *= light_gain;
+  const base::Vec4 opacity_norm(opacity);
 
   // Pointer-based vertex writing with accumulative positioning
   renderer::Quad* quad_ptr = gpu_.cache.data();

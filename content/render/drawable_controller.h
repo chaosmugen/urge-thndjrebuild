@@ -147,6 +147,12 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
     // [Stage: on rendering]
     // Root transform matrix without any offset. (2D)
     Diligent::IBuffer* world_binding = nullptr;
+
+    // [Stage: before render]
+    // Attenuation applied to tone-exempt drawables (explicitly marked lights)
+    // so a pure-black viewport tone/color can still cover them. 1.0 keeps
+    // lights fully bright (ordinary night tint), 0.0 fully covers them.
+    float light_gain = 1.0f;
   };
 
   using NotificationHandler =
@@ -165,12 +171,12 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
   // Register the main executer for current drawable node's host
   void RegisterEventHandler(const NotificationHandler& handler);
 
-  // Blend type provider: drawables with a non-normal blend (additive /
-  // subtractive lights, etc.) are rendered after the viewport tone pass so
-  // they are not tinted by the viewport tone.
-  using BlendTypeProvider = std::function<int32_t()>;
-  void SetBlendTypeProvider(BlendTypeProvider provider);
-  int32_t GetBlendType() const;
+  // Tone-exempt mark: explicitly marked drawables (map lights) are rendered
+  // after the viewport tone pass so they are not tinted by the viewport tone.
+  // Ordinary additive/subtractive content (battle state animations, fog,
+  // pictures) is NOT tone-exempt and keeps the original single-pass behavior.
+  void SetToneExempt(bool value);
+  bool IsToneExempt() const;
 
   // Rebind parent controller
   void RebindController(DrawNodeController* controller);
@@ -229,7 +235,7 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
 
   DrawNodeController* controller_;
   NotificationHandler handler_;
-  BlendTypeProvider blend_provider_;
+  bool tone_exempt_ = false;
 
   SortKey key_;
   bool visible_;
@@ -250,7 +256,8 @@ class DrawNodeController final {
 
   // Broadcast the notification for all children node,
   // it will raise the handler immediately.
-  // blend_filter: -1 = all nodes, 0 = normal blend only, 1 = non-normal only.
+  // blend_filter: -1 = all nodes, 0 = non-tone-exempt only, 1 = tone-exempt
+  // only (explicitly marked lights).
   void BroadCastNotification(DrawableNode::RenderStage nid,
                              DrawableNode::RenderControllerParams* params,
                              int32_t blend_filter = -1);
