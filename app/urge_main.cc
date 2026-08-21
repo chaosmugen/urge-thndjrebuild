@@ -75,41 +75,51 @@ int SetupAndroidStudioTransfer() {
 
 #if defined(OS_WIN)
 #include <windows.h>
-#include <io.h>
-#include <fcntl.h>
 
-// Allocate our own debug console window when show == true (do not reuse the
-// parent process's terminal, which would scatter logs to a different window
-// and leave the C runtime stdout handle unconnected). When show == false we
-// do nothing, restoring the previous behavior of no debug console.
+// Allocate our own debug console window when show == true. We always create an
+// independent console so behavior is identical whether launched by double-click
+// or from a command prompt. When show == false we do nothing, restoring the
+// previous behavior of no debug console.
 //
-// After AllocConsole, bind the C runtime stdout/stderr (fd 1/2) to the console
-// handle reliably via _open_osfhandle + _dup2 instead of the unreliable
-// freopen("CONOUT$"). This also fixes Ruby's puts (which writes to CRT stdout)
-// not appearing in the window.
+// After AllocConsole, the process standard handles may still point at the
+// parent terminal's pipes (when launched from cmd/terminal), so GetStdHandle
+// would NOT return the new console handle. We reopen CONOUT$/CONIN$ explicitly
+// via CreateFile and SetStdHandle to force the process (and spdlog, which
+// writes through GetStdHandle) to use our own console. CRT streams are rebound
+// the same way so Ruby's puts (CRT stdout) also reaches the window.
 void CreateConsoleWin(bool show) {
   if (!show)
     return;
-  if (!::GetConsoleWindow()) {
-    ::AllocConsole();
-    ::SetConsoleCP(CP_UTF8);
-    ::SetConsoleOutputCP(CP_UTF8);
-    ::SetConsoleTitleW(L"URGE Debugging Console");
+  if (::GetConsoleWindow() != nullptr)
+    ::FreeConsole();
+  ::AllocConsole();
+  ::SetConsoleCP(CP_UTF8);
+  ::SetConsoleOutputCP(CP_UTF8);
+  ::SetConsoleTitleW(L"URGE Debugging Console");
 
-    HANDLE hOut = ::GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut != INVALID_HANDLE_VALUE && hOut != nullptr) {
-      // NOTE: _open_osfhandle takes ownership of hOut. Do NOT call _close(fd)
-      // afterwards, or it would CloseHandle(hOut) and break the console handle
-      // that spdlog (and the OS) rely on via GetStdHandle. Only _dup2 so that
-      // CRT stdout/stderr (fd 1/2), used by Ruby's puts, point at the console.
-      int fd = ::_open_osfhandle(reinterpret_cast<intptr_t>(hOut),
-                                 _O_WRONLY | _O_BINARY);
-      if (fd != -1) {
-        ::_dup2(fd, 1);
-        ::_dup2(fd, 2);
-      }
-    }
+  // Force the process standard handles to our own console. CreateFile("CONOUT$")
+  // always returns the current console's handle, ignoring any inherited pipe.
+  HANDLE hIn = ::CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                             OPEN_EXISTING, 0, nullptr);
+  HANDLE hOut = ::CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, 0, nullptr);
+  if (hIn != INVALID_HANDLE_VALUE)
+    ::SetStdHandle(STD_INPUT_HANDLE, hIn);
+  if (hOut != INVALID_HANDLE_VALUE) {
+    ::SetStdHandle(STD_OUTPUT_HANDLE, hOut);
+    ::SetStdHandle(STD_ERROR_HANDLE, hOut);
   }
+
+  // Rebind CRT streams to the console device so Ruby's puts reaches the window.
+  if (hIn != INVALID_HANDLE_VALUE)
+    std::freopen("CONIN$", "r", stdin);
+  if (hOut != INVALID_HANDLE_VALUE) {
+    std::freopen("CONOUT$", "w", stdout);
+    std::freopen("CONOUT$", "w", stderr);
+  }
+
   ::ShowWindow(::GetConsoleWindow(), SW_SHOW);
 }
 #endif
@@ -175,7 +185,7 @@ int main(int argc, char* argv[]) {
 #endif  //! defined(OS_ANDROID)
 
   // Current path
-  std::u8string current_path =
+  auto current_path =
       std::filesystem::current_path().generic_u8string();
 
   // Initialize filesystem
