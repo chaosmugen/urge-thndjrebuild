@@ -75,22 +75,42 @@ int SetupAndroidStudioTransfer() {
 
 #if defined(OS_WIN)
 #include <windows.h>
+#include <io.h>
+#include <fcntl.h>
 
-void CreateConsoleWin() {
-  if (::GetConsoleWindow())
+// Allocate our own debug console window when show == true (do not reuse the
+// parent process's terminal, which would scatter logs to a different window
+// and leave the C runtime stdout handle unconnected). When show == false we
+// do nothing, restoring the previous behavior of no debug console.
+//
+// After AllocConsole, bind the C runtime stdout/stderr (fd 1/2) to the console
+// handle reliably via _open_osfhandle + _dup2 instead of the unreliable
+// freopen("CONOUT$"). This also fixes Ruby's puts (which writes to CRT stdout)
+// not appearing in the window.
+void CreateConsoleWin(bool show) {
+  if (!show)
     return;
-
-  if (!::AttachConsole(ATTACH_PARENT_PROCESS)) {
+  if (!::GetConsoleWindow()) {
     ::AllocConsole();
     ::SetConsoleCP(CP_UTF8);
     ::SetConsoleOutputCP(CP_UTF8);
     ::SetConsoleTitleW(L"URGE Debugging Console");
-  }
 
-  // Redirect std handle
-  std::freopen("CONIN$", "rb", stdin);
-  std::freopen("CONOUT$", "wb", stdout);
-  std::freopen("CONOUT$", "wb", stderr);
+    HANDLE hOut = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE && hOut != nullptr) {
+      // NOTE: _open_osfhandle takes ownership of hOut. Do NOT call _close(fd)
+      // afterwards, or it would CloseHandle(hOut) and break the console handle
+      // that spdlog (and the OS) rely on via GetStdHandle. Only _dup2 so that
+      // CRT stdout/stderr (fd 1/2), used by Ruby's puts, point at the console.
+      int fd = ::_open_osfhandle(reinterpret_cast<intptr_t>(hOut),
+                                 _O_WRONLY | _O_BINARY);
+      if (fd != -1) {
+        ::_dup2(fd, 1);
+        ::_dup2(fd, 2);
+      }
+    }
+  }
+  ::ShowWindow(::GetConsoleWindow(), SW_SHOW);
 }
 #endif
 
@@ -99,7 +119,7 @@ int main(int argc, char* argv[]) {
   // Allocate console if need
   for (int i = 0; i < argc; ++i) {
     if (!std::strcmp(argv[i], "console")) {
-      CreateConsoleWin();
+      CreateConsoleWin(true);
       break;
     }
   }
@@ -193,9 +213,9 @@ int main(int argc, char* argv[]) {
   }
 
 #if defined(OS_WIN)
-  // Create console on windows
-  if (profile->debugging_console)
-    CreateConsoleWin();
+  // Always create our own debug console so the C runtime stdout/stderr handles
+  // are connected; the debugging_console flag only controls window visibility.
+  CreateConsoleWin(profile->debugging_console);
 #endif
 
   // Create spdlog logger
