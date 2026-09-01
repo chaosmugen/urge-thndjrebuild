@@ -163,13 +163,29 @@ void DrawableNode::SetNodeSortWeight(int64_t weight1,
 }
 
 DrawableNode* DrawableNode::GetPreviousNode() {
+  // base::LinkedList is circular, so for the head node previous() returns the
+  // list's root sentinel. LinkNode::value() is just static_cast<T*>(this), so
+  // returning value() for the sentinel hands out a DrawableNode* that aliases
+  // the 16-byte sentinel; reading key_ (offset 24) or any other member off it
+  // read past the end of the owning DrawNodeController. Report the sentinel as
+  // "no neighbor" instead.
+  if (!controller_)
+    return nullptr;
   auto* node = previous();
-  return node ? node->value() : nullptr;
+  if (!node || node == controller_->children_list_.end())
+    return nullptr;
+  return node->value();
 }
 
 DrawableNode* DrawableNode::GetNextNode() {
+  // See GetPreviousNode(): for the tail node next() is the same
+  // sentinel.
+  if (!controller_)
+    return nullptr;
   auto* node = next();
-  return node ? node->value() : nullptr;
+  if (!node || node == controller_->children_list_.end())
+    return nullptr;
+  return node->value();
 }
 
 ViewportInfo* DrawableNode::GetParentViewport() {
@@ -190,21 +206,10 @@ void DrawableNode::ReorderDrawableNodeInternal() {
   bool next_is_smaller = next_node && next_node->key_ < key_;
   bool prev_is_bigger = previous_node && previous_node->key_ > key_;
 
-  // Treat absurdly large key gaps as stale/dangling neighbors (freed memory
-  // yields weights like -2^40..-2^46); a valid z is a small integer.
-  constexpr int64_t kAbsurdGap = int64_t{1} << 40;
-  bool next_suspect =
-      next_is_smaller &&
-      (key_.weight[0] - next_node->key_.weight[0]) > kAbsurdGap;
-  bool prev_suspect =
-      prev_is_bigger &&
-      (previous_node->key_.weight[0] - key_.weight[0]) > kAbsurdGap;
-
-  if ((next_is_smaller && prev_is_bigger) || next_suspect || prev_suspect) {
-    // Ambiguous neighbors (e.g. a stale/dangling node nearby produced
-    // inconsistent keys). Fall back to a full remove + sorted re-insert
-    // instead of a local bubble walk that can append the node to the wrong
-    // end of the list.
+  if (next_is_smaller && prev_is_bigger) {
+    // Ambiguous neighbors: both a forward and a backward walk look valid, so
+    // fall back to a full remove + sorted re-insert instead of a local bubble
+    // walk that can append the node to the wrong end of the list.
     base::LinkNode<DrawableNode>::RemoveFromList();
     controller_->InsertChildNodeInternal(this);
     return;
@@ -225,7 +230,9 @@ void DrawableNode::ReorderDrawableNodeInternal() {
 
     // Remove from current list, and insert before the first node with a greater
     base::LinkNode<DrawableNode>::RemoveFromList();
-    while (current_node != controller_->children_list_.end()) {
+    // GetNextNode() returns nullptr once the list sentinel is reached, so the
+    // walk terminates on nullptr rather than on the sentinel itself.
+    while (current_node) {
       if (current_node->key_ > key_) {
         base::LinkNode<DrawableNode>::InsertBefore(current_node);
         return;
@@ -246,7 +253,9 @@ void DrawableNode::ReorderDrawableNodeInternal() {
 
     // Remove from current list, and insert before the first node with a greater
     base::LinkNode<DrawableNode>::RemoveFromList();
-    while (current_node != controller_->children_list_.end()) {
+    // See the ascending branch: the walk terminates on nullptr, since
+    // GetPreviousNode() returns nullptr once the list sentinel is reached.
+    while (current_node) {
       if (current_node->key_ < key_) {
         base::LinkNode<DrawableNode>::InsertAfter(current_node);
         return;

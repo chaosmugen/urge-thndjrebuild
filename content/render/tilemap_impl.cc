@@ -11,6 +11,20 @@ namespace content {
 
 namespace {
 
+// RMXP draws the later-created object on top when both share the same Z, and
+// Spriteset_Map builds the Tilemap before the character sprites, so a tile
+// event always wins the tie against the map tile on the same row / priority.
+// The engine encodes that creation order in weight[2], but the tilemap builds
+// (and rebuilds) its above layer nodes on the first frame, i.e. after every
+// character sprite already exists, which inverts the tie-break and lets map
+// tiles cover tile events. Pin the tilemap nodes to a stamp that always sorts
+// before any sprite instead of relying on when the nodes get constructed.
+// The ground layer takes the base stamp and the above layers take base + 1, so
+// the two tilemap layers keep a strict order even when a layer's Z lands on the
+// ground's 0 (which happens whenever the tilemap origin is a multiple of the
+// tile size).
+constexpr int64_t kTilemapSortStamp = -(int64_t{1} << 62);
+
 // Reference: RPGXP Editor - Autotile double click
 // Format: Left Top -> Right Top -> Left Bottom -> Right Bottom
 const base::Vec2 kAutotileSrcRegular[][4] = {
@@ -366,7 +380,7 @@ TilemapImpl::TilemapImpl(ExecutionContext* execution_context,
       Disposable(execution_context->disposable_parent),
       ground_node_(parent ? parent->GetDrawableController()
                           : execution_context->screen_drawable_node,
-                   SortKey()),
+                   SortKey(0, 0, kTilemapSortStamp)),
       tilesize_(tilesize),
       max_atlas_size_(execution_context->render_device->MaxTextureSize()),
       max_vertical_count_(max_atlas_size_ / tilesize),
@@ -913,7 +927,8 @@ void TilemapImpl::SetupTilemapLayersInternal(const base::Rect& viewport) {
       (viewport.height / tilesize_) + !!(viewport.height % tilesize_) + 7;
   for (int32_t i = 0; i < above_layers_count; ++i) {
     auto above_node = std::make_unique<DrawableNode>(
-        ground_node_.GetController(), SortKey(64));
+        ground_node_.GetController(),
+        SortKey(64, 0, kTilemapSortStamp + 1));
     above_node->RegisterEventHandler(base::BindRepeating(
         &TilemapImpl::AboveNodeHandlerInternal, base::Unretained(this), i));
     above_nodes_.push_back(std::move(above_node));
