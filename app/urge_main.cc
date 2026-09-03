@@ -30,6 +30,8 @@
 #include <sys/system_properties.h>
 #include <unistd.h>
 
+#include "renderer/device/render_device.h"
+
 #if defined(OS_WIN)
 #include <windows.h>
 extern "C" {
@@ -69,6 +71,16 @@ int SetupAndroidStudioTransfer() {
     return -1;
   pthread_detach(g_android_stdio_thread);
   return 0;
+}
+
+// Called from URGEMain.onPause() (Java UI thread) *before* SDL releases the
+// ANativeWindow in surfaceDestroyed(). Flagging the surface as gone here stops
+// the render thread from resizing or presenting on a window that is about to
+// be released, which used to crash the Vulkan backend inside
+// vkCreateAndroidSurfaceKHR (SIGSEGV, fault addr 0x4).
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeSuspendGraphics(JNIEnv*, jclass) {
+  renderer::RenderDevice::NotifySurfaceLosing();
 }
 
 #endif

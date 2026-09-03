@@ -92,6 +92,17 @@ void Widget::Init(InitParams params) {
                          SDL_PROP_WINDOW_CREATE_ALWAYS_ON_TOP_BOOLEAN,
                          params.always_on_top);
 
+#if defined(OS_ANDROID)
+  // The graphics context is created and owned by Diligent (EGL or Vulkan),
+  // never by SDL. Declaring it external stops SDL from backing up/restoring
+  // its own EGL context across pause/resume: it re-created one on resume and
+  // called eglMakeCurrent(NULL) while paused, both of which break the context
+  // Diligent is actually rendering with.
+  SDL_SetBooleanProperty(
+      property_id, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN,
+      true);
+#endif  //! OS_ANDROID
+
   window_ = SDL_CreateWindowWithProperties(property_id);
   if (!window_)
     LOG(INFO) << "[UI] " << SDL_GetError();

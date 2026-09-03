@@ -57,6 +57,23 @@ public class URGEMain extends SDLActivity {
         }
     }
 
+    /**
+     * Tell the render thread to stop touching the ANativeWindow.
+     *
+     * SDL releases the window from surfaceDestroyed() without waiting for the
+     * render thread, so the Vulkan backend used to resize its swap chain on a
+     * window that was already gone and crashed inside
+     * vkCreateAndroidSurfaceKHR. This runs before super.onPause() (and hence
+     * before surfaceDestroyed()) to close that window.
+     */
+    @Override
+    protected void onPause() {
+        nativeSuspendGraphics();
+        super.onPause();
+    }
+
+    public static native void nativeSuspendGraphics();
+
     public static String getApkMD5(Context context) {
         try {
             String apkPath = context.getPackageResourcePath();

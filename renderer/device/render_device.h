@@ -5,11 +5,17 @@
 #ifndef RENDERER_DEVICE_RENDER_DEVICE_H_
 #define RENDERER_DEVICE_RENDER_DEVICE_H_
 
+#include <atomic>
+#include <mutex>
 #include <tuple>
 
 #include "renderer/pipeline/render_pipeline.h"
 #include "renderer/resource/render_buffer.h"
 #include "ui/widget/widget.h"
+
+#if defined(OS_ANDROID)
+#include <android/native_window.h>
+#endif  //! OS_ANDROID
 
 namespace renderer {
 
@@ -51,6 +57,30 @@ class RenderDevice {
   void SuspendContext();
   int32_t ResumeContext(Diligent::IDeviceContext* immediate_context);
 
+  // Whether the rendering surface is usable right now.
+  //
+  // On Android the ANativeWindow is released by SDL on surfaceDestroyed()
+  // without waiting for the render thread. While it is gone, every Vulkan
+  // entry point that touches the surface (Resize/Present/Recreate) must be
+  // skipped, otherwise the driver dereferences a dead ANativeWindow and the
+  // process dies.
+  bool IsSurfaceValid() const;
+
+  // Called once per frame, before anything is rendered.
+  // Rebuilds the swap chain when a fresh native window became available and
+  // reports whether rendering is allowed for this frame.
+  bool UpdateSwapChainState(Diligent::IDeviceContext* immediate_context);
+
+  // Marks the surface as unusable from the render thread, e.g. after a Vulkan
+  // call failed because the ANativeWindow is gone. Rendering is skipped until
+  // UpdateSwapChainState() rebuilds the swap chain.
+  void MarkSurfaceLost();
+
+  // Called from the Java UI thread (Activity.onPause) before SDL releases the
+  // ANativeWindow. Only flips the surface state, never dereferences objects
+  // owned by the render thread.
+  static void NotifySurfaceLosing();
+
  private:
   RenderDevice(int32_t max_texture_size,
                base::WeakPtr<ui::Widget> window,
@@ -68,6 +98,30 @@ class RenderDevice {
 
   Diligent::RENDER_DEVICE_TYPE device_type_;
   SDL_GLContext gl_context_;
+
+#if defined(OS_ANDROID)
+  // Native window the current swap chain is bound to. Only compared against
+  // the value published by SDL, never dereferenced.
+  void* bound_window_ = nullptr;
+
+  // Strong reference on the bound ANativeWindow. SDL calls
+  // ANativeWindow_release() from the UI thread while the Vulkan driver may
+  // still hold a pointer to it; keeping our own reference turns a wild
+  // pointer dereference into a recoverable Vulkan error.
+  ANativeWindow* acquired_window_ = nullptr;
+
+  std::atomic<bool> surface_valid_{true};
+  std::atomic<bool> pending_recreate_{false};
+  std::atomic<int32_t> pending_frame_count_{0};
+  std::mutex swapchain_lock_;
+
+  void* GetAndroidNativeWindow() const;
+  void ReleaseAcquiredWindow();
+  void RecreateSwapChainInternal(Diligent::IDeviceContext* immediate_context,
+                                 void* native_window);
+
+  static std::atomic<RenderDevice*> current_device_;
+#endif  //! OS_ANDROID
 };
 
 }  // namespace renderer

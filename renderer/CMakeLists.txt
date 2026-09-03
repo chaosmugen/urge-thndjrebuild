@@ -54,6 +54,11 @@ if (WEBGPU_SUPPORTED)
   target_link_libraries(engine_renderer PUBLIC Diligent-GraphicsEngineWebGPU-${LIBRARY_TYPE})
 endif ()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # ANativeWindow_acquire()/ANativeWindow_release() live in libandroid.
+  target_link_libraries(engine_renderer PUBLIC android)
+endif ()
+
 if (MSVC)
   target_compile_options(engine_renderer PRIVATE /WX /wd4267)
 else ()

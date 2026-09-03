@@ -157,15 +157,21 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
         default_sample);
   }
 
-  // Sprite - with scissor - with depth
+  // Sprite - with scissor - no depth
   for (size_t i = 0; i < BLEND_TYPE_NUMS; ++i) {
     // With blend
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(static_cast<BlendType>(i));
 
-    // Enable depth test
+    // Disable depth test.
+    // Every 2D quad is emitted with z = 0 (Quad::SetPositionRect) and the
+    // projection matrix leaves z untouched, so the depth test was always
+    // true and ordered nothing - ordering is done entirely by the CPU sort
+    // keys. Keeping it enabled only made each fragment write depth = 0, and
+    // on Vulkan, where NDC z spans [0, 1], that pinned the whole scene to
+    // the near plane where depth precision is worst.
     Diligent::DepthStencilStateDesc depth_stencil_state =
-        GetDefaultDepthStencilState(true);
+        GetDefaultDepthStencilState(false);
 
     Diligent::RasterizerStateDesc rasterizer_state;
     rasterizer_state.CullMode = Diligent::CULL_MODE_FRONT;
@@ -199,14 +205,14 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
         default_sample);
   }
 
-  {  // Brightness (effect) - no scissor - with depth
+  {  // Brightness (effect) - no scissor - no depth
     // With blend
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(BLEND_TYPE_NORMAL);
 
-    // With depth test
+    // No depth test (rationale in the Sprite block above)
     Diligent::DepthStencilStateDesc depth_stencil_state =
-        GetDefaultDepthStencilState(true);
+        GetDefaultDepthStencilState(false);
 
     Diligent::RasterizerStateDesc rasterizer_state;
     rasterizer_state.CullMode = Diligent::CULL_MODE_FRONT;
@@ -219,14 +225,14 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                                 default_sample);
   }
 
-  {  // Tilemap - with scissor - with depth
+  {  // Tilemap - with scissor - no depth
     // With blend
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(BLEND_TYPE_NORMAL);
 
-    // Enable depth test
+    // No depth test (rationale in the Sprite block above)
     Diligent::DepthStencilStateDesc depth_stencil_state =
-        GetDefaultDepthStencilState(true);
+        GetDefaultDepthStencilState(false);
 
     Diligent::RasterizerStateDesc rasterizer_state;
     rasterizer_state.CullMode = Diligent::CULL_MODE_FRONT;
@@ -285,14 +291,14 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                               default_sample);
   }
 
-  {  // Window (present) - with scissor - with depth
+  {  // Window (present) - with scissor - no depth
     // With blend
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(BLEND_TYPE_NORMAL);
 
-    // Enable depth test
+    // No depth test (rationale in the Sprite block above)
     Diligent::DepthStencilStateDesc depth_stencil_state =
-        GetDefaultDepthStencilState(true);
+        GetDefaultDepthStencilState(false);
 
     Diligent::RasterizerStateDesc rasterizer_state;
     rasterizer_state.CullMode = Diligent::CULL_MODE_FRONT;

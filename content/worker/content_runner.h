@@ -72,6 +72,7 @@ class ContentRunner {
                             base::WeakPtr<ui::Widget> window);
   void CreateRenderComponents();
   void TickHandlerInternal(Diligent::ITexture* present_buffer);
+  void PollEventQueueInternal(bool handle_event);
   void UpdateDisplayFPSInternal();
   void UpdateWindowViewportInternal();
   bool RenderGUIInternal(Diligent::ITexture* present_buffer);

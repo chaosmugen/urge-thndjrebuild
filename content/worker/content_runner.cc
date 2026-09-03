@@ -4,6 +4,8 @@
 
 #include "content/worker/content_runner.h"
 
+#include <exception>
+
 #include "imgui/backends/imgui_impl_sdl3.h"
 #include "imgui/imgui.h"
 #include "magic_enum/magic_enum.hpp"
@@ -312,18 +314,68 @@ void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {
   UpdateDisplayFPSInternal();
 
   // Update swapchain & viewport
-  UpdateWindowViewportInternal();
+  //
+  // On Android the native window may already be released by SDL (or not
+  // recreated yet) while the script loop keeps ticking. Rendering has to be
+  // skipped entirely in that case: resizing or presenting would touch a dead
+  // ANativeWindow and crash inside the Vulkan driver.
+  const bool surface_ready =
+      render_device_->UpdateSwapChainState(device_context_);
 
   // Render GUI if need
-  bool handle_event = !RenderGUIInternal(present_buffer);
+  bool handle_event = true;
+  bool render_failed = false;
+  if (surface_ready) {
+    try {
+      UpdateWindowViewportInternal();
+      handle_event = !RenderGUIInternal(present_buffer);
+    } catch (const std::exception& error) {
+      /* Diligent throws as soon as the Vulkan surface is gone (resize rebuilds
+       * the surface). Letting it escape here would unwind through the Ruby
+       * stack and terminate the process, so keep it inside the frame and fall
+       * back to the "surface lost" state. */
+      LOG(ERROR) << "[Content] Rendering aborted: " << error.what();
+      render_failed = true;
+    }
+  }
 
   // Poll event queue
-  SDL_Event queued_event;
-  while (SDL_PollEvent(&queued_event)
-#if !defined(OS_EMSCRIPTEN)
-         || background_running_
+  PollEventQueueInternal(handle_event);
+
+  // Present screen buffer
+  if (surface_ready && !render_failed) {
+    try {
+      graphics_impl_->PresentScreenBuffer(imgui_.get());
+    } catch (const std::exception& error) {
+      LOG(ERROR) << "[Content] Present aborted: " << error.what();
+      render_failed = true;
+    }
+  }
+
+  if (render_failed)
+    render_device_->MarkSurfaceLost();
+
+  // Dispatch flag message
+  if (binding_quit_flag_.load()) {
+    binding_quit_flag_.store(0);
+    binding_->ExitSignalRequired();
+  } else if (binding_reset_flag_.load()) {
+    binding_reset_flag_.store(0);
+    binding_->ResetSignalRequired();
+  }
+
+#if defined(OS_EMSCRIPTEN)
+  // Switch to primary fiber
+  emscripten_fiber_swap(&main_loop_fiber_, &primary_fiber_);
 #endif  //! OS_EMSCRIPTEN
-  ) {
+}
+
+void ContentRunner::PollEventQueueInternal(bool handle_event) {
+  // While the app is in background SDL blocks inside SDL_PollEvent
+  // (SDL_HINT_ANDROID_BLOCK_ON_PAUSE), so the script loop stays parked here
+  // until the activity resumes instead of spinning.
+  SDL_Event queued_event;
+  while (SDL_PollEvent(&queued_event)) {
     // Quit event
     if (queued_event.type == SDL_EVENT_QUIT)
       binding_quit_flag_.store(1);
@@ -354,23 +406,6 @@ void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {
       event_controller_->DispatchEvent(&queued_event);
     }
   }
-
-  // Present screen buffer
-  graphics_impl_->PresentScreenBuffer(imgui_.get());
-
-  // Dispatch flag message
-  if (binding_quit_flag_.load()) {
-    binding_quit_flag_.store(0);
-    binding_->ExitSignalRequired();
-  } else if (binding_reset_flag_.load()) {
-    binding_reset_flag_.store(0);
-    binding_->ResetSignalRequired();
-  }
-
-#if defined(OS_EMSCRIPTEN)
-  // Switch to primary fiber
-  emscripten_fiber_swap(&main_loop_fiber_, &primary_fiber_);
-#endif  //! OS_EMSCRIPTEN
 }
 
 void ContentRunner::UpdateDisplayFPSInternal() {
@@ -399,6 +434,10 @@ void ContentRunner::UpdateWindowViewportInternal() {
   const auto& resolution = execution_context_->resolution;
   const auto window_size = window->GetSize();
   auto* swapchain = render_device_->GetSwapChain();
+
+  // Never touch the swap chain while the surface is gone.
+  if (!swapchain || !render_device_->IsSurfaceValid())
+    return;
 
   if (window_size.x != static_cast<int32_t>(swapchain->GetDesc().Width) ||
       window_size.y != static_cast<int32_t>(swapchain->GetDesc().Height)) {

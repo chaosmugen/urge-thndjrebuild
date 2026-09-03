@@ -4,6 +4,8 @@
 
 #include "renderer/device/render_device.h"
 
+#include <exception>
+
 #include "SDL3/SDL_hints.h"
 #include "SDL3/SDL_loadso.h"
 #include "SDL3/SDL_video.h"
@@ -39,6 +41,18 @@
 #endif
 
 namespace renderer {
+
+#if defined(OS_ANDROID)
+std::atomic<RenderDevice*> RenderDevice::current_device_{nullptr};
+
+namespace {
+// Frames to wait for SDL to publish a brand new native window after a resume
+// before rebuilding the swap chain on the window we already have. Some
+// background transitions (power button, notification shade) never destroy the
+// surface, so SDL never publishes a new window in those cases.
+constexpr int32_t kMaxSurfaceWaitFrames = 30;
+}  // namespace
+#endif  //! OS_ANDROID
 
 //--------------------------------------------------------------------------------------
 // Internal Helper Functions
@@ -334,6 +348,19 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
       new RenderDevice(max_texture_size, window_target, swap_chain_desc, device,
                        swapchain, glcontext));
 
+#if defined(OS_ANDROID)
+  // Track the native window the swap chain was built on and keep a strong
+  // reference on it, see RenderDevice::acquired_window_.
+  render_device->bound_window_ = native_window.pAWindow;
+  if (render_device->bound_window_) {
+    ANativeWindow_acquire(
+        static_cast<ANativeWindow*>(render_device->bound_window_));
+    render_device->acquired_window_ =
+        static_cast<ANativeWindow*>(render_device->bound_window_);
+  }
+  current_device_.store(render_device.get());
+#endif  //! OS_ANDROID
+
   return std::make_tuple(std::move(render_device), std::move(context));
 }
 
@@ -353,12 +380,33 @@ RenderDevice::RenderDevice(
       gl_context_(gl_context) {}
 
 RenderDevice::~RenderDevice() {
+#if defined(OS_ANDROID)
+  {
+    RenderDevice* self = this;
+    current_device_.compare_exchange_strong(self, nullptr);
+  }
+  ReleaseAcquiredWindow();
+#endif  //! OS_ANDROID
+
   if (gl_context_)
     SDL_GL_DestroyContext(gl_context_);
 }
 
+bool RenderDevice::IsSurfaceValid() const {
+#if defined(OS_ANDROID)
+  return surface_valid_.load(std::memory_order_acquire);
+#else
+  return true;
+#endif  //! OS_ANDROID
+}
+
 void RenderDevice::SuspendContext() {
 #if defined(OS_ANDROID)
+  // The native window is gone, or about to be released by SDL: block every
+  // rendering step before it gets a chance to touch it again.
+  pending_frame_count_.store(0, std::memory_order_relaxed);
+  surface_valid_.store(false, std::memory_order_release);
+
   switch (device_type_) {
     case Diligent::RENDER_DEVICE_TYPE_GLES: {
       Diligent::RefCntAutoPtr<Diligent::IRenderDeviceGLES> es_device(
@@ -367,7 +415,15 @@ void RenderDevice::SuspendContext() {
     } break;
 #if VULKAN_SUPPORTED
     case Diligent::RENDER_DEVICE_TYPE_VULKAN:
-      swapchain_.Release();
+      /* The swap chain is intentionally kept alive here.
+       *
+       * Destroying or recreating a Vulkan surface dereferences the
+       * ANativeWindow, and SDL releases it from surfaceDestroyed() without
+       * waiting for the render thread (SDL only synchronizes windows created
+       * with the OpenGL flag, which would make the window incompatible with
+       * vkCreateAndroidSurfaceKHR). The rebuild is deferred to
+       * UpdateSwapChainState(), which runs once SDL publishes a brand new
+       * native window. */
       break;
 #endif  // VULKAN_SUPPORTED
     default:
@@ -379,36 +435,30 @@ void RenderDevice::SuspendContext() {
 int32_t RenderDevice::ResumeContext(
     Diligent::IDeviceContext* immediate_context) {
 #if defined(OS_ANDROID)
-  SDL_PropertiesID window_properties =
-      SDL_GetWindowProperties(window_->AsSDLWindow());
-  void* android_native_window = SDL_GetPointerProperty(
-      window_properties, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr);
-
   switch (device_type_) {
     case Diligent::RENDER_DEVICE_TYPE_GLES: {
+      void* android_native_window = GetAndroidNativeWindow();
       Diligent::RefCntAutoPtr<Diligent::IRenderDeviceGLES> es_device(
           device_, Diligent::IID_RenderDeviceGLES);
-      return es_device->Resume(
-          static_cast<ANativeWindow*>(android_native_window));
+      int32_t resume_result =
+          es_device->Resume(static_cast<ANativeWindow*>(android_native_window));
+
+      if (resume_result == EGL_SUCCESS)
+        surface_valid_.store(true, std::memory_order_release);
+      else
+        LOG(ERROR) << "[Renderer] Failed to resume GLES context: "
+                   << resume_result;
+
+      return resume_result;
     }
 #if VULKAN_SUPPORTED
-    case Diligent::RENDER_DEVICE_TYPE_VULKAN: {
-      device_->IdleGPU();
-
-      Diligent::NativeWindow native_window;
-      native_window.pAWindow = android_native_window;
-
-#if ENGINE_DLL
-      auto GetEngineFactoryVk = Diligent::LoadGraphicsEngineVk();
-#else
-      using Diligent::GetEngineFactoryVk;
-#endif
-      auto* factory = GetEngineFactoryVk();
-      factory->CreateSwapChainVk(device_, immediate_context, swapchain_desc_,
-                                 native_window, &swapchain_);
-
-      return swapchain_ ? EGL_SUCCESS : EGL_NOT_INITIALIZED;
-    }
+    case Diligent::RENDER_DEVICE_TYPE_VULKAN:
+      /* A usable ANativeWindow is usually not published yet when
+       * DID_ENTER_FOREGROUND is dispatched: SDL writes it from
+       * surfaceCreated(), which comes later. Arm the deferred rebuild and let
+       * UpdateSwapChainState() perform it on one of the next frames. */
+      pending_recreate_.store(true, std::memory_order_release);
+      return EGL_SUCCESS;
 #endif  // VULKAN_SUPPORTED
     default:
       break;
@@ -416,8 +466,132 @@ int32_t RenderDevice::ResumeContext(
 
   return EGL_NOT_INITIALIZED;
 #else
+  (void)immediate_context;
   return 0;
 #endif  // OS_ANDROID
 }
+
+bool RenderDevice::UpdateSwapChainState(
+    Diligent::IDeviceContext* immediate_context) {
+#if defined(OS_ANDROID)
+  // GLES keeps its swap chain object alive across suspend/resume, the surface
+  // state alone decides whether rendering is allowed.
+  if (device_type_ != Diligent::RENDER_DEVICE_TYPE_VULKAN)
+    return IsSurfaceValid() && static_cast<bool>(swapchain_);
+
+  if (IsSurfaceValid())
+    return static_cast<bool>(swapchain_);
+
+  if (!pending_recreate_.load(std::memory_order_acquire))
+    return false;
+
+  void* android_native_window = GetAndroidNativeWindow();
+  if (!android_native_window)
+    return false;
+
+  // Prefer a brand new window: SDL publishes it from surfaceCreated(), where
+  // the window is guaranteed to be usable. Comparing pointers never
+  // dereferences the window itself.
+  if (android_native_window == bound_window_ &&
+      pending_frame_count_.load(std::memory_order_relaxed) <
+          kMaxSurfaceWaitFrames) {
+    pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(swapchain_lock_);
+  RecreateSwapChainInternal(immediate_context, android_native_window);
+
+  return IsSurfaceValid() && static_cast<bool>(swapchain_);
+#else
+  (void)immediate_context;
+  return true;
+#endif  // OS_ANDROID
+}
+
+void RenderDevice::MarkSurfaceLost() {
+#if defined(OS_ANDROID)
+  pending_frame_count_.store(0, std::memory_order_relaxed);
+  surface_valid_.store(false, std::memory_order_release);
+#endif  //! OS_ANDROID
+}
+
+void RenderDevice::NotifySurfaceLosing() {
+#if defined(OS_ANDROID)
+  // Called on the Java UI thread: only the atomic state is touched here, the
+  // render thread owns every other member.
+  RenderDevice* device = current_device_.load(std::memory_order_acquire);
+  if (device)
+    device->MarkSurfaceLost();
+#endif  //! OS_ANDROID
+}
+
+#if defined(OS_ANDROID)
+void* RenderDevice::GetAndroidNativeWindow() const {
+  if (!window_.get())
+    return nullptr;
+
+  SDL_PropertiesID window_properties =
+      SDL_GetWindowProperties(window_->AsSDLWindow());
+  return SDL_GetPointerProperty(
+      window_properties, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr);
+}
+
+void RenderDevice::ReleaseAcquiredWindow() {
+  if (acquired_window_) {
+    ANativeWindow_release(acquired_window_);
+    acquired_window_ = nullptr;
+  }
+}
+
+void RenderDevice::RecreateSwapChainInternal(
+    Diligent::IDeviceContext* immediate_context,
+    void* native_window) {
+  // Retire pending GPU work before dropping the old swap chain.
+  try {
+    device_->IdleGPU();
+  } catch (const std::exception& error) {
+    LOG(ERROR) << "[Renderer] IdleGPU failed: " << error.what();
+  }
+
+  swapchain_.Release();
+  ReleaseAcquiredWindow();
+
+  Diligent::NativeWindow window;
+  window.pAWindow = native_window;
+
+  bool recreated = false;
+  try {
+#if ENGINE_DLL
+    auto GetEngineFactoryVk = Diligent::LoadGraphicsEngineVk();
+#else
+    using Diligent::GetEngineFactoryVk;
+#endif
+    auto* factory = GetEngineFactoryVk();
+    factory->CreateSwapChainVk(device_, immediate_context, swapchain_desc_,
+                               window, &swapchain_);
+    recreated = static_cast<bool>(swapchain_);
+  } catch (const std::exception& error) {
+    LOG(ERROR) << "[Renderer] Failed to recreate swap chain: " << error.what();
+    recreated = false;
+  }
+
+  if (recreated) {
+    // Keep the window alive for the driver: SDL calls ANativeWindow_release()
+    // from the UI thread as soon as the surface is destroyed, while the Vulkan
+    // driver keeps a pointer to it until the surface is destroyed.
+    ANativeWindow_acquire(static_cast<ANativeWindow*>(native_window));
+    acquired_window_ = static_cast<ANativeWindow*>(native_window);
+    bound_window_ = native_window;
+
+    pending_recreate_.store(false, std::memory_order_release);
+    surface_valid_.store(true, std::memory_order_release);
+    LOG(INFO) << "[Renderer] Swap chain rebuilt on the new native window.";
+  } else {
+    surface_valid_.store(false, std::memory_order_release);
+    LOG(ERROR) << "[Renderer] Swap chain rebuild failed, retry next frame.";
+  }
+}
+#endif  //! OS_ANDROID
 
 }  // namespace renderer
