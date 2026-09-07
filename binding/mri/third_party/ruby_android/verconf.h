@@ -1,7 +1,7 @@
 #define RUBY_BASE_NAME			"ruby"
-#define RUBY_VERSION_NAME		RUBY_BASE_NAME"-"RUBY_LIB_VERSION
+#define RUBY_VERSION_NAME		"ruby-"RUBY_LIB_VERSION
 #define RUBY_LIB_VERSION_STYLE		3	/* full */
-#define RUBY_EXEC_PREFIX		"/usr/local"
+#define RUBY_EXEC_PREFIX		""
 #define RUBY_LIB_PREFIX 		RUBY_EXEC_PREFIX"/lib/ruby"
 #define RUBY_ARCH_PREFIX_FOR(arch)	RUBY_LIB_PREFIX"/"arch
 #define RUBY_SITEARCH_PREFIX_FOR(arch)	RUBY_LIB_PREFIX"/"arch

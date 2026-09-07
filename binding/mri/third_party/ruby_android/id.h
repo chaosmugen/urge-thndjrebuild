@@ -3,7 +3,7 @@
 
   id.h -
 
-  $Author: nobu $
+  $Author$
   created at: Sun Oct 19 21:12:51 2008
 
   Copyright (C) 2007 Koichi Sasada
@@ -39,34 +39,41 @@ enum ruby_id_types {
 #define ID_JUNK        RUBY_ID_JUNK
 #define ID_INTERNAL    RUBY_ID_INTERNAL
 
-#define ID2ATTRSET(id) (((id)&~ID_SCOPE_MASK)|ID_ATTRSET)
-
 #define symIFUNC ID2SYM(idIFUNC)
 #define symCFUNC ID2SYM(idCFUNC)
 
 #define RUBY_TOKEN_DOT2 128
 #define RUBY_TOKEN_DOT3 129
-#define RUBY_TOKEN_UPLUS 130
-#define RUBY_TOKEN_UMINUS 131
-#define RUBY_TOKEN_POW 132
-#define RUBY_TOKEN_DSTAR 133
-#define RUBY_TOKEN_CMP 134
-#define RUBY_TOKEN_LSHFT 135
-#define RUBY_TOKEN_RSHFT 136
-#define RUBY_TOKEN_LEQ 137
-#define RUBY_TOKEN_GEQ 138
-#define RUBY_TOKEN_EQ 139
-#define RUBY_TOKEN_EQQ 140
-#define RUBY_TOKEN_NEQ 141
-#define RUBY_TOKEN_MATCH 142
-#define RUBY_TOKEN_NMATCH 143
-#define RUBY_TOKEN_AREF 144
-#define RUBY_TOKEN_ASET 145
-#define RUBY_TOKEN_COLON2 146
-#define RUBY_TOKEN_COLON3 147
+#define RUBY_TOKEN_BDOT2 130
+#define RUBY_TOKEN_BDOT3 131
+#define RUBY_TOKEN_UPLUS 132
+#define RUBY_TOKEN_UMINUS 133
+#define RUBY_TOKEN_POW 134
+#define RUBY_TOKEN_CMP 135
+#define RUBY_TOKEN_LSHFT 136
+#define RUBY_TOKEN_RSHFT 137
+#define RUBY_TOKEN_LEQ 138
+#define RUBY_TOKEN_GEQ 139
+#define RUBY_TOKEN_EQ 140
+#define RUBY_TOKEN_EQQ 141
+#define RUBY_TOKEN_NEQ 142
+#define RUBY_TOKEN_MATCH 143
+#define RUBY_TOKEN_NMATCH 144
+#define RUBY_TOKEN_AREF 145
+#define RUBY_TOKEN_ASET 146
+#define RUBY_TOKEN_COLON2 147
 #define RUBY_TOKEN_ANDOP 148
 #define RUBY_TOKEN_OROP 149
+#define RUBY_TOKEN_ANDDOT 150
 #define RUBY_TOKEN(t) RUBY_TOKEN_##t
+
+#define RUBY_TOKEN2ID_TYPE(tok, type) ((tok<<RUBY_ID_SCOPE_SHIFT)|type|RUBY_ID_STATIC_SYM)
+#define TOKEN2LOCALID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_LOCAL)
+#define TOKEN2INSTANCEID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_INSTANCE)
+#define TOKEN2GLOBALID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_GLOBAL)
+#define TOKEN2CONSTID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_CONST)
+#define TOKEN2CLASSID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_CLASS)
+#define TOKEN2ATTRSETID(tok) RUBY_TOKEN2ID_TYPE(tok, RUBY_ID_ATTRSET)
 
 enum ruby_method_ids {
     idDot2 = RUBY_TOKEN(DOT2),
@@ -80,16 +87,18 @@ enum ruby_method_ids {
     idMULT = '*',
     idDIV = '/',
     idMOD = '%',
-    idLT = '<',
     idLTLT = RUBY_TOKEN(LSHFT),
+    idGTGT = RUBY_TOKEN(RSHFT),
+    idLT = '<',
     idLE = RUBY_TOKEN(LEQ),
     idGT = '>',
-    idGTGT = RUBY_TOKEN(RSHFT),
     idGE = RUBY_TOKEN(GEQ),
     idEq = RUBY_TOKEN(EQ),
     idEqq = RUBY_TOKEN(EQQ),
     idNeq = RUBY_TOKEN(NEQ),
     idNot = '!',
+    idAnd = '&',
+    idOr = '|',
     idBackquote = '`',
     idEqTilde = RUBY_TOKEN(MATCH),
     idNeqTilde = RUBY_TOKEN(NMATCH),
@@ -98,7 +107,10 @@ enum ruby_method_ids {
     idCOLON2 = RUBY_TOKEN(COLON2),
     idANDOP = RUBY_TOKEN(ANDOP),
     idOROP = RUBY_TOKEN(OROP),
-    tPRESERVED_ID_BEGIN = 149,
+    idANDDOT = RUBY_TOKEN(ANDDOT),
+    tPRESERVED_ID_BEGIN = 150,
+    idNilP,
+    idIncludeP,
     idNULL,
     idEmptyP,
     idEqlP,
@@ -112,15 +124,24 @@ enum ruby_method_ids {
     id_core_define_method,
     id_core_define_singleton_method,
     id_core_set_postexe,
-    id_core_hash_from_ary,
-    id_core_hash_merge_ary,
     id_core_hash_merge_ptr,
     id_core_hash_merge_kwd,
+    id_core_raise,
+    id_core_sprintf,
+    id_debug_created_info,
     tPRESERVED_ID_END,
+
+    /* LOCAL tokens {{{ */
+    tTOKEN_LOCAL_BEGIN = tPRESERVED_ID_END-1,
+    tMax,
+    tMin,
+    tHash,
     tFreeze,
     tInspect,
     tIntern,
     tObject_id,
+    t__id__,
+    tConst_added,
     tConst_missing,
     tMethodMissing,
     tMethod_added,
@@ -138,7 +159,7 @@ enum ruby_method_ids {
     tLambda,
     tSend,
     t__send__,
-    t__attached__,
+    t__recursive_key__,
     tInitialize,
     tInitialize_copy,
     tInitialize_clone,
@@ -153,56 +174,177 @@ enum ruby_method_ids {
     tTo_a,
     tTo_s,
     tTo_i,
+    tTo_f,
+    tTo_r,
     tBt,
     tBt_locations,
     tCall,
     tMesg,
     tException,
+    tLocals,
+    tNOT,
+    tAND,
+    tOR,
+    tDiv,
+    tDivmod,
+    tFdiv,
+    tQuo,
+    tName,
+    tNil,
+    tPath,
+    tPack,
+    tBuffer,
     tUScore,
-    tNEXT_ID,
-#define TOKEN2LOCALID(n) id##n = ((t##n<<ID_SCOPE_SHIFT)|ID_LOCAL|ID_STATIC_SYM)
-    TOKEN2LOCALID(Freeze),
-    TOKEN2LOCALID(Inspect),
-    TOKEN2LOCALID(Intern),
-    TOKEN2LOCALID(Object_id),
-    TOKEN2LOCALID(Const_missing),
-    TOKEN2LOCALID(MethodMissing),
-    TOKEN2LOCALID(Method_added),
-    TOKEN2LOCALID(Singleton_method_added),
-    TOKEN2LOCALID(Method_removed),
-    TOKEN2LOCALID(Singleton_method_removed),
-    TOKEN2LOCALID(Method_undefined),
-    TOKEN2LOCALID(Singleton_method_undefined),
-    TOKEN2LOCALID(Length),
-    TOKEN2LOCALID(Size),
-    TOKEN2LOCALID(Gets),
-    TOKEN2LOCALID(Succ),
-    TOKEN2LOCALID(Each),
-    TOKEN2LOCALID(Proc),
-    TOKEN2LOCALID(Lambda),
-    TOKEN2LOCALID(Send),
-    TOKEN2LOCALID(__send__),
-    TOKEN2LOCALID(__attached__),
-    TOKEN2LOCALID(Initialize),
-    TOKEN2LOCALID(Initialize_copy),
-    TOKEN2LOCALID(Initialize_clone),
-    TOKEN2LOCALID(Initialize_dup),
-    TOKEN2LOCALID(To_int),
-    TOKEN2LOCALID(To_ary),
-    TOKEN2LOCALID(To_str),
-    TOKEN2LOCALID(To_sym),
-    TOKEN2LOCALID(To_hash),
-    TOKEN2LOCALID(To_proc),
-    TOKEN2LOCALID(To_io),
-    TOKEN2LOCALID(To_a),
-    TOKEN2LOCALID(To_s),
-    TOKEN2LOCALID(To_i),
-    TOKEN2LOCALID(Bt),
-    TOKEN2LOCALID(Bt_locations),
-    TOKEN2LOCALID(Call),
-    TOKEN2LOCALID(Mesg),
-    TOKEN2LOCALID(Exception),
-    TOKEN2LOCALID(UScore),
+    tNUMPARAM_1,
+    tNUMPARAM_2,
+    tNUMPARAM_3,
+    tNUMPARAM_4,
+    tNUMPARAM_5,
+    tNUMPARAM_6,
+    tNUMPARAM_7,
+    tNUMPARAM_8,
+    tNUMPARAM_9,
+    tDefault,
+    tTOKEN_LOCAL_END,
+    /* LOCAL tokens }}} */
+
+    /* INSTANCE tokens {{{ */
+    tTOKEN_INSTANCE_BEGIN = tTOKEN_LOCAL_END-1,
+    tTOKEN_INSTANCE_END,
+    /* INSTANCE tokens }}} */
+
+    /* GLOBAL tokens {{{ */
+    tTOKEN_GLOBAL_BEGIN = tTOKEN_INSTANCE_END-1,
+    tLASTLINE,
+    tBACKREF,
+    tERROR_INFO,
+    tTOKEN_GLOBAL_END,
+    /* GLOBAL tokens }}} */
+
+    /* CONST tokens {{{ */
+    tTOKEN_CONST_BEGIN = tTOKEN_GLOBAL_END-1,
+    tRuby,
+    tTOKEN_CONST_END,
+    /* CONST tokens }}} */
+
+    /* CLASS tokens {{{ */
+    tTOKEN_CLASS_BEGIN = tTOKEN_CONST_END-1,
+    tTOKEN_CLASS_END,
+    /* CLASS tokens }}} */
+
+    /* ATTRSET tokens {{{ */
+    tTOKEN_ATTRSET_BEGIN = tTOKEN_CLASS_END-1,
+    tTOKEN_ATTRSET_END,
+    /* ATTRSET tokens }}} */
+
+    tNEXT_ID = tTOKEN_ATTRSET_END,
+
+    /* LOCAL IDs {{{ */
+#define DEFINE_LOCALID_FROM_TOKEN(n) id##n = TOKEN2LOCALID(t##n)
+    DEFINE_LOCALID_FROM_TOKEN(Max),
+    DEFINE_LOCALID_FROM_TOKEN(Min),
+    DEFINE_LOCALID_FROM_TOKEN(Hash),
+    DEFINE_LOCALID_FROM_TOKEN(Freeze),
+    DEFINE_LOCALID_FROM_TOKEN(Inspect),
+    DEFINE_LOCALID_FROM_TOKEN(Intern),
+    DEFINE_LOCALID_FROM_TOKEN(Object_id),
+    DEFINE_LOCALID_FROM_TOKEN(__id__),
+    DEFINE_LOCALID_FROM_TOKEN(Const_added),
+    DEFINE_LOCALID_FROM_TOKEN(Const_missing),
+    DEFINE_LOCALID_FROM_TOKEN(MethodMissing),
+    DEFINE_LOCALID_FROM_TOKEN(Method_added),
+    DEFINE_LOCALID_FROM_TOKEN(Singleton_method_added),
+    DEFINE_LOCALID_FROM_TOKEN(Method_removed),
+    DEFINE_LOCALID_FROM_TOKEN(Singleton_method_removed),
+    DEFINE_LOCALID_FROM_TOKEN(Method_undefined),
+    DEFINE_LOCALID_FROM_TOKEN(Singleton_method_undefined),
+    DEFINE_LOCALID_FROM_TOKEN(Length),
+    DEFINE_LOCALID_FROM_TOKEN(Size),
+    DEFINE_LOCALID_FROM_TOKEN(Gets),
+    DEFINE_LOCALID_FROM_TOKEN(Succ),
+    DEFINE_LOCALID_FROM_TOKEN(Each),
+    DEFINE_LOCALID_FROM_TOKEN(Proc),
+    DEFINE_LOCALID_FROM_TOKEN(Lambda),
+    DEFINE_LOCALID_FROM_TOKEN(Send),
+    DEFINE_LOCALID_FROM_TOKEN(__send__),
+    DEFINE_LOCALID_FROM_TOKEN(__recursive_key__),
+    DEFINE_LOCALID_FROM_TOKEN(Initialize),
+    DEFINE_LOCALID_FROM_TOKEN(Initialize_copy),
+    DEFINE_LOCALID_FROM_TOKEN(Initialize_clone),
+    DEFINE_LOCALID_FROM_TOKEN(Initialize_dup),
+    DEFINE_LOCALID_FROM_TOKEN(To_int),
+    DEFINE_LOCALID_FROM_TOKEN(To_ary),
+    DEFINE_LOCALID_FROM_TOKEN(To_str),
+    DEFINE_LOCALID_FROM_TOKEN(To_sym),
+    DEFINE_LOCALID_FROM_TOKEN(To_hash),
+    DEFINE_LOCALID_FROM_TOKEN(To_proc),
+    DEFINE_LOCALID_FROM_TOKEN(To_io),
+    DEFINE_LOCALID_FROM_TOKEN(To_a),
+    DEFINE_LOCALID_FROM_TOKEN(To_s),
+    DEFINE_LOCALID_FROM_TOKEN(To_i),
+    DEFINE_LOCALID_FROM_TOKEN(To_f),
+    DEFINE_LOCALID_FROM_TOKEN(To_r),
+    DEFINE_LOCALID_FROM_TOKEN(Bt),
+    DEFINE_LOCALID_FROM_TOKEN(Bt_locations),
+    DEFINE_LOCALID_FROM_TOKEN(Call),
+    DEFINE_LOCALID_FROM_TOKEN(Mesg),
+    DEFINE_LOCALID_FROM_TOKEN(Exception),
+    DEFINE_LOCALID_FROM_TOKEN(Locals),
+    DEFINE_LOCALID_FROM_TOKEN(NOT),
+    DEFINE_LOCALID_FROM_TOKEN(AND),
+    DEFINE_LOCALID_FROM_TOKEN(OR),
+    DEFINE_LOCALID_FROM_TOKEN(Div),
+    DEFINE_LOCALID_FROM_TOKEN(Divmod),
+    DEFINE_LOCALID_FROM_TOKEN(Fdiv),
+    DEFINE_LOCALID_FROM_TOKEN(Quo),
+    DEFINE_LOCALID_FROM_TOKEN(Name),
+    DEFINE_LOCALID_FROM_TOKEN(Nil),
+    DEFINE_LOCALID_FROM_TOKEN(Path),
+    DEFINE_LOCALID_FROM_TOKEN(Pack),
+    DEFINE_LOCALID_FROM_TOKEN(Buffer),
+    DEFINE_LOCALID_FROM_TOKEN(UScore),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_1),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_2),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_3),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_4),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_5),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_6),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_7),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_8),
+    DEFINE_LOCALID_FROM_TOKEN(NUMPARAM_9),
+    DEFINE_LOCALID_FROM_TOKEN(Default),
+#undef DEFINE_LOCALID_FROM_TOKEN
+    /* LOCAL IDs }}} */
+
+    /* INSTANCE IDs {{{ */
+#define DEFINE_INSTANCEID_FROM_TOKEN(n) id##n = TOKEN2INSTANCEID(t##n)
+#undef DEFINE_INSTANCEID_FROM_TOKEN
+    /* INSTANCE IDs }}} */
+
+    /* GLOBAL IDs {{{ */
+#define DEFINE_GLOBALID_FROM_TOKEN(n) id##n = TOKEN2GLOBALID(t##n)
+    DEFINE_GLOBALID_FROM_TOKEN(LASTLINE),
+    DEFINE_GLOBALID_FROM_TOKEN(BACKREF),
+    DEFINE_GLOBALID_FROM_TOKEN(ERROR_INFO),
+#undef DEFINE_GLOBALID_FROM_TOKEN
+    /* GLOBAL IDs }}} */
+
+    /* CONST IDs {{{ */
+#define DEFINE_CONSTID_FROM_TOKEN(n) id##n = TOKEN2CONSTID(t##n)
+    DEFINE_CONSTID_FROM_TOKEN(Ruby),
+#undef DEFINE_CONSTID_FROM_TOKEN
+    /* CONST IDs }}} */
+
+    /* CLASS IDs {{{ */
+#define DEFINE_CLASSID_FROM_TOKEN(n) id##n = TOKEN2CLASSID(t##n)
+#undef DEFINE_CLASSID_FROM_TOKEN
+    /* CLASS IDs }}} */
+
+    /* ATTRSET IDs {{{ */
+#define DEFINE_ATTRSETID_FROM_TOKEN(n) id##n = TOKEN2ATTRSETID(t##n)
+#undef DEFINE_ATTRSETID_FROM_TOKEN
+    /* ATTRSET IDs }}} */
+
     tLAST_OP_ID = tPRESERVED_ID_END-1,
     idLAST_OP_ID = tLAST_OP_ID >> ID_SCOPE_SHIFT
 };

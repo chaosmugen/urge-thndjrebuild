@@ -28,7 +28,7 @@
  * SUCH DAMAGE.
  */
 
-#include "regint.h"
+#include "regenc.h"
 
 #define eucjp_islead(c)    ((UChar )((c) - 0xa1) > 0xfe - 0xa1)
 
@@ -381,8 +381,10 @@ mbc_case_fold(OnigCaseFoldType flag,
     OnigCodePoint code;
     int len;
 
+    len = mbc_enc_len(p, end, enc);
     code = get_lower_case(mbc_to_code(p, end, enc));
     len = code_to_mbc(code, lower, enc);
+    if (len == ONIGERR_INVALID_CODE_POINT_VALUE) len = 1;
     (*pp) += len;
     return len; /* return byte length of converted char to lower */
   }
@@ -501,9 +503,9 @@ static const OnigCodePoint CR_Cyrillic[] = {
 #include "enc/jis/props.h"
 
 static int
-property_name_to_ctype(OnigEncoding enc, UChar* p, UChar* end)
+property_name_to_ctype(OnigEncoding enc, const UChar* p, const UChar* end)
 {
-  UChar *s = p, *e = end;
+  const UChar *s = p, *e = end;
   const struct enc_property *prop =
     onig_jis_property((const char* )s, (unsigned int )(e - s));
 
@@ -574,6 +576,7 @@ OnigEncodingDefine(euc_jp, EUC_JP) = {
   get_ctype_code_range,
   left_adjust_char_head,
   is_allowed_reverse_match,
+  onigenc_ascii_only_case_map,
   0,
   ONIGENC_FLAG_NONE,
 };
@@ -590,7 +593,7 @@ ENC_ALIAS("eucJP", "EUC-JP") /* UI-OSF Application Platform Profile for Japanese
  * Name: eucJP-ms
  * Link: http://home.m05.itscom.net/numa/cde/ucs-conv/ucs-conv.html
  * Link: http://www2d.biglobe.ne.jp/~msyk/charcode/cp932/eucJP-ms.html
- * Link: http://ja.wikipedia.org/wiki/EUC-JP
+ * Link: https://ja.wikipedia.org/wiki/EUC-JP
  */
 ENC_REPLICATE("eucJP-ms", "EUC-JP") /* TOG/JVC CDE/Motif Technical WG */
 ENC_ALIAS("euc-jp-ms", "eucJP-ms")
@@ -607,7 +610,7 @@ ENC_REPLICATE("CP51932", "EUC-JP")
 
 /*
  * Name: EUC-JIS-2004
- * Link: http://ja.wikipedia.org/wiki/EUC-JIS-2004
+ * Link: https://ja.wikipedia.org/wiki/EUC-JIS-2004
  */
 ENC_REPLICATE("EUC-JIS-2004", "EUC-JP") /* defined at JIS X 0213:2004 */
 ENC_ALIAS("EUC-JISX0213", "EUC-JIS-2004") /* defined at JIS X 0213:2000, and obsolete at JIS X 0213:2004 */

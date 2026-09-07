@@ -161,7 +161,33 @@ inline void MriDefineModuleFunction(VALUE module,
   rb_define_module_function(module, name, RUBY_METHOD_FUNC(func), -1);
 }
 
-#define MRI_METHOD(name) static VALUE name(int argc, VALUE* argv, VALUE self)
+// Bind a Ruby method to a C++ function.
+//
+// The C++ body is wrapped: any exception it throws is converted into a Ruby
+// exception. This is not cosmetic — Ruby's C frames carry no unwind tables, so
+// a C++ exception escaping a binding method makes the unwinder walk garbage and
+// kills the process with SIGSEGV and no Ruby-level error at all (exactly how
+// the game died in its first frames).
+#define MRI_METHOD(name)                                                    \
+  static VALUE name##_impl(int argc, VALUE* argv, VALUE self);              \
+  static VALUE name(int argc, VALUE* argv, VALUE self) {                    \
+    try {                                                                   \
+      return name##_impl(argc, argv, self);                                 \
+    } catch (const std::exception& e) {                                     \
+      rb_warn("URGE: C++ exception in %s: %s", #name, e.what());            \
+      rb_raise(rb_eRuntimeError, "%s: %s", #name, e.what());                \
+    } catch (...) {                                                         \
+      rb_warn("URGE: unknown C++ exception in %s", #name);                  \
+      rb_raise(rb_eRuntimeError, "%s: unknown C++ exception", #name);       \
+    }                                                                       \
+  }                                                                         \
+  static VALUE name##_impl(int argc, VALUE* argv, VALUE self)
+
+// Unwrapped variant, for method bodies that are function templates (a wrapper
+// cannot be declared without repeating the template header). Such bodies must
+// guard their own exceptions.
+#define MRI_METHOD_TEMPLATE(name) \
+  static VALUE name(int argc, VALUE* argv, VALUE self)
 
 inline VALUE MriStringUTF8(const char* string, long length) {
   return rb_enc_str_new(string, length, rb_utf8_encoding());
@@ -213,7 +239,27 @@ inline VALUE MriCommonStructNew(int argc, VALUE* argv, VALUE self) {
 }
 
 #define MRI_FROM_BOOL(v) (v != Qfalse)
-#define MRI_FROM_STRING(v) (std::string(RSTRING_PTR(v), RSTRING_LEN(v)))
+
+// Convert a Ruby value to std::string.
+//
+// Reading RSTRING_PTR/RSTRING_LEN on a value that is not a String yields a
+// garbage length; std::string then throws std::length_error, and an exception
+// unwinding through Ruby's C frames kills the process with SIGSEGV/SIGABRT and
+// no Ruby-level error at all — exactly how the game died right after Main.rb
+// started. Validate the type and raise a normal Ruby TypeError instead: the
+// engine then reports the offending script and line instead of vanishing.
+inline std::string MriFromStringChecked(VALUE value) {
+  if (!RB_TYPE_P(value, T_STRING)) {
+    // rb_warn goes to stderr, which the engine tees into stdio.txt/logcat.
+    rb_warn("URGE: MRI_FROM_STRING expected String, got %s",
+            rb_obj_classname(value));
+    rb_raise(rb_eTypeError, "wrong argument type %s (expected String)",
+             rb_obj_classname(value));
+  }
+  return std::string(RSTRING_PTR(value), RSTRING_LEN(value));
+}
+
+#define MRI_FROM_STRING(v) (MriFromStringChecked(v))
 
 #define MRI_BOOL_VALUE(v) ((v) ? Qtrue : Qfalse)
 #define MRI_STRING_VALUE(v) rb_utf8_str_new(v.c_str(), (long)v.size())
@@ -239,7 +285,7 @@ inline VALUE MriCommonStructNew(int argc, VALUE* argv, VALUE self) {
 ///
 
 template <typename Ty>
-MRI_METHOD(serializable_marshal_load) {
+MRI_METHOD_TEMPLATE(serializable_marshal_load) {
   std::string data;
   MriParseArgsTo(argc, argv, "s", &data);
 
@@ -256,7 +302,7 @@ MRI_METHOD(serializable_marshal_load) {
 }
 
 template <typename Ty>
-MRI_METHOD(serializable_marshal_dump) {
+MRI_METHOD_TEMPLATE(serializable_marshal_dump) {
   scoped_refptr obj = MriGetStructData<Ty>(self);
 
   content::ExceptionState exception_state;
@@ -274,7 +320,7 @@ void MriInitSerializableBinding(VALUE klass) {
 }
 
 template <typename Ty>
-MRI_METHOD(disposable_dispose) {
+MRI_METHOD_TEMPLATE(disposable_dispose) {
   scoped_refptr obj = MriGetStructData<Ty>(self);
 
   content::ExceptionState exception_state;
@@ -285,7 +331,7 @@ MRI_METHOD(disposable_dispose) {
 }
 
 template <typename Ty>
-MRI_METHOD(disposable_is_disposed) {
+MRI_METHOD_TEMPLATE(disposable_is_disposed) {
   scoped_refptr obj = MriGetStructData<Ty>(self);
 
   content::ExceptionState exception_state;

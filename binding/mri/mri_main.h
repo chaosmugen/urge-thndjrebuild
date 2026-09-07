@@ -12,6 +12,10 @@
 
 namespace binding {
 
+// Android TV (Leanback) detection from Java, exposed to Ruby scripts as the
+// global constant URGE_ANDROID_TV before any game script is evaluated.
+void MriSetTvDevice(bool is_tv);
+
 class BindingEngineMri : public content::EngineBindingBase {
  public:
   using BacktraceData = std::map<std::string, std::string>;

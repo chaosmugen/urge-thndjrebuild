@@ -1,5 +1,5 @@
-/* C code produced by gperf version 3.0.4 */
-/* Command-line: gperf -k1,3 -7 -c -j1 -i1 -t -C -P -t --ignore-case -H onig_jis_property_hash -Q onig_jis_property_pool -N onig_jis_property enc/jis/props.kwd  */
+/* ANSI-C code produced by gperf version 3.1 */
+/* Command-line: gperf -L ANSI-C -k1,3 -7 -c -j1 -i1 -t -C -P -t --ignore-case -H onig_jis_property_hash -Q onig_jis_property_pool -N onig_jis_property enc/jis/props.kwd  */
 
 #if !((' ' == 32) && ('!' == 33) && ('"' == 34) && ('#' == 35) \
       && ('%' == 37) && ('&' == 38) && ('\'' == 39) && ('(' == 40) \
@@ -25,7 +25,7 @@
       && ('w' == 119) && ('x' == 120) && ('y' == 121) && ('z' == 122) \
       && ('{' == 123) && ('|' == 124) && ('}' == 125) && ('~' == 126))
 /* The character set is not based on ISO-646.  */
-error "gperf generated tables don't work with this execution character set. Please report a bug to <bug-gnu-gperf@gnu.org>."
+#error "gperf generated tables don't work with this execution character set. Please report a bug to <bug-gperf@gnu.org>."
 #endif
 
 #line 1 "enc/jis/props.kwd"
@@ -34,11 +34,11 @@ error "gperf generated tables don't work with this execution character set. Plea
 #define GPERF_CASE_STRNCMP 1
 
 static inline int
-gperf_case_strncmp(const char *s1, const char *s2, unsigned int n)
+gperf_case_strncmp(const char *s1, const char *s2, size_t n)
 {
     const UChar *str = (const UChar *)s1;
     const UChar *s = (const UChar *)s2;
-    return onigenc_with_ascii_strnicmp(ONIG_ENCODING_ASCII, str, str + n, s, n);
+    return onigenc_with_ascii_strnicmp(ONIG_ENCODING_ASCII, str, str + n, s, (int)n);
 }
 
 enum onigenc_jis_ctype {
@@ -68,7 +68,7 @@ struct enc_property {
     unsigned char ctype;
 };
 
-static const struct enc_property *onig_jis_property(const char *str, unsigned int len);
+static const struct enc_property *onig_jis_property(register const char *str, register size_t len);
 #line 43 "enc/jis/props.kwd"
 struct enc_property;
 
@@ -107,10 +107,7 @@ static unsigned char gperf_downcase[256] =
 #ifndef GPERF_CASE_STRNCMP
 #define GPERF_CASE_STRNCMP 1
 static int
-gperf_case_strncmp (s1, s2, n)
-     register const char *s1;
-     register const char *s2;
-     register unsigned int n;
+gperf_case_strncmp (register const char *s1, register const char *s2, register size_t n)
 {
   for (; n > 0;)
     {
@@ -127,15 +124,15 @@ gperf_case_strncmp (s1, s2, n)
 }
 #endif
 
-#if (defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || defined(__cplusplus) || defined(__GNUC_STDC_INLINE__)
-inline
-#elif defined(__GNUC__)
+#ifdef __GNUC__
 __inline
+#else
+#ifdef __cplusplus
+inline
+#endif
 #endif
 static unsigned int
-onig_jis_property_hash (str, len)
-     register const char *str;
-     register unsigned int len;
+onig_jis_property_hash (register const char *str, register size_t len)
 {
   static const unsigned char asso_values[] =
     {
@@ -153,7 +150,7 @@ onig_jis_property_hash (str, len)
        1, 13, 13, 13,  1, 13,  1, 13, 13, 13,
       13, 13, 13, 13, 13, 13, 13, 13
     };
-  return len + asso_values[(unsigned char)str[2]] + asso_values[(unsigned char)str[0]];
+  return (unsigned int)len + asso_values[(unsigned char)str[2]] + asso_values[(unsigned char)str[0]];
 }
 
 struct onig_jis_property_pool_t
@@ -175,41 +172,33 @@ static const struct onig_jis_property_pool_t onig_jis_property_pool_contents =
     "cyrillic"
   };
 #define onig_jis_property_pool ((const char *) &onig_jis_property_pool_contents)
-#ifdef __GNUC__
-__inline
-#if defined __GNUC_STDC_INLINE__ || defined __GNUC_GNU_INLINE__
-__attribute__ ((__gnu_inline__))
-#endif
-#endif
 const struct enc_property *
-onig_jis_property (str, len)
-     register const char *str;
-     register unsigned int len;
+onig_jis_property (register const char *str, register size_t len)
 {
   static const struct enc_property wordlist[] =
     {
       {-1}, {-1}, {-1}, {-1}, {-1},
 #line 48 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str5),      onigenc_jis_han},
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str5,      onigenc_jis_han},
       {-1},
 #line 49 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str7),    onigenc_jis_latin},
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str7,    onigenc_jis_latin},
 #line 50 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str8),    onigenc_jis_greek},
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str8,    onigenc_jis_greek},
       {-1},
 #line 46 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str10), onigenc_jis_hiragana},
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str10, onigenc_jis_hiragana},
 #line 47 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str11), onigenc_jis_katakana},
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str11, onigenc_jis_katakana},
 #line 51 "enc/jis/props.kwd"
-      {(char)offsetof(struct onig_jis_property_pool_t, onig_jis_property_pool_str12), onigenc_jis_cyrillic}
+      {(int)(size_t)&((struct onig_jis_property_pool_t *)0)->onig_jis_property_pool_str12, onigenc_jis_cyrillic}
     };
 
   if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH)
     {
-      register int key = onig_jis_property_hash (str, len);
+      register unsigned int key = onig_jis_property_hash (str, len);
 
-      if (key <= MAX_HASH_VALUE && key >= 0)
+      if (key <= MAX_HASH_VALUE)
         {
           register int o = wordlist[key].name;
           if (o >= 0)

@@ -2,93 +2,86 @@
 
   math.c -
 
-  $Author: akr $
+  $Author$
   created at: Tue Jan 25 14:12:56 JST 1994
 
   Copyright (C) 1993-2007 Yukihiro Matsumoto
 
 **********************************************************************/
 
-#include "internal.h"
-#include <float.h>
-#include <math.h>
-#include <errno.h>
+#include "ruby/internal/config.h"
 
-#if defined(HAVE_SIGNBIT) && defined(__GNUC__) && defined(__sun) && \
-    !defined(signbit)
-    extern int signbit(double);
+#ifdef _MSC_VER
+# define _USE_MATH_DEFINES 1
 #endif
 
-#define RB_BIGNUM_TYPE_P(x) RB_TYPE_P((x), T_BIGNUM)
+#include <errno.h>
+#include <float.h>
+#include <math.h>
+
+#include "internal.h"
+#include "internal/bignum.h"
+#include "internal/complex.h"
+#include "internal/math.h"
+#include "internal/object.h"
+#include "internal/vm.h"
 
 VALUE rb_mMath;
 VALUE rb_eMathDomainError;
 
-#define Need_Float(x) do {if (!RB_TYPE_P(x, T_FLOAT)) {(x) = rb_to_float(x);}} while(0)
-#define Need_Float2(x,y) do {\
-    Need_Float(x);\
-    Need_Float(y);\
-} while (0)
+#define Get_Double(x) rb_num_to_dbl(x)
 
 #define domain_error(msg) \
-    rb_raise(rb_eMathDomainError, "Numerical argument is out of domain - " #msg)
+    rb_raise(rb_eMathDomainError, "Numerical argument is out of domain - " msg)
+#define domain_check_min(val, min, msg) \
+    ((val) < (min) ? domain_error(msg) : (void)0)
+#define domain_check_range(val, min, max, msg) \
+    ((val) < (min) || (max) < (val) ? domain_error(msg) : (void)0)
 
 /*
  *  call-seq:
- *     Math.atan2(y, x)  -> Float
+ *     Math.atan2(y, x) -> float
  *
- *  Computes the arc tangent given +y+ and +x+.
- *  Returns a Float in the range -PI..PI.
+ *  Returns the {arc tangent}[https://en.wikipedia.org/wiki/Atan2] of +y+ and +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain of +y+: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Domain of +x+: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-PI, PI]</tt>.
  *
- *  Codomain: [-PI, PI]
+ *  Examples:
  *
- *    Math.atan2(-0.0, -1.0) #=> -3.141592653589793
- *    Math.atan2(-1.0, -1.0) #=> -2.356194490192345
- *    Math.atan2(-1.0, 0.0)  #=> -1.5707963267948966
- *    Math.atan2(-1.0, 1.0)  #=> -0.7853981633974483
- *    Math.atan2(-0.0, 1.0)  #=> -0.0
- *    Math.atan2(0.0, 1.0)   #=> 0.0
- *    Math.atan2(1.0, 1.0)   #=> 0.7853981633974483
- *    Math.atan2(1.0, 0.0)   #=> 1.5707963267948966
- *    Math.atan2(1.0, -1.0)  #=> 2.356194490192345
- *    Math.atan2(0.0, -1.0)  #=> 3.141592653589793
- *    Math.atan2(INFINITY, INFINITY)   #=> 0.7853981633974483
- *    Math.atan2(INFINITY, -INFINITY)  #=> 2.356194490192345
- *    Math.atan2(-INFINITY, INFINITY)  #=> -0.7853981633974483
- *    Math.atan2(-INFINITY, -INFINITY) #=> -2.356194490192345
+ *    atan2(-1.0, -1.0) # => -2.356194490192345  # -3*PI/4
+ *    atan2(-1.0, 0.0)  # => -1.5707963267948966 # -PI/2
+ *    atan2(-1.0, 1.0)  # => -0.7853981633974483 # -PI/4
+ *    atan2(0.0, -1.0)  # => 3.141592653589793   # PI
  *
  */
 
 static VALUE
-math_atan2(VALUE obj, VALUE y, VALUE x)
+math_atan2(VALUE unused_obj, VALUE y, VALUE x)
 {
-#ifndef M_PI
-# define M_PI 3.14159265358979323846
-#endif
     double dx, dy;
-    Need_Float2(y, x);
-    dx = RFLOAT_VALUE(x);
-    dy = RFLOAT_VALUE(y);
+    dx = Get_Double(x);
+    dy = Get_Double(y);
     if (dx == 0.0 && dy == 0.0) {
-	if (!signbit(dx))
-	    return DBL2NUM(dy);
+        if (!signbit(dx))
+            return DBL2NUM(dy);
         if (!signbit(dy))
-	    return DBL2NUM(M_PI);
-	return DBL2NUM(-M_PI);
+            return DBL2NUM(M_PI);
+        return DBL2NUM(-M_PI);
     }
 #ifndef ATAN2_INF_C99
     if (isinf(dx) && isinf(dy)) {
-	/* optimization for FLONUM */
-	if (dx < 0.0) {
-	    const double dz = (3.0 * M_PI / 4.0);
-	    return (dy < 0.0) ? DBL2NUM(-dz) : DBL2NUM(dz);
-	}
-	else {
-	    const double dz = (M_PI / 4.0);
-	    return (dy < 0.0) ? DBL2NUM(-dz) : DBL2NUM(dz);
-	}
+        /* optimization for FLONUM */
+        if (dx < 0.0) {
+            const double dz = (3.0 * M_PI / 4.0);
+            return (dy < 0.0) ? DBL2NUM(-dz) : DBL2NUM(dz);
+        }
+        else {
+            const double dz = (M_PI / 4.0);
+            return (dy < 0.0) ? DBL2NUM(-dz) : DBL2NUM(dz);
+        }
     }
 #endif
     return DBL2NUM(atan2(dy, dx));
@@ -97,141 +90,163 @@ math_atan2(VALUE obj, VALUE y, VALUE x)
 
 /*
  *  call-seq:
- *     Math.cos(x)    -> Float
+ *    Math.cos(x) -> float
  *
- *  Computes the cosine of +x+ (expressed in radians).
- *  Returns a Float in the range -1.0..1.0.
+ *  Returns the
+ *  {cosine}[https://en.wikipedia.org/wiki/Sine_and_cosine] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>(-INFINITY, INFINITY)</tt>.
+ *  - Range: <tt>[-1.0, 1.0]</tt>.
  *
- *  Codomain: [-1, 1]
+ *  Examples:
  *
- *    Math.cos(Math::PI) #=> -1.0
+ *    cos(-PI)   # => -1.0
+ *    cos(-PI/2) # => 6.123031769111886e-17 # 0.0000000000000001
+ *    cos(0.0)   # => 1.0
+ *    cos(PI/2)  # => 6.123031769111886e-17 # 0.0000000000000001
+ *    cos(PI)    # => -1.0
  *
  */
 
 static VALUE
-math_cos(VALUE obj, VALUE x)
+math_cos(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(cos(RFLOAT_VALUE(x)));
+    return DBL2NUM(cos(Get_Double(x)));
 }
 
 /*
  *  call-seq:
- *     Math.sin(x)    -> Float
+ *    Math.sin(x) -> float
  *
- *  Computes the sine of +x+ (expressed in radians).
- *  Returns a Float in the range -1.0..1.0.
+ *  Returns the
+ *  {sine}[https://en.wikipedia.org/wiki/Sine_and_cosine] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>(-INFINITY, INFINITY)</tt>.
+ *  - Range: <tt>[-1.0, 1.0]</tt>.
  *
- *  Codomain: [-1, 1]
+ *  Examples:
  *
- *    Math.sin(Math::PI/2) #=> 1.0
+ *    sin(-PI)   # => -1.2246063538223773e-16 # -0.0000000000000001
+ *    sin(-PI/2) # => -1.0
+ *    sin(0.0)   # => 0.0
+ *    sin(PI/2)  # => 1.0
+ *    sin(PI)    # => 1.2246063538223773e-16  # 0.0000000000000001
  *
  */
 
 static VALUE
-math_sin(VALUE obj, VALUE x)
+math_sin(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(sin(RFLOAT_VALUE(x)));
+    return DBL2NUM(sin(Get_Double(x)));
 }
 
 
 /*
  *  call-seq:
- *     Math.tan(x)    -> Float
+ *    Math.tan(x) -> float
  *
- *  Computes the tangent of +x+ (expressed in radians).
+ *  Returns the
+ *  {tangent}[https://en.wikipedia.org/wiki/Trigonometric_functions] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>(-INFINITY, INFINITY)</tt>.
+ *  - Range: <tt>(-INFINITY, INFINITY)</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.tan(0) #=> 0.0
+ *    tan(-PI)   # => 1.2246467991473532e-16  # -0.0000000000000001
+ *    tan(-PI/2) # => -1.633123935319537e+16  # -16331239353195370.0
+ *    tan(0.0)   # => 0.0
+ *    tan(PI/2)  # => 1.633123935319537e+16   # 16331239353195370.0
+ *    tan(PI)    # => -1.2246467991473532e-16 # -0.0000000000000001
  *
  */
 
 static VALUE
-math_tan(VALUE obj, VALUE x)
+math_tan(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(tan(RFLOAT_VALUE(x)));
+    return DBL2NUM(tan(Get_Double(x)));
+}
+
+#define math_arc(num, func) \
+    double d; \
+    d = Get_Double((num)); \
+    domain_check_range(d, -1.0, 1.0, #func); \
+    return DBL2NUM(func(d));
+
+/*
+ *  call-seq:
+ *     Math.acos(x) -> float
+ *
+ *  Returns the {arc cosine}[https://en.wikipedia.org/wiki/Inverse_trigonometric_functions] of +x+.
+ *
+ *  - Domain: <tt>[-1, 1]</tt>.
+ *  - Range: <tt>[0, PI]</tt>.
+ *
+ *  Examples:
+ *
+ *    acos(-1.0) # => 3.141592653589793  # PI
+ *    acos(0.0)  # => 1.5707963267948966 # PI/2
+ *    acos(1.0)  # => 0.0
+ *
+ */
+
+static VALUE
+math_acos(VALUE unused_obj, VALUE x)
+{
+    math_arc(x, acos)
 }
 
 /*
  *  call-seq:
- *     Math.acos(x)    -> Float
+ *     Math.asin(x) -> float
  *
- *  Computes the arc cosine of +x+. Returns 0..PI.
+ *  Returns the {arc sine}[https://en.wikipedia.org/wiki/Inverse_trigonometric_functions] of +x+.
  *
- *  Domain: [-1, 1]
+ *  - Domain: <tt>[-1, -1]</tt>.
+ *  - Range: <tt>[-PI/2, PI/2]</tt>.
  *
- *  Codomain: [0, PI]
+ *  Examples:
  *
- *    Math.acos(0) == Math::PI/2  #=> true
+ *    asin(-1.0) # => -1.5707963267948966 # -PI/2
+ *    asin(0.0)  # => 0.0
+ *    asin(1.0)  # => 1.5707963267948966  # PI/2
  *
  */
 
 static VALUE
-math_acos(VALUE obj, VALUE x)
+math_asin(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
-
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < -1.0 || 1.0 < d0) domain_error("acos");
-    d = acos(d0);
-    return DBL2NUM(d);
-}
-
-/*
- *  call-seq:
- *     Math.asin(x)    -> Float
- *
- *  Computes the arc sine of +x+. Returns -PI/2..PI/2.
- *
- *  Domain: [-1, -1]
- *
- *  Codomain: [-PI/2, PI/2]
- *
- *    Math.asin(1) == Math::PI/2  #=> true
- */
-
-static VALUE
-math_asin(VALUE obj, VALUE x)
-{
-    double d0, d;
-
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < -1.0 || 1.0 < d0) domain_error("asin");
-    d = asin(d0);
-    return DBL2NUM(d);
+    math_arc(x, asin)
 }
 
 /*
  *  call-seq:
  *     Math.atan(x)    -> Float
  *
- *  Computes the arc tangent of +x+. Returns -PI/2..PI/2.
+ *  Returns the {arc tangent}[https://en.wikipedia.org/wiki/Inverse_trigonometric_functions] of +x+.
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-PI/2, PI/2]  </tt>.
  *
- *  Codomain: (-PI/2, PI/2)
+ *  Examples:
  *
- *    Math.atan(0) #=> 0.0
+ *    atan(-INFINITY) # => -1.5707963267948966 # -PI2
+ *    atan(-PI)       # => -1.2626272556789115
+ *    atan(-PI/2)     # => -1.0038848218538872
+ *    atan(0.0)       # => 0.0
+ *    atan(PI/2)      # => 1.0038848218538872
+ *    atan(PI)        # => 1.2626272556789115
+ *    atan(INFINITY)  # => 1.5707963267948966  # PI/2
+ *
  */
 
 static VALUE
-math_atan(VALUE obj, VALUE x)
+math_atan(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(atan(RFLOAT_VALUE(x)));
+    return DBL2NUM(atan(Get_Double(x)));
 }
 
 #ifndef HAVE_COSH
@@ -244,23 +259,26 @@ cosh(double x)
 
 /*
  *  call-seq:
- *     Math.cosh(x)    -> Float
+ *    Math.cosh(x) -> float
  *
- *  Computes the hyperbolic cosine of +x+ (expressed in radians).
+ *  Returns the {hyperbolic cosine}[https://en.wikipedia.org/wiki/Hyperbolic_functions] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[1, INFINITY]</tt>.
  *
- *  Codomain: [1, INFINITY)
+ *  Examples:
  *
- *    Math.cosh(0) #=> 1.0
+ *    cosh(-INFINITY) # => Infinity
+ *    cosh(0.0)       # => 1.0
+ *    cosh(INFINITY)  # => Infinity
  *
  */
 
 static VALUE
-math_cosh(VALUE obj, VALUE x)
+math_cosh(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(cosh(RFLOAT_VALUE(x)));
+    return DBL2NUM(cosh(Get_Double(x)));
 }
 
 #ifndef HAVE_SINH
@@ -273,153 +291,171 @@ sinh(double x)
 
 /*
  *  call-seq:
- *     Math.sinh(x)    -> Float
+ *    Math.sinh(x) -> float
  *
- *  Computes the hyperbolic sine of +x+ (expressed in radians).
+ *  Returns the {hyperbolic sine}[https://en.wikipedia.org/wiki/Hyperbolic_functions] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.sinh(0) #=> 0.0
+ *    sinh(-INFINITY) # => -Infinity
+ *    sinh(0.0)       # => 0.0
+ *    sinh(INFINITY)  # => Infinity
  *
  */
 
 static VALUE
-math_sinh(VALUE obj, VALUE x)
+math_sinh(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(sinh(RFLOAT_VALUE(x)));
+    return DBL2NUM(sinh(Get_Double(x)));
 }
 
 #ifndef HAVE_TANH
 double
 tanh(double x)
 {
-    return sinh(x) / cosh(x);
+# if defined(HAVE_SINH) && defined(HAVE_COSH)
+    const double c = cosh(x);
+    if (!isinf(c)) return sinh(x) / c;
+# else
+    const double e = exp(x+x);
+    if (!isinf(e)) return (e - 1) / (e + 1);
+# endif
+    return x > 0 ? 1.0 : -1.0;
 }
 #endif
 
 /*
  *  call-seq:
- *     Math.tanh(x)    -> Float
+ *    Math.tanh(x) -> float
  *
- *  Computes the hyperbolic tangent of +x+ (expressed in radians).
+ *  Returns the {hyperbolic tangent}[https://en.wikipedia.org/wiki/Hyperbolic_functions] of +x+
+ *  in {radians}[https://en.wikipedia.org/wiki/Trigonometric_functions#Radians_versus_degrees].
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-1, 1]</tt>.
  *
- *  Codomain: (-1, 1)
+ *  Examples:
  *
- *    Math.tanh(0) #=> 0.0
+ *    tanh(-INFINITY) # => -1.0
+ *    tanh(0.0)       # => 0.0
+ *    tanh(INFINITY)  # => 1.0
  *
  */
 
 static VALUE
-math_tanh(VALUE obj, VALUE x)
+math_tanh(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(tanh(RFLOAT_VALUE(x)));
+    return DBL2NUM(tanh(Get_Double(x)));
 }
 
 /*
  *  call-seq:
- *     Math.acosh(x)    -> Float
+ *    Math.acosh(x) -> float
  *
- *  Computes the inverse hyperbolic cosine of +x+.
+ *  Returns the {inverse hyperbolic cosine}[https://en.wikipedia.org/wiki/Inverse_hyperbolic_functions] of +x+.
  *
- *  Domain: [1, INFINITY)
+ *  - Domain: <tt>[1, INFINITY]</tt>.
+ *  - Range: <tt>[0, INFINITY]</tt>.
  *
- *  Codomain: [0, INFINITY)
+ *  Examples:
  *
- *    Math.acosh(1) #=> 0.0
+ *    acosh(1.0)      # => 0.0
+ *    acosh(INFINITY) # => Infinity
  *
  */
 
 static VALUE
-math_acosh(VALUE obj, VALUE x)
+math_acosh(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
+    double d;
 
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < 1.0) domain_error("acosh");
-    d = acosh(d0);
-    return DBL2NUM(d);
+    d = Get_Double(x);
+    domain_check_min(d, 1.0, "acosh");
+    return DBL2NUM(acosh(d));
 }
 
 /*
  *  call-seq:
- *     Math.asinh(x)    -> Float
+ *    Math.asinh(x) -> float
  *
- *  Computes the inverse hyperbolic sine of +x+.
+ *  Returns the {inverse hyperbolic sine}[https://en.wikipedia.org/wiki/Inverse_hyperbolic_functions] of +x+.
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.asinh(1) #=> 0.881373587019543
+ *    asinh(-INFINITY) # => -Infinity
+ *    asinh(0.0)       # => 0.0
+ *    asinh(INFINITY)  # => Infinity
  *
  */
 
 static VALUE
-math_asinh(VALUE obj, VALUE x)
+math_asinh(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(asinh(RFLOAT_VALUE(x)));
+    return DBL2NUM(asinh(Get_Double(x)));
 }
 
 /*
  *  call-seq:
- *     Math.atanh(x)    -> Float
+ *    Math.atanh(x) -> float
  *
- *  Computes the inverse hyperbolic tangent of +x+.
+ *  Returns the {inverse hyperbolic tangent}[https://en.wikipedia.org/wiki/Inverse_hyperbolic_functions] of +x+.
  *
- *  Domain: (-1, 1)
+ *  - Domain: <tt>[-1, 1]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *   Math.atanh(1) #=> Infinity
+ *    atanh(-1.0) # => -Infinity
+ *    atanh(0.0)  # => 0.0
+ *    atanh(1.0)  # => Infinity
  *
  */
 
 static VALUE
-math_atanh(VALUE obj, VALUE x)
+math_atanh(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
+    double d;
 
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 <  -1.0 || +1.0 <  d0) domain_error("atanh");
+    d = Get_Double(x);
+    domain_check_range(d, -1.0, +1.0, "atanh");
     /* check for pole error */
-    if (d0 == -1.0) return DBL2NUM(-INFINITY);
-    if (d0 == +1.0) return DBL2NUM(+INFINITY);
-    d = atanh(d0);
-    return DBL2NUM(d);
+    if (d == -1.0) return DBL2NUM(-HUGE_VAL);
+    if (d == +1.0) return DBL2NUM(+HUGE_VAL);
+    return DBL2NUM(atanh(d));
 }
 
 /*
  *  call-seq:
- *     Math.exp(x)    -> Float
+ *    Math.exp(x) -> float
  *
- *  Returns e**x.
+ *  Returns +e+ raised to the +x+ power.
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[0, INFINITY]</tt>.
  *
- *  Codomain: (0, INFINITY)
+ *  Examples:
  *
- *    Math.exp(0)       #=> 1.0
- *    Math.exp(1)       #=> 2.718281828459045
- *    Math.exp(1.5)     #=> 4.4816890703380645
+ *    exp(-INFINITY) # => 0.0
+ *    exp(-1.0)      # => 0.36787944117144233 # 1.0/E
+ *    exp(0.0)       # => 1.0
+ *    exp(0.5)       # => 1.6487212707001282  # sqrt(E)
+ *    exp(1.0)       # => 2.718281828459045   # E
+ *    exp(2.0)       # => 7.38905609893065    # E**2
+ *    exp(INFINITY)  # => Infinity
  *
  */
 
 static VALUE
-math_exp(VALUE obj, VALUE x)
+math_exp(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(exp(RFLOAT_VALUE(x)));
+    return DBL2NUM(exp(Get_Double(x)));
 }
 
 #if defined __CYGWIN__
@@ -431,47 +467,50 @@ math_exp(VALUE obj, VALUE x)
 # define log10(x) ((x) < 0.0 ? nan("") : log10(x))
 #endif
 
-static double math_log1(VALUE x);
+#ifndef M_LN2
+# define M_LN2 0.693147180559945309417232121458176568
+#endif
+#ifndef M_LN10
+# define M_LN10 2.30258509299404568401799145468436421
+#endif
+
+FUNC_MINIMIZED(static VALUE math_log(int, const VALUE *, VALUE));
 
 /*
  *  call-seq:
- *     Math.log(x)          -> Float
- *     Math.log(x, base)    -> Float
+ *    Math.log(x, base = Math::E) -> Float
  *
- *  Returns the logarithm of +x+.
- *  If additional second argument is given, it will be the base
- *  of logarithm. Otherwise it is +e+ (for the natural logarithm).
+ *  Returns the base +base+ {logarithm}[https://en.wikipedia.org/wiki/Logarithm] of +x+.
  *
- *  Domain: (0, INFINITY)
+ *  - Domain: <tt>[0, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY)]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.log(0)          #=> -Infinity
- *    Math.log(1)          #=> 0.0
- *    Math.log(Math::E)    #=> 1.0
- *    Math.log(Math::E**3) #=> 3.0
- *    Math.log(12, 3)      #=> 2.2618595071429146
+ *    log(0.0)        # => -Infinity
+ *    log(1.0)        # => 0.0
+ *    log(E)          # => 1.0
+ *    log(INFINITY)   # => Infinity
+ *
+ *    log(0.0, 2.0)   # => -Infinity
+ *    log(1.0, 2.0)   # => 0.0
+ *    log(2.0, 2.0)   # => 1.0
+ *
+ *    log(0.0, 10.0)  # => -Infinity
+ *    log(1.0, 10.0)  # => 0.0
+ *    log(10.0, 10.0) # => 1.0
  *
  */
 
 static VALUE
-math_log(int argc, const VALUE *argv, VALUE obj)
+math_log(int argc, const VALUE *argv, VALUE unused_obj)
 {
-    VALUE x, base;
-    double d;
-
-    rb_scan_args(argc, argv, "11", &x, &base);
-    d = math_log1(x);
-    if (argc == 2) {
-	d /= math_log1(base);
-    }
-    return DBL2NUM(d);
+    return rb_math_log(argc, argv);
 }
 
 static double
-math_log1(VALUE x)
+get_double_rshift(VALUE x, size_t *pnumbits)
 {
-    double d0, d;
     size_t numbits;
 
     if (RB_BIGNUM_TYPE_P(x) && BIGNUM_POSITIVE_P(x) &&
@@ -480,20 +519,60 @@ math_log1(VALUE x)
         x = rb_big_rshift(x, SIZET2NUM(numbits));
     }
     else {
-	numbits = 0;
+        numbits = 0;
     }
+    *pnumbits = numbits;
+    return Get_Double(x);
+}
 
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < 0.0) domain_error("log");
-    /* check for pole error */
-    if (d0 == 0.0) return -INFINITY;
-    d = log(d0);
-    if (numbits)
-        d += numbits * log(2); /* log(2**numbits) */
+static double
+math_log_split(VALUE x, size_t *numbits)
+{
+    double d = get_double_rshift(x, numbits);
+
+    domain_check_min(d, 0.0, "log");
     return d;
 }
+
+#if defined(log2) || defined(HAVE_LOG2)
+# define log_intermediate log2
+#else
+# define log_intermediate log10
+double log2(double x);
+#endif
+
+VALUE
+rb_math_log(int argc, const VALUE *argv)
+{
+    VALUE x, base;
+    double d;
+    size_t numbits;
+
+    argc = rb_scan_args(argc, argv, "11", &x, &base);
+    d = math_log_split(x, &numbits);
+    if (argc == 2) {
+        size_t numbits_2;
+        double b = math_log_split(base, &numbits_2);
+        /* check for pole error */
+        if (d == 0.0) {
+            // Already DomainError if b < 0.0
+            return b ? DBL2NUM(-HUGE_VAL) : DBL2NUM(NAN);
+        }
+        else if (b == 0.0) {
+            return DBL2NUM(-0.0);
+        }
+        d = log_intermediate(d) / log_intermediate(b);
+        d += (numbits - numbits_2) / log2(b);
+    }
+    else {
+        /* check for pole error */
+        if (d == 0.0) return DBL2NUM(-HUGE_VAL);
+        d = log(d);
+        d += numbits * M_LN2;
+    }
+    return DBL2NUM(d);
+}
+
 #ifndef log2
 #ifndef HAVE_LOG2
 double
@@ -508,313 +587,348 @@ extern double log2(double);
 
 /*
  *  call-seq:
- *     Math.log2(x)    -> Float
+ *    Math.log2(x) -> float
  *
- *  Returns the base 2 logarithm of +x+.
+ *  Returns the base 2 {logarithm}[https://en.wikipedia.org/wiki/Logarithm] of +x+.
  *
- *  Domain: (0, INFINITY)
+ *  - Domain: <tt>[0, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.log2(1)      #=> 0.0
- *    Math.log2(2)      #=> 1.0
- *    Math.log2(32768)  #=> 15.0
- *    Math.log2(65536)  #=> 16.0
+ *    log2(0.0)      # => -Infinity
+ *    log2(1.0)      # => 0.0
+ *    log2(2.0)      # => 1.0
+ *    log2(INFINITY) # => Infinity
  *
  */
 
 static VALUE
-math_log2(VALUE obj, VALUE x)
+math_log2(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
     size_t numbits;
+    double d = get_double_rshift(x, &numbits);
 
-    if (RB_BIGNUM_TYPE_P(x) && BIGNUM_POSITIVE_P(x) &&
-            DBL_MAX_EXP <= (numbits = rb_absint_numwords(x, 1, NULL))) {
-        numbits -= DBL_MANT_DIG;
-        x = rb_big_rshift(x, SIZET2NUM(numbits));
-    }
-    else {
-	numbits = 0;
-    }
-
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < 0.0) domain_error("log2");
+    domain_check_min(d, 0.0, "log2");
     /* check for pole error */
-    if (d0 == 0.0) return DBL2NUM(-INFINITY);
-    d = log2(d0);
-    d += numbits;
-    return DBL2NUM(d);
+    if (d == 0.0) return DBL2NUM(-HUGE_VAL);
+
+    return DBL2NUM(log2(d) + numbits); /* log2(d * 2 ** numbits) */
 }
 
 /*
  *  call-seq:
- *     Math.log10(x)    -> Float
+ *    Math.log10(x) -> float
  *
- *  Returns the base 10 logarithm of +x+.
+ *  Returns the base 10 {logarithm}[https://en.wikipedia.org/wiki/Logarithm] of +x+.
  *
- *  Domain: (0, INFINITY)
+ *  - Domain: <tt>[0, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *  Codomain: (-INFINITY, INFINITY)
+ *  Examples:
  *
- *    Math.log10(1)       #=> 0.0
- *    Math.log10(10)      #=> 1.0
- *    Math.log10(10**100) #=> 100.0
+ *    log10(0.0)      # => -Infinity
+ *    log10(1.0)      # => 0.0
+ *    log10(10.0)     # => 1.0
+ *    log10(INFINITY) # => Infinity
  *
  */
 
 static VALUE
-math_log10(VALUE obj, VALUE x)
+math_log10(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
     size_t numbits;
+    double d = get_double_rshift(x, &numbits);
 
-    if (RB_BIGNUM_TYPE_P(x) && BIGNUM_POSITIVE_P(x) &&
-            DBL_MAX_EXP <= (numbits = rb_absint_numwords(x, 1, NULL))) {
-        numbits -= DBL_MANT_DIG;
-        x = rb_big_rshift(x, SIZET2NUM(numbits));
-    }
-    else {
-	numbits = 0;
-    }
-
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < 0.0) domain_error("log10");
+    domain_check_min(d, 0.0, "log10");
     /* check for pole error */
-    if (d0 == 0.0) return DBL2NUM(-INFINITY);
-    d = log10(d0);
-    if (numbits)
-        d += numbits * log10(2); /* log10(2**numbits) */
-    return DBL2NUM(d);
+    if (d == 0.0) return DBL2NUM(-HUGE_VAL);
+
+    return DBL2NUM(log10(d) + numbits * log10(2)); /* log10(d * 2 ** numbits) */
 }
+
+static VALUE rb_math_sqrt(VALUE x);
 
 /*
  *  call-seq:
- *     Math.sqrt(x)    -> Float
+ *    Math.sqrt(x) -> float
  *
- *  Returns the non-negative square root of +x+.
+ *  Returns the principal (non-negative) {square root}[https://en.wikipedia.org/wiki/Square_root] of +x+.
  *
- *  Domain: [0, INFINITY)
+ *  - Domain: <tt>[0, INFINITY]</tt>.
+ *  - Range: <tt>[0, INFINITY]</tt>.
  *
- *  Codomain:[0, INFINITY)
+ *  Examples:
  *
- *    0.upto(10) {|x|
- *      p [x, Math.sqrt(x), Math.sqrt(x)**2]
- *    }
- *    #=> [0, 0.0, 0.0]
- *    #   [1, 1.0, 1.0]
- *    #   [2, 1.4142135623731, 2.0]
- *    #   [3, 1.73205080756888, 3.0]
- *    #   [4, 2.0, 4.0]
- *    #   [5, 2.23606797749979, 5.0]
- *    #   [6, 2.44948974278318, 6.0]
- *    #   [7, 2.64575131106459, 7.0]
- *    #   [8, 2.82842712474619, 8.0]
- *    #   [9, 3.0, 9.0]
- *    #   [10, 3.16227766016838, 10.0]
+ *    sqrt(0.0)      # => 0.0
+ *    sqrt(0.5)      # => 0.7071067811865476
+ *    sqrt(1.0)      # => 1.0
+ *    sqrt(2.0)      # => 1.4142135623730951
+ *    sqrt(4.0)      # => 2.0
+ *    sqrt(9.0)      # => 3.0
+ *    sqrt(INFINITY) # => Infinity
+ *
  */
 
 static VALUE
-math_sqrt(VALUE obj, VALUE x)
+math_sqrt(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
-
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
-    /* check for domain error */
-    if (d0 < 0.0) domain_error("sqrt");
-    if (d0 == 0.0) return DBL2NUM(0.0);
-    d = sqrt(d0);
-    return DBL2NUM(d);
+    return rb_math_sqrt(x);
 }
 
-/*
- *  call-seq:
- *     Math.cbrt(x)    -> Float
- *
- *  Returns the cube root of +x+.
- *
- *  Domain: [0, INFINITY)
- *
- *  Codomain:[0, INFINITY)
- *
- *    -9.upto(9) {|x|
- *      p [x, Math.cbrt(x), Math.cbrt(x)**3]
- *    }
- *    #=> [-9, -2.0800838230519, -9.0]
- *    #   [-8, -2.0, -8.0]
- *    #   [-7, -1.91293118277239, -7.0]
- *    #   [-6, -1.81712059283214, -6.0]
- *    #   [-5, -1.7099759466767, -5.0]
- *    #   [-4, -1.5874010519682, -4.0]
- *    #   [-3, -1.44224957030741, -3.0]
- *    #   [-2, -1.25992104989487, -2.0]
- *    #   [-1, -1.0, -1.0]
- *    #   [0, 0.0, 0.0]
- *    #   [1, 1.0, 1.0]
- *    #   [2, 1.25992104989487, 2.0]
- *    #   [3, 1.44224957030741, 3.0]
- *    #   [4, 1.5874010519682, 4.0]
- *    #   [5, 1.7099759466767, 5.0]
- *    #   [6, 1.81712059283214, 6.0]
- *    #   [7, 1.91293118277239, 7.0]
- *    #   [8, 2.0, 8.0]
- *    #   [9, 2.0800838230519, 9.0]
- *
- */
-
-static VALUE
-math_cbrt(VALUE obj, VALUE x)
+inline static VALUE
+f_negative_p(VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(cbrt(RFLOAT_VALUE(x)));
+    if (FIXNUM_P(x))
+        return RBOOL(FIX2LONG(x) < 0);
+    return rb_funcall(x, '<', 1, INT2FIX(0));
+}
+inline static VALUE
+f_signbit(VALUE x)
+{
+    if (RB_FLOAT_TYPE_P(x)) {
+        double f = RFLOAT_VALUE(x);
+        return RBOOL(!isnan(f) && signbit(f));
+    }
+    return f_negative_p(x);
+}
+
+static VALUE
+rb_math_sqrt(VALUE x)
+{
+    double d;
+
+    if (RB_TYPE_P(x, T_COMPLEX)) {
+        VALUE neg = f_signbit(RCOMPLEX(x)->imag);
+        double re = Get_Double(RCOMPLEX(x)->real), im;
+        d = Get_Double(rb_complex_abs(x));
+        im = sqrt((d - re) / 2.0);
+        re = sqrt((d + re) / 2.0);
+        if (neg) im = -im;
+        return rb_complex_new(DBL2NUM(re), DBL2NUM(im));
+    }
+    d = Get_Double(x);
+    domain_check_min(d, 0.0, "sqrt");
+    if (d == 0.0) return DBL2NUM(0.0);
+    return DBL2NUM(sqrt(d));
 }
 
 /*
  *  call-seq:
- *     Math.frexp(x)    -> [fraction, exponent]
+ *    Math.cbrt(x) -> float
  *
- *  Returns a two-element array containing the normalized fraction (a Float)
- *  and exponent (a Fixnum) of +x+.
+ *  Returns the {cube root}[https://en.wikipedia.org/wiki/Cube_root] of +x+.
  *
- *     fraction, exponent = Math.frexp(1234)   #=> [0.6025390625, 11]
- *     fraction * 2**exponent                  #=> 1234.0
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
+ *
+ *  Examples:
+ *
+ *    cbrt(-INFINITY) # => -Infinity
+ *    cbrt(-27.0)     # => -3.0
+ *    cbrt(-8.0)      # => -2.0
+ *    cbrt(-2.0)      # => -1.2599210498948732
+ *    cbrt(1.0)       # => 1.0
+ *    cbrt(0.0)       # => 0.0
+ *    cbrt(1.0)       # => 1.0
+ *    cbrt(2.0)       # => 1.2599210498948732
+ *    cbrt(8.0)       # => 2.0
+ *    cbrt(27.0)      # => 3.0
+ *    cbrt(INFINITY)  # => Infinity
+ *
  */
 
 static VALUE
-math_frexp(VALUE obj, VALUE x)
+math_cbrt(VALUE unused_obj, VALUE x)
+{
+    double f = Get_Double(x);
+    double r = cbrt(f);
+#if defined __GLIBC__
+    if (isfinite(r) && !(f == 0.0 && r == 0.0)) {
+        r = (2.0 * r + (f / r / r)) / 3.0;
+    }
+#endif
+    return DBL2NUM(r);
+}
+
+/*
+ *  call-seq:
+ *    Math.frexp(x) -> [fraction, exponent]
+ *
+ *  Returns a 2-element array containing the normalized signed float +fraction+
+ *  and integer +exponent+ of +x+ such that:
+ *
+ *    x = fraction * 2**exponent
+ *
+ *  See {IEEE 754 double-precision binary floating-point format: binary64}[https://en.wikipedia.org/wiki/Double-precision_floating-point_format#IEEE_754_double-precision_binary_floating-point_format:_binary64].
+ *
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range <tt>[-INFINITY, INFINITY]</tt>.
+ *
+ *  Examples:
+ *
+ *    frexp(-INFINITY) # => [-Infinity, -1]
+ *    frexp(-2.0)      # => [-0.5, 2]
+ *    frexp(-1.0)      # => [-0.5, 1]
+ *    frexp(0.0)       # => [0.0, 0]
+ *    frexp(1.0)       # => [0.5, 1]
+ *    frexp(2.0)       # => [0.5, 2]
+ *    frexp(INFINITY)  # => [Infinity, -1]
+ *
+ *  Related: Math.ldexp (inverse of Math.frexp).
+ *
+ */
+
+static VALUE
+math_frexp(VALUE unused_obj, VALUE x)
 {
     double d;
     int exp;
 
-    Need_Float(x);
-
-    d = frexp(RFLOAT_VALUE(x), &exp);
+    d = frexp(Get_Double(x), &exp);
     return rb_assoc_new(DBL2NUM(d), INT2NUM(exp));
 }
 
 /*
  *  call-seq:
- *     Math.ldexp(fraction, exponent) -> float
+ *    Math.ldexp(fraction, exponent) -> float
  *
- *  Returns the value of +fraction+*(2**+exponent+).
+ *  Returns the value of <tt>fraction * 2**exponent</tt>.
  *
- *     fraction, exponent = Math.frexp(1234)
- *     Math.ldexp(fraction, exponent)   #=> 1234.0
+ *  - Domain of +fraction+: <tt>[0.0, 1.0)</tt>.
+ *  - Domain of +exponent+: <tt>[0, 1024]</tt>
+ *    (larger values are equivalent to 1024).
+ *
+ *  See {IEEE 754 double-precision binary floating-point format: binary64}[https://en.wikipedia.org/wiki/Double-precision_floating-point_format#IEEE_754_double-precision_binary_floating-point_format:_binary64].
+ *
+ *  Examples:
+ *
+ *    ldexp(-INFINITY, -1) # => -Infinity
+ *    ldexp(-0.5, 2)       # => -2.0
+ *    ldexp(-0.5, 1)       # => -1.0
+ *    ldexp(0.0, 0)        # => 0.0
+ *    ldexp(-0.5, 1)       # => 1.0
+ *    ldexp(-0.5, 2)       # => 2.0
+ *    ldexp(INFINITY, -1)  # => Infinity
+ *
+ *  Related: Math.frexp (inverse of Math.ldexp).
+ *
  */
 
 static VALUE
-math_ldexp(VALUE obj, VALUE x, VALUE n)
+math_ldexp(VALUE unused_obj, VALUE x, VALUE n)
 {
-    Need_Float(x);
-    return DBL2NUM(ldexp(RFLOAT_VALUE(x), NUM2INT(n)));
+    return DBL2NUM(ldexp(Get_Double(x), NUM2INT(n)));
 }
 
 /*
  *  call-seq:
- *     Math.hypot(x, y)    -> Float
+ *    Math.hypot(a, b) -> float
  *
- *  Returns sqrt(x**2 + y**2), the hypotenuse of a right-angled triangle with
- *  sides +x+ and +y+.
+ *  Returns <tt>sqrt(a**2 + b**2)</tt>,
+ *  which is the length of the longest side +c+ (the hypotenuse)
+ *  of the right triangle whose other sides have lengths +a+ and +b+.
  *
- *     Math.hypot(3, 4)   #=> 5.0
+ *  - Domain of +a+: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Domain of +ab: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[0, INFINITY]</tt>.
+ *
+ *  Examples:
+ *
+ *    hypot(0.0, 1.0)       # => 1.0
+ *    hypot(1.0, 1.0)       # => 1.4142135623730951 # sqrt(2.0)
+ *    hypot(3.0, 4.0)       # => 5.0
+ *    hypot(5.0, 12.0)      # => 13.0
+ *    hypot(1.0, sqrt(3.0)) # => 1.9999999999999998 # Near 2.0
+ *
+ *  Note that if either argument is +INFINITY+ or <tt>-INFINITY</tt>,
+ *  the result is +Infinity+.
+ *
  */
 
 static VALUE
-math_hypot(VALUE obj, VALUE x, VALUE y)
+math_hypot(VALUE unused_obj, VALUE x, VALUE y)
 {
-    Need_Float2(x, y);
-    return DBL2NUM(hypot(RFLOAT_VALUE(x), RFLOAT_VALUE(y)));
+    return DBL2NUM(hypot(Get_Double(x), Get_Double(y)));
 }
 
 /*
  * call-seq:
- *    Math.erf(x)  -> Float
+ *   Math.erf(x) -> float
  *
- *  Calculates the error function of +x+.
+ *  Returns the value of the {Gauss error function}[https://en.wikipedia.org/wiki/Error_function] for +x+.
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[-1, 1]</tt>.
  *
- *  Codomain: (-1, 1)
+ *  Examples:
  *
- *    Math.erf(0) #=> 0.0
+ *    erf(-INFINITY) # => -1.0
+ *    erf(0.0)       # => 0.0
+ *    erf(INFINITY)  # => 1.0
+ *
+ *  Related: Math.erfc.
  *
  */
 
 static VALUE
-math_erf(VALUE obj, VALUE x)
+math_erf(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(erf(RFLOAT_VALUE(x)));
+    return DBL2NUM(erf(Get_Double(x)));
 }
 
 /*
  * call-seq:
  *    Math.erfc(x)  -> Float
  *
- *  Calculates the complementary error function of x.
+ *  Returns the value of the {complementary error function}[https://en.wikipedia.org/wiki/Error_function#Complementary_error_function] for +x+.
  *
- *  Domain: (-INFINITY, INFINITY)
+ *  - Domain: <tt>[-INFINITY, INFINITY]</tt>.
+ *  - Range: <tt>[0, 2]</tt>.
  *
- *  Codomain: (0, 2)
+ *  Examples:
  *
- *    Math.erfc(0) #=> 1.0
+ *    erfc(-INFINITY) # => 2.0
+ *    erfc(0.0)       # => 1.0
+ *    erfc(INFINITY)  # => 0.0
+ *
+ *  Related: Math.erf.
  *
  */
 
 static VALUE
-math_erfc(VALUE obj, VALUE x)
+math_erfc(VALUE unused_obj, VALUE x)
 {
-    Need_Float(x);
-    return DBL2NUM(erfc(RFLOAT_VALUE(x)));
+    return DBL2NUM(erfc(Get_Double(x)));
 }
 
 /*
  * call-seq:
- *    Math.gamma(x)  -> Float
+ *   Math.gamma(x) -> float
  *
- *  Calculates the gamma function of x.
+ *  Returns the value of the {gamma function}[https://en.wikipedia.org/wiki/Gamma_function] for +x+.
  *
- *  Note that gamma(n) is same as fact(n-1) for integer n > 0.
- *  However gamma(n) returns float and can be an approximation.
+ *  - Domain: <tt>(-INFINITY, INFINITY]</tt> excluding negative integers.
+ *  - Range: <tt>[-INFINITY, INFINITY]</tt>.
  *
- *   def fact(n) (1..n).inject(1) {|r,i| r*i } end
- *   1.upto(26) {|i| p [i, Math.gamma(i), fact(i-1)] }
- *   #=> [1, 1.0, 1]
- *   #   [2, 1.0, 1]
- *   #   [3, 2.0, 2]
- *   #   [4, 6.0, 6]
- *   #   [5, 24.0, 24]
- *   #   [6, 120.0, 120]
- *   #   [7, 720.0, 720]
- *   #   [8, 5040.0, 5040]
- *   #   [9, 40320.0, 40320]
- *   #   [10, 362880.0, 362880]
- *   #   [11, 3628800.0, 3628800]
- *   #   [12, 39916800.0, 39916800]
- *   #   [13, 479001600.0, 479001600]
- *   #   [14, 6227020800.0, 6227020800]
- *   #   [15, 87178291200.0, 87178291200]
- *   #   [16, 1307674368000.0, 1307674368000]
- *   #   [17, 20922789888000.0, 20922789888000]
- *   #   [18, 355687428096000.0, 355687428096000]
- *   #   [19, 6.402373705728e+15, 6402373705728000]
- *   #   [20, 1.21645100408832e+17, 121645100408832000]
- *   #   [21, 2.43290200817664e+18, 2432902008176640000]
- *   #   [22, 5.109094217170944e+19, 51090942171709440000]
- *   #   [23, 1.1240007277776077e+21, 1124000727777607680000]
- *   #   [24, 2.5852016738885062e+22, 25852016738884976640000]
- *   #   [25, 6.204484017332391e+23, 620448401733239439360000]
- *   #   [26, 1.5511210043330954e+25, 15511210043330985984000000]
+ *  Examples:
+ *
+ *    gamma(-2.5)      # => -0.9453087204829431
+ *    gamma(-1.5)      # => 2.3632718012073513
+ *    gamma(-0.5)      # => -3.5449077018110375
+ *    gamma(0.0)      # => Infinity
+ *    gamma(1.0)      # => 1.0
+ *    gamma(2.0)      # => 1.0
+ *    gamma(3.0)      # => 2.0
+ *    gamma(4.0)      # => 6.0
+ *    gamma(5.0)      # => 24.0
+ *
+ *  Related: Math.lgamma.
  *
  */
 
 static VALUE
-math_gamma(VALUE obj, VALUE x)
+math_gamma(VALUE unused_obj, VALUE x)
 {
     static const double fact_table[] = {
         /* fact(0) */ 1.0,
@@ -844,53 +958,81 @@ math_gamma(VALUE obj, VALUE x)
          * impossible to represent exactly in IEEE 754 double which have
          * 53bit mantissa. */
     };
-    double d0, d;
-    double intpart, fracpart;
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
+    enum {NFACT_TABLE = numberof(fact_table)};
+    double d;
+    d = Get_Double(x);
     /* check for domain error */
-    if (isinf(d0) && signbit(d0)) domain_error("gamma");
-    fracpart = modf(d0, &intpart);
-    if (fracpart == 0.0) {
-	if (intpart < 0) domain_error("gamma");
-	if (0 < intpart &&
-	    intpart - 1 < (double)numberof(fact_table)) {
-	    return DBL2NUM(fact_table[(int)intpart - 1]);
-	}
+    if (isinf(d)) {
+        if (signbit(d)) domain_error("gamma");
+        return DBL2NUM(HUGE_VAL);
     }
-    d = tgamma(d0);
-    return DBL2NUM(d);
+    if (d == 0.0) {
+        return signbit(d) ? DBL2NUM(-HUGE_VAL) : DBL2NUM(HUGE_VAL);
+    }
+    if (d == floor(d)) {
+        domain_check_min(d, 0.0, "gamma");
+        if (1.0 <= d && d <= (double)NFACT_TABLE) {
+            return DBL2NUM(fact_table[(int)d - 1]);
+        }
+    }
+    return DBL2NUM(tgamma(d));
 }
 
 /*
  * call-seq:
- *    Math.lgamma(x)  -> [float, -1 or 1]
+ *   Math.lgamma(x) -> [float, -1 or 1]
  *
- *  Calculates the logarithmic gamma of +x+ and the sign of gamma of +x+.
+ *  Returns a 2-element array equivalent to:
  *
- *  Math.lgamma(x) is same as
- *   [Math.log(Math.gamma(x).abs), Math.gamma(x) < 0 ? -1 : 1]
- *  but avoid overflow by Math.gamma(x) for large x.
+ *    [Math.log(Math.gamma(x).abs), Math.gamma(x) < 0 ? -1 : 1]
  *
- *    Math.lgamma(0) #=> [Infinity, 1]
+ *  See {logarithmic gamma function}[https://en.wikipedia.org/wiki/Gamma_function#The_log-gamma_function].
+ *
+ *  - Domain: <tt>(-INFINITY, INFINITY]</tt>.
+ *  - Range of first element: <tt>(-INFINITY, INFINITY]</tt>.
+ *  - Second element is -1 or 1.
+ *
+ *  Examples:
+ *
+ *    lgamma(-4.0) # => [Infinity, -1]
+ *    lgamma(-3.0) # => [Infinity, -1]
+ *    lgamma(-2.0) # => [Infinity, -1]
+ *    lgamma(-1.0) # => [Infinity, -1]
+ *    lgamma(0.0)  # => [Infinity, 1]
+ *
+ *    lgamma(1.0)  # => [0.0, 1]
+ *    lgamma(2.0)  # => [0.0, 1]
+ *    lgamma(3.0)  # => [0.6931471805599436, 1]
+ *    lgamma(4.0)  # => [1.7917594692280545, 1]
+ *
+ *    lgamma(-2.5) # => [-0.05624371649767279, -1]
+ *    lgamma(-1.5) # => [0.8600470153764797, 1]
+ *    lgamma(-0.5) # => [1.265512123484647, -1]
+ *    lgamma(0.5)  # => [0.5723649429247004, 1]
+ *    lgamma(1.5)  # => [-0.12078223763524676, 1]
+ *    lgamma(2.5)      # => [0.2846828704729205, 1]
+ *
+ *  Related: Math.gamma.
  *
  */
 
 static VALUE
-math_lgamma(VALUE obj, VALUE x)
+math_lgamma(VALUE unused_obj, VALUE x)
 {
-    double d0, d;
+    double d;
     int sign=1;
     VALUE v;
-    Need_Float(x);
-    d0 = RFLOAT_VALUE(x);
+    d = Get_Double(x);
     /* check for domain error */
-    if (isinf(d0)) {
-	if (signbit(d0)) domain_error("lgamma");
-	return rb_assoc_new(DBL2NUM(INFINITY), INT2FIX(1));
+    if (isinf(d)) {
+        if (signbit(d)) domain_error("lgamma");
+        return rb_assoc_new(DBL2NUM(HUGE_VAL), INT2FIX(1));
     }
-    d = lgamma_r(d0, &sign);
-    v = DBL2NUM(d);
+    if (d == 0.0) {
+        VALUE vsign = signbit(d) ? INT2FIX(-1) : INT2FIX(+1);
+        return rb_assoc_new(DBL2NUM(HUGE_VAL), vsign);
+    }
+    v = DBL2NUM(lgamma_r(d, &sign));
     return rb_assoc_new(v, INT2FIX(sign));
 }
 
@@ -899,14 +1041,14 @@ math_lgamma(VALUE obj, VALUE x)
 VALUE \
 rb_math_##n(VALUE x)\
 {\
-    return math_##n(rb_mMath, x);\
+    return math_##n(0, x);\
 }
 
 #define exp2(n) \
 VALUE \
 rb_math_##n(VALUE x, VALUE y)\
 {\
-    return math_##n(rb_mMath, x, y);\
+    return math_##n(0, x, y);\
 }
 
 exp2(atan2)
@@ -914,13 +1056,6 @@ exp1(cos)
 exp1(cosh)
 exp1(exp)
 exp2(hypot)
-
-VALUE
-rb_math_log(int argc, const VALUE *argv)
-{
-    return math_log(argc, argv, rb_mMath);
-}
-
 exp1(sin)
 exp1(sinh)
 #if 0
@@ -947,30 +1082,22 @@ exp1(sqrt)
 /*
  *  Document-class: Math
  *
- *  The Math module contains module functions for basic
- *  trigonometric and transcendental functions. See class
- *  Float for a list of constants that
- *  define Ruby's floating point accuracy.
+ *  :include: doc/math/math.rdoc
  *
- *  Domains and codomains are given only for real (not complex) numbers.
  */
 
 
 void
-Init_Math(void)
+InitVM_Math(void)
 {
     rb_mMath = rb_define_module("Math");
     rb_eMathDomainError = rb_define_class_under(rb_mMath, "DomainError", rb_eStandardError);
 
-#ifdef M_PI
     /*  Definition of the mathematical constant PI as a Float number. */
     rb_define_const(rb_mMath, "PI", DBL2NUM(M_PI));
-#else
-    rb_define_const(rb_mMath, "PI", DBL2NUM(atan(1.0)*4.0));
-#endif
 
 #ifdef M_E
-    /*  Definition of the mathematical constant E (e) as a Float number. */
+    /*  Definition of the mathematical constant E for Euler's number (e) as a Float number. */
     rb_define_const(rb_mMath, "E", DBL2NUM(M_E));
 #else
     rb_define_const(rb_mMath, "E", DBL2NUM(exp(1.0)));
@@ -1010,4 +1137,10 @@ Init_Math(void)
 
     rb_define_module_function(rb_mMath, "gamma", math_gamma, 1);
     rb_define_module_function(rb_mMath, "lgamma", math_lgamma, 1);
+}
+
+void
+Init_Math(void)
+{
+    InitVM(Math);
 }

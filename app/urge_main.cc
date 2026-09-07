@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <cstdio>
 #include <filesystem>
+#include <vector>
 
 #include "SDL3/SDL_main.h"
 #include "SDL3/SDL_messagebox.h"
@@ -26,7 +28,10 @@
 #endif
 
 #if defined(OS_ANDROID)
+#include <dirent.h>
+#include <fcntl.h>
 #include <jni.h>
+#include <sys/stat.h>
 #include <sys/system_properties.h>
 #include <unistd.h>
 
@@ -42,6 +47,13 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 static int g_pfd[2];
 static pthread_t g_android_stdio_thread;
+// Path on removable storage (set from Java via nativeSetDiagPath). The engine's
+// stdout/stderr (incl. Ruby's fatal errors) are tee'd here as well, so they
+// survive a native crash and are reachable without ADB.
+static std::string g_diag_path;
+static std::string g_removable_diag_path;
+static bool g_tv_device = false;
+static FILE* g_stdio_fp = nullptr;
 
 static void* StdioTransferThreadFunc(void*) {
   ssize_t rdsz;
@@ -51,6 +63,15 @@ static void* StdioTransferThreadFunc(void*) {
       --rdsz;
     buf[rdsz] = 0; /* add null-terminator */
     __android_log_write(ANDROID_LOG_DEBUG, "urge-stdio", buf);
+    if (!g_diag_path.empty()) {
+      if (g_stdio_fp == nullptr)
+        g_stdio_fp = fopen((g_diag_path + "/stdio.txt").c_str(), "ab");
+      if (g_stdio_fp) {
+        fwrite(buf, 1, rdsz, g_stdio_fp);
+        fputc('\n', g_stdio_fp);
+        fflush(g_stdio_fp);
+      }
+    }
   }
   return 0;
 }
@@ -81,6 +102,78 @@ int SetupAndroidStudioTransfer() {
 extern "C" JNIEXPORT void JNICALL
 Java_com_admenri_urge_URGEMain_nativeSuspendGraphics(JNIEnv*, jclass) {
   renderer::RenderDevice::NotifySurfaceLosing();
+}
+
+// Called from URGEMain.onCreate (Java) right after the native libs are loaded,
+// to tell the engine where to dump logs on removable storage.
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeSetDiagPath(JNIEnv* env, jclass,
+                                                 jstring path) {
+  if (path) {
+    const char* p = env->GetStringUTFChars(path, nullptr);
+    if (p) {
+      g_diag_path = p;
+      env->ReleaseStringUTFChars(path, p);
+    }
+  }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeSetRemovableDiagPath(JNIEnv* env, jclass,
+                                                          jstring path) {
+  if (path) {
+    const char* p = env->GetStringUTFChars(path, nullptr);
+    if (p) {
+      g_removable_diag_path = p;
+      env->ReleaseStringUTFChars(path, p);
+    }
+  }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeSetTvDevice(JNIEnv* env, jclass,
+                                                 jboolean is_tv) {
+  g_tv_device = is_tv == JNI_TRUE;
+}
+
+// Drops the kernel page cache of every regular file under <path> (or of the file
+// itself when <path> is a file). The extraction streams ~1GB of game data (plus a
+// ~1GB APK read for the MD5) through the page cache; on a ~3GB TV with no swap
+// that leaves only ~60MB of free RAM, and the engine's startup burst (RSS +90MB
+// in seconds) then forces heavy direct reclaim — which lmkd answers by killing
+// the process right before the first script runs. Releasing our own clean cache
+// up front gives that burst headroom again.
+static void DropPageCacheUnder(const std::string& path) {
+  struct stat st = {};
+  if (stat(path.c_str(), &st) != 0) return;
+  if (S_ISREG(st.st_mode)) {
+    int fd = open(path.c_str(), O_RDONLY);
+    if (fd >= 0) {
+      posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+      close(fd);
+    }
+    return;
+  }
+  if (!S_ISDIR(st.st_mode)) return;
+
+  DIR* dir = opendir(path.c_str());
+  if (!dir) return;
+  while (dirent* entry = readdir(dir)) {
+    if (!entry) break;
+    if (entry->d_name[0] == '.') continue;
+    DropPageCacheUnder(path + "/" + entry->d_name);
+  }
+  closedir(dir);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeDropPageCache(JNIEnv* env, jclass,
+                                                   jstring path) {
+  if (!path) return;
+  const char* p = env->GetStringUTFChars(path, nullptr);
+  if (!p) return;
+  DropPageCacheUnder(p);
+  env->ReleaseStringUTFChars(path, p);
 }
 
 #endif
@@ -136,7 +229,254 @@ void CreateConsoleWin(bool show) {
 }
 #endif
 
+#if defined(OS_ANDROID)
+// Crash self-capture. When the engine dies on SIGSEGV/SIGABRT/SIGBUS the
+// system's crash_dump writes the backtrace to the logcat ring buffer only —
+// which the diag export may truncate before anyone reads it. Instead we write
+// module+offset frames ourselves, directly (signal-safe open/write), into a
+// dedicated file that the export copies verbatim. The pc offsets are enough to
+// symbolize offline against the local unstripped .so.
+#include <android/log.h>
+#include <fcntl.h>
+#include <dlfcn.h>
+#include <exception>
+#include <signal.h>
+#include <string.h>
+#include <ucontext.h>
+#include <unistd.h>
+#include <unwind.h>
+
+namespace {
+
+void UrgeLogBacktrace();
+void UrgeLogStackFrames(uintptr_t sp);
+void UrgeCrashLogLine(const char* text);
+
+struct UrgeBacktraceState {
+  uintptr_t frames[32];
+  size_t count;
+};
+
+_Unwind_Reason_Code UrgeUnwindCallback(struct _Unwind_Context* context,
+                                       void* arg) {
+  UrgeBacktraceState* state = static_cast<UrgeBacktraceState*>(arg);
+  uintptr_t pc = _Unwind_GetIP(context);
+  if (pc != 0) {
+    if (state->count >= sizeof(state->frames) / sizeof(state->frames[0]))
+      return _URC_END_OF_STACK;
+    state->frames[state->count++] = pc;
+  }
+  return _URC_NO_REASON;
+}
+
+void UrgeWriteCrashReport(int signal_number,
+                          siginfo_t* info,
+                          uintptr_t sp,
+                          uintptr_t pc) {
+  char line[320];
+  // fault_pc is the instruction that actually faulted — the only value here
+  // that needs no unwinding, so it stays trustworthy even when the unwinder
+  // itself dies on a table-less frame. UrgeSetCrashTag() already turned it
+  // into the report's self-describing file name.
+  int n = snprintf(line, sizeof(line),
+                   "==== crash signal=%d fault_addr=%p fault_pc=0x%zx pid=%d ====\n",
+                   signal_number, info ? info->si_addr : nullptr,
+                   static_cast<size_t>(pc), static_cast<int>(getpid()));
+  UrgeCrashLogLine(line);
+
+  // Safe scan first: if the unwinder below crashes on a table-less Ruby frame,
+  // the scan (and the header) are already on disk.
+  UrgeLogStackFrames(sp);
+  UrgeLogBacktrace();
+}
+
+// Self-describing artifact name: the module and pc offset of the faulting
+// instruction go into the FILENAME (crash_<module>_0x<offset>_p<pid>.log), so
+// the diagnosis survives even a corrupted transfer and can be read straight
+// from any file browser without opening the file.
+static char g_crash_file_base[192] = "handler_start";
+
+void UrgeSetCrashTag(uintptr_t pc) {
+  char tag[128] = "unknown";
+  Dl_info sym;
+  memset(&sym, 0, sizeof(sym));
+  if (pc != 0 && dladdr(reinterpret_cast<void*>(pc), &sym) != 0 &&
+      sym.dli_fname != nullptr) {
+    const char* name = strrchr(sym.dli_fname, '/');
+    name = name ? name + 1 : sym.dli_fname;
+    uintptr_t base = reinterpret_cast<uintptr_t>(sym.dli_fbase);
+    snprintf(tag, sizeof(tag), "%s_0x%zx", name,
+             static_cast<size_t>(pc - base));
+  }
+  snprintf(g_crash_file_base, sizeof(g_crash_file_base), "crash_%s_p%d", tag,
+           static_cast<int>(getpid()));
+}
+
+void UrgeCrashLogLine(const char* text) {
+  // Write into every known diag dir: the internal one is only reachable on a
+  // PC through the periodic export (which loses the race against the crash),
+  // while the removable one is the copy the user actually reads. The file name
+  // itself carries the verdict (see UrgeSetCrashTag).
+  const std::string* dirs[] = {&g_diag_path, &g_removable_diag_path};
+  for (const std::string* dir : dirs) {
+    if (dir->empty())
+      continue;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.log", dir->c_str(), g_crash_file_base);
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+      write(fd, text, strlen(text));
+      close(fd);
+    }
+  }
+  __android_log_print(ANDROID_LOG_FATAL, "urgecrash", "%s", text);
+}
+
+void UrgeLogBacktrace() {
+  UrgeBacktraceState state = {};
+  _Unwind_Backtrace(UrgeUnwindCallback, &state);
+
+  char line[320];
+  for (size_t i = 0; i < state.count; ++i) {
+    uintptr_t pc = state.frames[i];
+    Dl_info sym;
+    memset(&sym, 0, sizeof(sym));
+    const char* module = "??";
+    uintptr_t base = 0;
+    if (dladdr(reinterpret_cast<void*>(pc), &sym) != 0 &&
+        sym.dli_fname != nullptr) {
+      module = sym.dli_fname;
+      base = reinterpret_cast<uintptr_t>(sym.dli_fbase);
+    }
+    snprintf(line, sizeof(line), "#%02zu pc %p %s base=%p off=0x%zx\n", i,
+             reinterpret_cast<void*>(pc), module,
+             reinterpret_cast<void*>(base), static_cast<size_t>(pc - base));
+    UrgeCrashLogLine(line);
+  }
+}
+
+// Scan the crashed thread's stack for return addresses.
+//
+// _Unwind_Backtrace consults unwind tables, and Ruby's C frames have none: the
+// unwinder then dereferences garbage and kills the process in the middle of
+// writing the report (the handler itself was crashing). A plain scan touches
+// only the stack page that already contains the SP, so it cannot fault, and the
+// addresses it turns up are symbolized offline.
+void UrgeLogStackFrames(uintptr_t sp) {
+  if (sp == 0)
+    return;
+
+  const uintptr_t kPageMask = ~static_cast<uintptr_t>(4095);
+  uintptr_t start = sp & ~static_cast<uintptr_t>(3);
+  uintptr_t end = (sp & kPageMask) + 4096;  // stay inside the page holding sp
+
+  char line[320];
+  for (uintptr_t addr = start; addr + sizeof(uintptr_t) <= end;
+       addr += sizeof(uintptr_t)) {
+    uintptr_t candidate = *reinterpret_cast<uintptr_t*>(addr);
+    Dl_info sym;
+    memset(&sym, 0, sizeof(sym));
+    if (dladdr(reinterpret_cast<void*>(candidate), &sym) == 0 ||
+        sym.dli_fname == nullptr)
+      continue;
+    uintptr_t base = reinterpret_cast<uintptr_t>(sym.dli_fbase);
+    snprintf(line, sizeof(line), "stack+%04lu pc %p %s base=%p off=0x%zx\n",
+             static_cast<unsigned long>(addr - start),
+             reinterpret_cast<void*>(candidate), sym.dli_fname,
+             reinterpret_cast<void*>(base),
+             static_cast<size_t>(candidate - base));
+    UrgeCrashLogLine(line);
+  }
+}
+
+// An exception that escapes into Ruby's C frames cannot unwind (those frames
+// carry no unwind tables), so it lands here instead of in the binding method's
+// catch block. Capture the message and the stack before aborting: this is the
+// only place where the original cause is still visible.
+void UrgeTerminateHandler() {
+  std::string message = "no active exception";
+  try {
+    std::exception_ptr current = std::current_exception();
+    if (current)
+      std::rethrow_exception(current);
+  } catch (const std::exception& e) {
+    message = e.what();
+  } catch (...) {
+    message = "non-std exception";
+  }
+
+  char line[512];
+  snprintf(line, sizeof(line), "==== std::terminate: %s (pid=%d) ====\n",
+           message.c_str(), static_cast<int>(getpid()));
+  UrgeCrashLogLine(line);
+  UrgeLogStackFrames(reinterpret_cast<uintptr_t>(&message) & ~static_cast<uintptr_t>(3));
+  UrgeLogBacktrace();
+  abort();
+}
+
+void UrgeCrashHandler(int signal_number, siginfo_t* info, void* context) {
+  uintptr_t sp = 0;
+  uintptr_t pc = 0;
+  if (context) {
+    auto* uc = static_cast<ucontext_t*>(context);
+#if defined(__arm__)
+    sp = static_cast<uintptr_t>(uc->uc_mcontext.arm_sp);
+    pc = static_cast<uintptr_t>(uc->uc_mcontext.arm_pc);
+#elif defined(__aarch64__)
+    sp = static_cast<uintptr_t>(uc->uc_mcontext.sp);
+    pc = static_cast<uintptr_t>(uc->uc_mcontext.pc);
+#endif
+  }
+  UrgeSetCrashTag(pc);
+  UrgeWriteCrashReport(signal_number, info, sp, pc);
+  // Restore the default disposition and re-raise so the system still produces
+  // its own tombstone / crash dump on top of our report.
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = SIG_DFL;
+  sigaction(signal_number, &sa, nullptr);
+  raise(signal_number);
+}
+
+void InstallUrgeCrashHandler() {
+  // SA_ONSTACK needs an actual alternate stack. Without one the handler runs on
+  // the faulting thread's stack, which may already be exhausted — the handler
+  // would then die before writing anything.
+  static uint8_t s_alt_stack[64 * 1024];
+  stack_t ss;
+  memset(&ss, 0, sizeof(ss));
+  ss.ss_sp = s_alt_stack;
+  ss.ss_size = sizeof(s_alt_stack);
+  sigaltstack(&ss, nullptr);
+
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_sigaction = UrgeCrashHandler;
+  sa.sa_flags = SA_SIGINFO | SA_RESETHAND | SA_ONSTACK;
+  int r_segv = sigaction(SIGSEGV, &sa, nullptr);
+  int r_abrt = sigaction(SIGABRT, &sa, nullptr);
+  int r_bus = sigaction(SIGBUS, &sa, nullptr);
+  std::set_terminate(UrgeTerminateHandler);
+
+  // Self-check marker: proves the handler is live and shows where the report
+  // would be written. If this banner is missing, the file path itself is wrong
+  // (or this build never reached the engine); if it is present without a crash
+  // record after a crash, something re-installed its own handler on top.
+  char banner[512];
+  snprintf(banner, sizeof(banner),
+           "==== engine start pid=%d diag=%s install=%d,%d,%d ====\n",
+           static_cast<int>(getpid()), g_diag_path.c_str(), r_segv, r_abrt,
+           r_bus);
+  UrgeCrashLogLine(banner);
+}
+
+}  // namespace
+#endif  // OS_ANDROID
+
 int main(int argc, char* argv[]) {
+#if defined(OS_ANDROID)
+  InstallUrgeCrashHandler();
+#endif
 #if defined(OS_WIN)
   // Allocate console if need
   for (int i = 0; i < argc; ++i) {
@@ -249,21 +589,36 @@ int main(int argc, char* argv[]) {
   auto file_sink =
       std::make_shared<spdlog::sinks::basic_file_sink_mt>(app + ".log", true);
   file_sink->set_level(spdlog::level::trace);
+
+  // Extra sink on removable storage so the engine log is reachable without ADB
+  // even when the process native-crashes before Game.log can be copied.
+  std::shared_ptr<spdlog::sinks::basic_file_sink_mt> diag_sink;
+  if (!g_diag_path.empty()) {
+    diag_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+        g_diag_path + "/engine.log", true);
+    diag_sink->set_level(spdlog::level::trace);
+  }
 #else
   auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
   console_sink->set_pattern("[%^%l%$] %v");
 #endif
 
-  spdlog::sinks_init_list logger_sinks = {
+  std::vector<spdlog::sink_ptr> logger_sinks;
 #if defined(OS_ANDROID)
-      android_sink,
-      file_sink,
+  logger_sinks.push_back(android_sink);
+  logger_sinks.push_back(file_sink);
+  if (diag_sink) logger_sinks.push_back(diag_sink);
 #else
-      console_sink,
+  logger_sinks.push_back(console_sink);
 #endif
-  };
 
-  spdlog::logger logger_sink("urgecore", logger_sinks);
+  spdlog::logger logger_sink("urgecore", logger_sinks.begin(),
+                             logger_sinks.end());
+  // Flush on every line. Without this the last few seconds of log sit in the
+  // stdio buffer and are lost when the process dies abruptly — exactly the
+  // window we need (Game.log used to stop mid-script-eval while the engine
+  // kept running for ~6 more seconds before dying).
+  logger_sink.flush_on(spdlog::level::trace);
   base::logging::InitWithLogger(&logger_sink);
 
   LOG(INFO) << "[App] Current Path: "
@@ -332,6 +687,14 @@ int main(int argc, char* argv[]) {
 #endif
       widget_params.title = profile->window_title;
       widget->Init(std::move(widget_params));
+
+#if defined(OS_ANDROID)
+      // SDL and its subsystems may install their own handlers during Init;
+      // re-arm ours so a crash in the game loop still produces a report.
+      InstallUrgeCrashHandler();
+#endif
+
+      binding::MriSetTvDevice(g_tv_device);
 
       // Setup content runner module
       content::ContentRunner::InitParams content_params;

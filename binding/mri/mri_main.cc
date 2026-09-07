@@ -31,6 +31,12 @@ content::ExecutionContext* g_current_execution_context = nullptr;
 extern filesystem::IOService* g_io_service;
 
 namespace {
+bool s_tv_device = false;
+}  // namespace
+
+void MriSetTvDevice(bool is_tv) { s_tv_device = is_tv; }
+
+namespace {
 
 VALUE EvalString(VALUE string, VALUE filename, int32_t* state) {
   using EvaluteContext = struct {
@@ -96,6 +102,7 @@ static VALUE RescueException(VALUE param, VALUE exception) {
 MRI_METHOD(MRI_RGSSMain) {
   bool gc_required = false;
 
+  LOG(INFO) << "[Binding] Game loop started";
   while (true) {
     VALUE exception = Qnil;
     if (gc_required) {
@@ -103,9 +110,9 @@ MRI_METHOD(MRI_RGSSMain) {
       gc_required = false;
     }
 
-    rb_rescue2(reinterpret_cast<VALUE (*)(ANYARGS)>(RescueCallBlock),
-               rb_block_proc(),
-               reinterpret_cast<VALUE (*)(ANYARGS)>(RescueException),
+    // Ruby 3.x: rb_rescue2 takes strongly-typed callbacks
+    // (VALUE(*)(VALUE) / VALUE(*)(VALUE, VALUE)) — no ANYARGS cast needed.
+    rb_rescue2(RescueCallBlock, rb_block_proc(), RescueException,
                (VALUE)&exception, rb_eException, nullptr);
 
     if (NIL_P(exception))
@@ -117,6 +124,10 @@ MRI_METHOD(MRI_RGSSMain) {
       MriProcessReset();
     } else {
       gc_required = false;
+      // The game raised for real. Log it before re-raising — this is the only
+      // place where the reason for an in-game quit becomes visible.
+      LOG(ERROR) << "[Binding] Game loop exception: "
+                 << ParseExeceptionInfo(exception);
       rb_exc_raise(exception);
     }
   }
@@ -160,6 +171,12 @@ void BindingEngineMri::PreEarlyInitialization(
   RUBY_INIT_STACK;
   ruby_init();
   ruby_init_loadpath();
+
+  // Platform flags for the game scripts: the Android TV boot path cannot feed
+  // the full data preload (the box runs out of RAM before the title screen).
+  rb_define_global_const("URGE_ANDROID_TV", s_tv_device ? Qtrue : Qfalse);
+  LOG(INFO) << "[Binding] URGE_ANDROID_TV = "
+            << (s_tv_device ? "true" : "false");
 
 #if RAPI_FULL >= 300
   rb_call_builtin_inits();
@@ -230,6 +247,9 @@ void BindingEngineMri::OnMainMessageLoopRun(
   if (exception_state.HadException()) {
     std::string error_message;
     exception_state.FetchException(error_message);
+    // The messagebox is easily missed (or unfocusable) on a TV, so the reason
+    // must also land in the log — this is what explains a "silent" quit.
+    LOG(ERROR) << "[Binding] " << error_message;
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "URGE",
                              error_message.c_str(), nullptr);
   }
@@ -292,6 +312,7 @@ void BindingEngineMri::LoadPackedScripts(
     VALUE script_src = rb_ary_entry(script, 2);
 
     unsigned long buffer_size;
+    uint32_t source_size = 0;
 
     int32_t zlib_result = Z_OK;
 
@@ -302,26 +323,49 @@ void BindingEngineMri::LoadPackedScripts(
 
       const uint8_t* source_ptr =
           reinterpret_cast<const uint8_t*>(RSTRING_PTR(script_src));
-      const uint32_t source_size = RSTRING_LEN(script_src);
+      source_size = RSTRING_LEN(script_src);
 
       zlib_result =
           uncompress(buffer_ptr, &buffer_size, source_ptr, source_size);
 
-      buffer_ptr[buffer_size] = '\0';
+      // NOTE: no NUL terminator write here. When uncompress() bails out with
+      // Z_BUF_ERROR it sets *destLen to the whole buffer capacity, so the old
+      // buffer_ptr[buffer_size] = '\0' wrote one byte past the end of the
+      // std::string allocation and corrupted the heap. The corruption blew up
+      // later as a null dereference inside the Ruby VM while the scripts were
+      // being evaluated (SIGSEGV, fault addr 0x0, in rb_class_new_instance).
 
-      if (zlib_result != Z_BUF_ERROR)
+      // zlib reports Z_DATA_ERROR (-3) instead of Z_BUF_ERROR (-5) whenever the
+      // output buffer ran out AND the whole input had already been consumed
+      // (see uncompress2() in zlib). Both codes mean "buffer too small" here, so
+      // both have to trigger a retry with a bigger buffer.
+      if (zlib_result != Z_BUF_ERROR && zlib_result != Z_DATA_ERROR)
         break;
 
-      zlib_decode_buffer.resize(zlib_decode_buffer.size() * 2);
+      // Grow-only, and never below the initial size: an empty script would
+      // otherwise leave the buffer at zero, where doubling can never recover.
+      size_t next_size = zlib_decode_buffer.size() * 2;
+      if (next_size < 0x1000) next_size = 0x1000;
+      if (next_size > (size_t)64 * 1024 * 1024) break;  // sanity cap
+      zlib_decode_buffer.resize(next_size);
     }
 
     if (zlib_result != Z_OK) {
+      // zlib codes: -3 Z_DATA_ERROR (corrupt input), -4 Z_MEM_ERROR,
+      // -5 Z_BUF_ERROR. Logging the code plus the input size makes the real
+      // failure reason visible without a debugger.
       LOG(INFO) << "[Binding] Error when decoding: "
-                << StringValueCStr(script_name);
+                << StringValueCStr(script_name) << " (zlib code " << zlib_result
+                << ", source " << source_size << " bytes)";
       break;
     }
 
-    rb_ary_store(script, 3, rb_str_new_cstr(zlib_decode_buffer.c_str()));
+    // Hand the exact byte range to Ruby, so embedded NUL bytes cannot truncate
+    // the script source. The decode buffer itself is deliberately NOT shrunk
+    // back: it is grow-only, otherwise a tiny script leaves it too small for the
+    // next one and zlib reports that as a data error.
+    rb_ary_store(script, 3,
+                 rb_str_new(zlib_decode_buffer.data(), (long)buffer_size));
   }
 
   for (;;) {
@@ -329,6 +373,23 @@ void BindingEngineMri::LoadPackedScripts(
       VALUE script = rb_ary_entry(packed_scripts, i);
       VALUE script_name = rb_ary_entry(script, 1);
       VALUE script_source = rb_ary_entry(script, 3);
+
+      // The decode loop above stops at the first script it cannot decompress,
+      // so every later entry keeps Qnil here. Dereferencing that used to be a
+      // guaranteed SIGSEGV (Qnil is 4 on 32-bit); skip out with a message
+      // instead so the log shows which script actually failed.
+      if (!RB_TYPE_P(script_source, RUBY_T_STRING)) {
+        LOG(ERROR) << "[Binding] Script #" << (i + 1)
+                   << " has no decoded source, decoding already failed on \""
+                   << StringValueCStr(script_name) << "\"";
+        break;
+      }
+
+      // Logged before every eval, so the last "Evaluating script" line in the log
+      // identifies the exact script that dies inside the Ruby VM (a native crash
+      // carries no Ruby backtrace of its own).
+      LOG(INFO) << "[Binding] Evaluating script #" << (i + 1) << ": "
+                << StringValueCStr(script_name);
 
       std::stringstream format_filename;
       format_filename << std::to_string(i + 1) << " - "
@@ -339,8 +400,13 @@ void BindingEngineMri::LoadPackedScripts(
       EvalString(
           MriStringUTF8(RSTRING_PTR(script_source), RSTRING_LEN(script_source)),
           MriStringUTF8(filename.data(), filename.size()), &state);
-      if (state)
+      if (state) {
+        // A failed eval used to break out silently: the engine kept running
+        // without the rest of the scripts and the reason never reached any log.
+        LOG(ERROR) << "[Binding] Script eval failed: "
+                   << ParseExeceptionInfo(rb_errinfo());
         break;
+      }
     }
 
     VALUE exception = rb_errinfo();

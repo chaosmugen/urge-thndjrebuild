@@ -35,12 +35,12 @@ rb_call_end_proc(VALUE data)
  */
 
 static VALUE
-rb_f_at_exit(void)
+rb_f_at_exit(VALUE _)
 {
     VALUE proc;
 
     if (!rb_block_given_p()) {
-	rb_raise(rb_eArgError, "called without a block");
+        rb_raise(rb_eArgError, "called without a block");
     }
     proc = rb_block_proc();
     rb_set_end_proc(rb_call_end_proc, proc);
@@ -48,9 +48,8 @@ rb_f_at_exit(void)
 }
 
 struct end_proc_data {
-    void (*func) ();
+    void (*func) (VALUE);
     VALUE data;
-    int safe;
     struct end_proc_data *next;
 };
 
@@ -64,15 +63,14 @@ rb_set_end_proc(void (*func)(VALUE), VALUE data)
     rb_thread_t *th = GET_THREAD();
 
     if (th->top_wrapper) {
-	list = &ephemeral_end_procs;
+        list = &ephemeral_end_procs;
     }
     else {
-	list = &end_procs;
+        list = &end_procs;
     }
     link->next = *list;
     link->func = func;
     link->data = data;
-    link->safe = rb_safe_level();
     *list = link;
 }
 
@@ -83,57 +81,54 @@ rb_mark_end_proc(void)
 
     link = end_procs;
     while (link) {
-	rb_gc_mark(link->data);
-	link = link->next;
+        rb_gc_mark(link->data);
+        link = link->next;
     }
     link = ephemeral_end_procs;
     while (link) {
-	rb_gc_mark(link->data);
-	link = link->next;
+        rb_gc_mark(link->data);
+        link = link->next;
     }
 }
 
 static void
-exec_end_procs_chain(struct end_proc_data *volatile *procs)
+exec_end_procs_chain(struct end_proc_data *volatile *procs, VALUE *errp)
 {
     struct end_proc_data volatile endproc;
     struct end_proc_data *link;
+    VALUE errinfo = *errp;
 
     while ((link = *procs) != 0) {
-	*procs = link->next;
-	endproc = *link;
-	xfree(link);
-	rb_set_safe_level_force(endproc.safe);
-	(*endproc.func) (endproc.data);
+        *procs = link->next;
+        endproc = *link;
+        xfree(link);
+        (*endproc.func) (endproc.data);
+        *errp = errinfo;
     }
 }
 
-void
-rb_exec_end_proc(void)
+static void
+rb_ec_exec_end_proc(rb_execution_context_t * ec)
 {
-    int status;
-    volatile int safe = rb_safe_level();
-    rb_thread_t *th = GET_THREAD();
-    volatile VALUE errinfo = th->errinfo;
+    enum ruby_tag_type state;
+    volatile VALUE errinfo = ec->errinfo;
+    volatile bool finished = false;
 
-    PUSH_TAG();
-    if ((status = EXEC_TAG()) == 0) {
-      again:
-	exec_end_procs_chain(&ephemeral_end_procs);
-	exec_end_procs_chain(&end_procs);
+    while (!finished) {
+        EC_PUSH_TAG(ec);
+        if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+            exec_end_procs_chain(&ephemeral_end_procs, &ec->errinfo);
+            exec_end_procs_chain(&end_procs, &ec->errinfo);
+            finished = true;
+        }
+        EC_POP_TAG();
+        if (state != TAG_NONE) {
+            error_handle(ec, ec->errinfo, state);
+            if (!NIL_P(ec->errinfo)) errinfo = ec->errinfo;
+        }
     }
-    else {
-	VAR_INITIALIZED(th);
-	TH_TMPPOP_TAG();
-	error_handle(status);
-	if (!NIL_P(th->errinfo)) errinfo = th->errinfo;
-	TH_REPUSH_TAG();
-	goto again;
-    }
-    POP_TAG();
 
-    rb_set_safe_level_force(safe);
-    th->errinfo = errinfo;
+    ec->errinfo = errinfo;
 }
 
 void

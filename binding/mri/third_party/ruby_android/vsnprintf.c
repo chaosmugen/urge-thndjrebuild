@@ -101,23 +101,12 @@
 # endif
 #endif
 
-#if defined(__hpux) && !defined(__GNUC__) && !defined(__STDC__)
-#define const
-#endif
-
 #if defined(sgi)
 #undef __const
 #define __const
 #endif /* People who don't like const sys_error */
 
 #include <stddef.h>
-#if defined(__hpux) && !defined(__GNUC__) || defined(__DECC)
-#include <string.h>
-#endif
-
-#if !defined(__CYGWIN32__) && defined(__hpux) && !defined(__GNUC__)
-#include <stdlib.h>
-#endif
 
 #ifndef NULL
 #define	NULL	0
@@ -161,11 +150,13 @@ struct __sbuf {
  * _ub, _up, and _ur are used when ungetc() pushes back more characters
  * than fit in the current _bf, or when ungetc() pushes back a character
  * that does not match the previous one in _bf.  When this happens,
- * _ub._base becomes non-nil (i.e., a stream has ungetc() data iff
+ * _ub._base becomes non-nil (i.e., a stream has ungetc() data if and only if
  * _ub._base!=NULL) and _up and _ur save the current values of _p and _r.
  *
  * NB: see WARNING above before changing the layout of this structure!
  */
+struct __suio;
+
 typedef	struct __sFILE {
 	unsigned char *_p;	/* current position in (some) buffer */
 #if 0
@@ -175,9 +166,11 @@ typedef	struct __sFILE {
 	short	_flags;		/* flags, below; this FILE is free if 0 */
 	short	_file;		/* fileno, if Unix descriptor, else -1 */
 	struct	__sbuf _bf;	/* the buffer (at least 1 byte, if !NULL) */
+#if 0
 	size_t	_lbfsize;	/* 0 or -_bf._size, for inline putc */
-	int	(*vwrite)(/* struct __sFILE*, struct __suio * */);
-	char	*(*vextra)(/* struct __sFILE*, size_t, void*, long*, int */);
+#endif
+	int	(*vwrite)(struct __sFILE*, struct __suio *);
+	const char *(*vextra)(struct __sFILE*, size_t, void*, long*, int);
 } FILE;
 
 
@@ -194,7 +187,7 @@ typedef	struct __sFILE {
 #define	__SSTR	0x0200		/* this is an sprintf/snprintf string */
 #define	__SOPT	0x0400		/* do fseek() optimisation */
 #define	__SNPT	0x0800		/* do not do fseek() optimisation */
-#define	__SOFF	0x1000		/* set iff _offset is in fact correct */
+#define	__SOFF	0x1000		/* set if and only if _offset is in fact correct */
 #define	__SMOD	0x2000		/* true => fgetln modified _p text */
 
 
@@ -247,9 +240,7 @@ BSD__sfvwrite(register FILE *fp, register struct __suio *uio)
 
 	if ((len = uio->uio_resid) == 0)
 		return (0);
-#ifndef __hpux
 #define	MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
 #define	COPY(n)	  (void)memcpy((void *)fp->_p, (void *)p, (size_t)(n))
 
 	iov = uio->uio_iov;
@@ -510,6 +501,12 @@ static int exponent(char *, int, int);
 
 #endif /* FLOATING_POINT */
 
+#ifndef lower_hexdigits
+# define lower_hexdigits "0123456789abcdef"
+#endif
+#ifndef upper_hexdigits
+# define upper_hexdigits "0123456789ABCDEF"
+#endif
 
 /*
  * Flags used during conversion.
@@ -527,9 +524,13 @@ static int exponent(char *, int, int);
 #define	SHORTINT	0x040		/* short integer */
 #define	ZEROPAD		0x080		/* zero (as opposed to blank) pad */
 #define FPT		0x100		/* Floating point number */
+ATTRIBUTE_NO_ADDRESS_SAFETY_ANALYSIS(static ssize_t BSD_vfprintf(FILE *fp, const char *fmt0, va_list ap));
 static ssize_t
 BSD_vfprintf(FILE *fp, const char *fmt0, va_list ap)
 {
+#ifdef PRI_EXTRA_MARK
+	const int PRI_EXTRA_MARK_LEN = rb_strlen_lit(PRI_EXTRA_MARK);
+#endif
 	register const char *fmt; /* format string */
 	register int ch;	/* character from fmt */
 	register int n;		/* handy integer (short term usage) */
@@ -549,9 +550,9 @@ BSD_vfprintf(FILE *fp, const char *fmt0, va_list ap)
 	int fprec = 0;		/* floating point precision */
 	char expstr[7];		/* buffer for exponent string */
 #endif
-	u_long UNINITIALIZED_VAR(ulval); /* integer arguments %[diouxX] */
+	u_long MAYBE_UNUSED(ulval) = 0; /* integer arguments %[diouxX] */
 #ifdef _HAVE_SANE_QUAD_
-	u_quad_t UNINITIALIZED_VAR(uqval); /* %q integers */
+	u_quad_t MAYBE_UNUSED(uqval) = 0; /* %q integers */
 #endif /* _HAVE_SANE_QUAD_ */
 	int base;		/* base for [diouxX] conversion */
 	int dprec;		/* a copy of prec if [diouxX], 0 otherwise */
@@ -636,7 +637,7 @@ BSD_vfprintf(FILE *fp, const char *fmt0, va_list ap)
 	    flags&SHORTINT ? (u_long)(u_short)va_arg(ap, int) : \
 	    (u_long)va_arg(ap, u_int))
 
-	/* optimise fprintf(stderr) (and other unbuffered Unix files) */
+	/* optimize fprintf(stderr) (and other unbuffered Unix files) */
 	if ((fp->_flags & (__SNBF|__SWR|__SRW)) == (__SNBF|__SWR) &&
 	    fp->_file >= 0)
 		return (BSD__sbprintf(fp, fmt0, ap));
@@ -807,12 +808,11 @@ reswitch:	switch (ch) {
 # define INTPTR_FLAG 0
 #endif
 #ifdef PRI_EXTRA_MARK
-# define PRI_EXTRA_MARK_LEN (sizeof(PRI_EXTRA_MARK)-1)
 # define IS_PRI_EXTRA_MARK(s) \
 	(PRI_EXTRA_MARK_LEN < 1 || \
 	 (*(s) == PRI_EXTRA_MARK[0] && \
 	  (PRI_EXTRA_MARK_LEN == 1 || \
-	   strncmp((s)+1, PRI_EXTRA_MARK+1, \
+	   strncmp((s)+1, &PRI_EXTRA_MARK[1], \
 		   PRI_EXTRA_MARK_LEN-1) == 0)))
 #else
 # define PRI_EXTRA_MARK_LEN 0
@@ -993,7 +993,7 @@ fp_begin:		_double = va_arg(ap, double);
 #endif /* _HAVE_SANE_QUAD_ */
 #endif
 			base = 16;
-			xdigs = "0123456789abcdef";
+			xdigs = lower_hexdigits;
 			ch = 'x';
 			goto nosign;
 		case 's':
@@ -1031,10 +1031,10 @@ fp_begin:		_double = va_arg(ap, double);
 			base = 10;
 			goto nosign;
 		case 'X':
-			xdigs = "0123456789ABCDEF";
+			xdigs = upper_hexdigits;
 			goto hex;
 		case 'x':
-			xdigs = "0123456789abcdef";
+			xdigs = lower_hexdigits;
 hex:
 #ifdef _HAVE_SANE_QUAD_
 			if (flags & QUADINT)
@@ -1111,11 +1111,11 @@ number:			if ((dprec = prec) >= 0)
 		 */
 		fieldsz = size;
 long_len:
-		if (sign)
-			fieldsz++;
-		if (flags & HEXPREFIX)
-			fieldsz += 2;
 		realsz = dprec > fieldsz ? dprec : fieldsz;
+		if (sign)
+			realsz++;
+		if (flags & HEXPREFIX)
+			realsz += 2;
 
 		/* right-adjusting blank padding */
 		if ((flags & (LADJUST|ZEROPAD)) == 0)
@@ -1137,10 +1137,6 @@ long_len:
 
 		/* leading zeroes from decimal precision */
 		PAD_L(dprec - fieldsz, zeroes);
-		if (sign)
-			fieldsz--;
-		if (flags & HEXPREFIX)
-			fieldsz -= 2;
 
 		/* the string or number proper */
 #ifdef FLOATING_POINT
@@ -1244,14 +1240,14 @@ cvt(double value, int ndigits, int flags, char *sign, int *decpt, int ch, int *l
 	if (value < 0) {
 		value = -value;
 		*sign = '-';
-	} else if (value == 0.0 && 1.0/value < 0) {
+	} else if (value == 0.0 && signbit(value)) {
 	    *sign = '-';
 	} else {
 	    *sign = '\000';
 	}
 	if (ch == 'a' || ch =='A') {
 	    digits = BSD__hdtoa(value,
-		    ch == 'a' ? "0123456789abcdef" : "0123456789ABCDEF",
+		    ch == 'a' ? lower_hexdigits : upper_hexdigits,
 		    ndigits, decpt, &dsgn, &rve);
 	}
 	else {
@@ -1259,8 +1255,8 @@ cvt(double value, int ndigits, int flags, char *sign, int *decpt, int ch, int *l
 	}
 	buf[0] = 0; /* rve - digits may be 0 */
 	memcpy(buf, digits, rve - digits);
-	xfree(digits);
 	rve = buf + (rve - digits);
+	free(digits);
 	digits = buf;
 	if (flags & ALT) {	/* Print trailing zeros */
 		bp = digits + ndigits;
@@ -1305,43 +1301,3 @@ exponent(char *p0, int exp, int fmtch)
 	return (int)(p - p0);
 }
 #endif /* FLOATING_POINT */
-
-int
-ruby_vsnprintf(char *str, size_t n, const char *fmt, va_list ap)
-{
-	int ret;
-	FILE f;
-
-	if ((int)n < 1)
-		return (EOF);
-	f._flags = __SWR | __SSTR;
-	f._bf._base = f._p = (unsigned char *)str;
-	f._bf._size = f._w = n - 1;
-	f.vwrite = BSD__sfvwrite;
-	f.vextra = 0;
-	ret = (int)BSD_vfprintf(&f, fmt, ap);
-	*f._p = 0;
-	return (ret);
-}
-
-int
-ruby_snprintf(char *str, size_t n, char const *fmt, ...)
-{
-	int ret;
-	va_list ap;
-	FILE f;
-
-	if ((int)n < 1)
-		return (EOF);
-
-	va_start(ap, fmt);
-	f._flags = __SWR | __SSTR;
-	f._bf._base = f._p = (unsigned char *)str;
-	f._bf._size = f._w = n - 1;
-	f.vwrite = BSD__sfvwrite;
-	f.vextra = 0;
-	ret = (int)BSD_vfprintf(&f, fmt, ap);
-	*f._p = 0;
-	va_end(ap);
-	return (ret);
-}

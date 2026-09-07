@@ -7,7 +7,7 @@
  window of the process executing the instruction will not be flushed
  correctly.
 
- See http://bugs.ruby-lang.org/issues/5244 for discussion.
+ See https://bugs.ruby-lang.org/issues/5244 for discussion.
 *********************************************************************/
 void
 rb_sparc_flush_register_windows(void)
@@ -15,7 +15,7 @@ rb_sparc_flush_register_windows(void)
 /*
  * gcc doesn't provide "asm" keyword if -ansi and the various -std options
  * are given.
- * http://gcc.gnu.org/onlinedocs/gcc/Alternate-Keywords.html
+ * https://gcc.gnu.org/onlinedocs/gcc/Alternate-Keywords.html
  */
 #ifndef __GNUC__
 #define __asm__ asm
@@ -26,7 +26,7 @@ rb_sparc_flush_register_windows(void)
     __volatile__
 #endif
 
-/* This condition should be in sync with one in configure.in */
+/* This condition should be in sync with one in configure.ac */
 #if defined(__sparcv9) || defined(__sparc_v9__) || defined(__arch64__)
 # ifdef __GNUC__
     ("flushw" : : : "%o7")

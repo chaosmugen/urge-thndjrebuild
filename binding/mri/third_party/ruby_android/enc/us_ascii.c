@@ -1,4 +1,11 @@
 #include "regenc.h"
+#ifdef RUBY
+# include "encindex.h"
+#endif
+
+#ifndef ENCINDEX_US_ASCII
+# define ENCINDEX_US_ASCII 0
+#endif
 
 static int
 us_ascii_mbc_enc_len(const UChar* p, const UChar* e, OnigEncoding enc)
@@ -25,7 +32,8 @@ OnigEncodingDefine(us_ascii, US_ASCII) = {
   onigenc_not_support_get_ctype_code_range,
   onigenc_single_byte_left_adjust_char_head,
   onigenc_always_true_is_allowed_reverse_match,
-  0,
+  onigenc_single_byte_ascii_only_case_map,
+  ENCINDEX_US_ASCII,
   ONIGENC_FLAG_NONE,
 };
 ENC_ALIAS("ASCII", "US-ASCII")

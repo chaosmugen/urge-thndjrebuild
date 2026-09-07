@@ -22,7 +22,11 @@ endif()
 ## TODO: Enhance ruby build ins
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   add_subdirectory(third_party/ruby_android)
-  include_directories(third_party/ruby_android/include)
+  include_directories(
+    third_party/ruby_android/include
+    # Generated config.h lives per-ABI: config/<abi>/ruby/config.h
+    third_party/ruby_android/config/${ANDROID_ABI}
+  )
 else()
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # Find ruby headers, libs in system

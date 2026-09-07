@@ -9,12 +9,15 @@ if $".grep(/mkmf/).empty?
 end
 require 'erb'
 
+CONFIG['srcdir'] = RbConfig::CONFIG['srcdir']
 CONFIG["MAKEDIRS"] ||= '$(MINIRUBY) -run -e mkdir -- -p'
 
 BUILTIN_ENCS = []
 BUILTIN_TRANSES = []
 ENC_PATTERNS = []
 NOENC_PATTERNS = []
+TRANS_PATTERNS = []
+NOTRANS_PATTERNS = []
 module_type = :dynamic
 
 until ARGV.empty?
@@ -31,6 +34,12 @@ until ARGV.empty?
   when /\A--no-encs=/
     NOENC_PATTERNS.concat $'.split
     ARGV.shift
+  when /\A--transes=/
+    TRANS_PATTERNS.concat $'.split
+    ARGV.shift
+  when /\A--no-transes=/
+    NOTRANS_PATTERNS.concat $'.split
+    ARGV.shift
   when /\A--module$/
     ARGV.shift
   when /\A--modulestatic$/
@@ -43,7 +52,7 @@ end
 
 ALPHANUMERIC_ORDER = proc {|e| e.scan(/(\d+)|(\D+)/).map {|n,a| a||[n.size,n.to_i]}.flatten}
 def target_encodings
-  encs = Dir.open($srcdir) {|d| d.grep(/.+\.c\z/)} - BUILTIN_ENCS - ["mktable.c"]
+  encs = Dir.open($srcdir) {|d| d.grep(/.+\.c\z/)} - BUILTIN_ENCS - ["mktable.c", "encinit.c"]
   encs.each {|e| e.chomp!(".c")}
   encs.reject! {|e| !ENC_PATTERNS.any? {|p| File.fnmatch?(p, e)}} if !ENC_PATTERNS.empty?
   encs.reject! {|e| NOENC_PATTERNS.any? {|p| File.fnmatch?(p, e)}}
@@ -51,7 +60,7 @@ def target_encodings
   deps = Hash.new {[]}
   inc_srcs = Hash.new {[]}
   default_deps = %w[regenc.h oniguruma.h config.h defines.h]
-  db = encs.delete("encdb")
+  encs.delete(db = "encdb")
   encs.each do |e|
     File.foreach("#$srcdir/#{e}.c") do |l|
       if /^\s*#\s*include\s+(?:"([^\"]+)"|<(ruby\/\sw+.h)>)/ =~ l
@@ -91,9 +100,14 @@ def target_transcoders
   trans -= BUILTIN_TRANSES
   atrans -= BUILTIN_TRANSES
   trans.uniq!
+  atrans.reject! {|e| !TRANS_PATTERNS.any? {|p| File.fnmatch?(p, e)}} if !TRANS_PATTERNS.empty?
+  atrans.reject! {|e| NOTRANS_PATTERNS.any? {|p| File.fnmatch?(p, e)}}
+  trans.reject! {|e| !TRANS_PATTERNS.any? {|p| File.fnmatch?(p, e)}} if !TRANS_PATTERNS.empty?
+  trans.reject! {|e| NOTRANS_PATTERNS.any? {|p| File.fnmatch?(p, e)}}
   atrans = atrans.sort_by(&ALPHANUMERIC_ORDER)
   trans = trans.sort_by(&ALPHANUMERIC_ORDER)
-  trans.unshift(trans.delete("transdb"))
+  trans.delete(db = "transdb")
+  trans.unshift(db)
   trans.compact!
   trans |= atrans
   trans.map! {|e| "trans/#{e}"}
@@ -107,31 +121,32 @@ ENCS, ENC_DEPS = target_encodings
 ATRANS, TRANS = target_transcoders
 
 if File.exist?(depend = File.join($srcdir, "depend"))
-  erb = ERB.new(File.read(depend), nil, '%')
+  erb = ERB.new(File.read(depend), trim_mode: '%')
   erb.filename = depend
   tmp = erb.result(binding)
-  dep = "\n#### depend ####\n\n" << depend_rules(tmp).join
+  dep = "\n#### depend ####\n\n" + depend_rules(tmp).join
 else
   dep = ""
 end
 mkin = File.read(File.join($srcdir, "Makefile.in"))
-mkin.gsub!(/@(#{CONFIG.keys.join('|')})@/) {CONFIG[$1]}
-open(ARGV[0], 'wb') {|f|
+# Variables that should not be expanded in Makefile.in to allow
+# overriding inherited variables at make-time.
+not_expand_vars = %w(CFLAGS)
+mkin.gsub!(/@(#{RbConfig::CONFIG.keys.join('|')})@/) do
+  not_expand_vars.include?($1) ? CONFIG[$1] : RbConfig::CONFIG[$1]
+end
+File.open(ARGV[0], 'wb') {|f|
   f.puts mkin, dep
 }
 if MODULE_TYPE == :static
   filename = "encinit.c.erb"
-  erb = ERB.new(File.read(File.join($srcdir, filename)), nil, '%-')
+  erb = ERB.new(File.read(File.join($srcdir, filename)), trim_mode: '%-')
   erb.filename = "enc/#{filename}"
   tmp = erb.result(binding)
   begin
     Dir.mkdir 'enc'
   rescue Errno::EEXIST
   end
-  File.open("enc/encinit.c", "w") {|f|
-    f.puts "/* Automatically generated from enc/encinit.c.erb"
-    f.puts " * Do not edit."
-    f.puts " */"
-    f.puts tmp
-  }
+  require 'tool/lib/output'
+  Output.new(path: "enc/encinit.c", ifchange: true).write(tmp)
 end

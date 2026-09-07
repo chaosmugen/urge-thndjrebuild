@@ -37,7 +37,16 @@ scoped_refptr<Color> Color::New(ExecutionContext* execution_context,
 scoped_refptr<Color> Color::Copy(ExecutionContext* execution_context,
                                  scoped_refptr<Color> other,
                                  ExceptionState& exception_state) {
-  return base::MakeRefCounted<ColorImpl>(*static_cast<ColorImpl*>(other.get()));
+  // `other` arrives straight from a Ruby argument: a wrapper whose payload was
+  // never set (or already released) yields a null pointer here, and copying
+  // through it faults at address 0.
+  scoped_refptr<ColorImpl> source = ColorImpl::From(other);
+  if (!source) {
+    exception_state.ThrowError(ExceptionCode::CONTENT_ERROR,
+                               "Color: cannot copy a null color.");
+    return nullptr;
+  }
+  return base::MakeRefCounted<ColorImpl>(source->value_);
 }
 
 // static

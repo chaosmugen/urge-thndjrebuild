@@ -3,61 +3,60 @@
  * included by eval.c
  */
 
-static void
-warn_printf(const char *fmt, ...)
-{
-    VALUE str;
-    va_list args;
-
-    va_init_list(args, fmt);
-    str = rb_vsprintf(fmt, args);
-    va_end(args);
-    rb_write_error_str(str);
-}
-
+#define write_warn(str, x) \
+    (NIL_P(str) ? warn_print(x) : (void)rb_str_cat_cstr(str, x))
+#define write_warn2(str, x, l) \
+    (NIL_P(str) ? warn_print2(x, l) : (void)rb_str_cat(str, x, l))
+#define write_warn_enc(str, x, l, enc) \
+    (NIL_P(str) ? warn_print2(x, l) : (void)rb_enc_str_buf_cat(str, x, l, enc))
+#ifdef HAVE_BUILTIN___BUILTIN_CONSTANT_P
+#define warn_print(x) RB_GNUC_EXTENSION_BLOCK(	\
+    (__builtin_constant_p(x)) ? 		\
+        rb_write_error2((x), (long)strlen(x)) : \
+        rb_write_error(x)			\
+)
+#else
 #define warn_print(x) rb_write_error(x)
+#endif
+
 #define warn_print2(x,l) rb_write_error2((x),(l))
+
+#define write_warn_str(str,x) NIL_P(str) ? rb_write_error_str(x) : (void)rb_str_concat((str), (x))
 #define warn_print_str(x) rb_write_error_str(x)
 
-static void
-error_pos(void)
-{
-    VALUE sourcefile = rb_sourcefilename();
-    int sourceline = rb_sourceline();
+static VALUE error_pos_str(void);
 
-    if (sourcefile) {
-	ID caller_name;
-	if (sourceline == 0) {
-	    warn_printf("%"PRIsVALUE, sourcefile);
-	}
-	else if ((caller_name = rb_frame_callee()) != 0) {
-	    warn_printf("%"PRIsVALUE":%d:in `%"PRIsVALUE"'", sourcefile, sourceline,
-			rb_id2str(caller_name));
-	}
-	else {
-	    warn_printf("%"PRIsVALUE":%d", sourcefile, sourceline);
-	}
+static void
+error_pos(const VALUE str)
+{
+    VALUE pos = error_pos_str();
+    if (!NIL_P(pos)) {
+        write_warn_str(str, pos);
     }
 }
 
 static VALUE
-get_backtrace(VALUE info)
+error_pos_str(void)
 {
-    if (NIL_P(info))
-	return Qnil;
-    info = rb_funcall(info, rb_intern("backtrace"), 0);
-    if (NIL_P(info))
-	return Qnil;
-    return rb_check_backtrace(info);
-}
+    int sourceline;
+    VALUE sourcefile = rb_source_location(&sourceline);
 
-VALUE
-rb_get_backtrace(VALUE info)
-{
-    return get_backtrace(info);
+    if (!NIL_P(sourcefile)) {
+        ID caller_name;
+        if (sourceline == 0) {
+            return rb_sprintf("%"PRIsVALUE": ", sourcefile);
+        }
+        else if ((caller_name = rb_frame_callee()) != 0) {
+            return rb_sprintf("%"PRIsVALUE":%d:in '%"PRIsVALUE"': ",
+                              sourcefile, sourceline,
+                              rb_id2str(caller_name));
+        }
+        else {
+            return rb_sprintf("%"PRIsVALUE":%d: ", sourcefile, sourceline);
+        }
+    }
+    return Qnil;
 }
-
-VALUE rb_exc_set_backtrace(VALUE exc, VALUE bt);
 
 static void
 set_backtrace(VALUE info, VALUE bt)
@@ -65,259 +64,494 @@ set_backtrace(VALUE info, VALUE bt)
     ID set_backtrace = rb_intern("set_backtrace");
 
     if (rb_backtrace_p(bt)) {
-	if (rb_method_basic_definition_p(CLASS_OF(info), set_backtrace)) {
-	    rb_exc_set_backtrace(info, bt);
-	    return;
-	}
-	else {
-	    bt = rb_backtrace_to_str_ary(bt);
-	}
+        if (rb_method_basic_definition_p(CLASS_OF(info), set_backtrace)) {
+            rb_exc_set_backtrace(info, bt);
+            return;
+        }
+        else {
+            bt = rb_backtrace_to_str_ary(bt);
+        }
     }
-    rb_funcall(info, rb_intern("set_backtrace"), 1, bt);
+    rb_check_funcall(info, set_backtrace, 1, &bt);
+}
+
+#define CSI_BEGIN "\033["
+#define CSI_SGR "m"
+
+static const char underline[] = CSI_BEGIN"1;4"CSI_SGR;
+static const char bold[] = CSI_BEGIN"1"CSI_SGR;
+static const char reset[] = CSI_BEGIN""CSI_SGR;
+
+static void
+print_errinfo(const VALUE eclass, const VALUE errat, const VALUE emesg, const VALUE str, int highlight)
+{
+    long elen = 0;
+    VALUE mesg;
+
+    if (NIL_P(errat) || RARRAY_LEN(errat) == 0 ||
+        NIL_P(mesg = RARRAY_AREF(errat, 0))) {
+        error_pos(str);
+    }
+    else {
+        write_warn_str(str, mesg);
+        write_warn(str, ": ");
+    }
+
+    if (!NIL_P(emesg)) {
+        elen = RSTRING_LEN(emesg);
+    }
+
+    if (eclass == rb_eRuntimeError && elen == 0) {
+        if (highlight) write_warn(str, underline);
+        write_warn(str, "unhandled exception");
+        if (highlight) write_warn(str, reset);
+        write_warn(str, "\n");
+    }
+    else {
+        VALUE epath;
+
+        epath = rb_class_name(eclass);
+        if (elen == 0) {
+            if (highlight) write_warn(str, underline);
+            write_warn_str(str, epath);
+            if (highlight) write_warn(str, reset);
+            write_warn(str, "\n");
+        }
+        else {
+            write_warn_str(str, emesg);
+            write_warn(str, "\n");
+        }
+    }
+}
+
+VALUE
+rb_decorate_message(const VALUE eclass, VALUE emesg, int highlight)
+{
+    const char *einfo = "";
+    long elen = 0;
+    rb_encoding *eenc;
+
+    VALUE str = rb_usascii_str_new_cstr("");
+
+    if (!NIL_P(emesg) && rb_enc_asciicompat(eenc = rb_enc_get(emesg))) {
+        einfo = RSTRING_PTR(emesg);
+        elen = RSTRING_LEN(emesg);
+    }
+    else {
+        eenc = NULL;
+    }
+    if (eclass == rb_eRuntimeError && elen == 0) {
+        if (highlight) write_warn(str, underline);
+        write_warn(str, "unhandled exception");
+        if (highlight) write_warn(str, reset);
+    }
+    else {
+        VALUE epath;
+
+        epath = rb_class_name(eclass);
+        if (elen == 0) {
+            if (highlight) write_warn(str, underline);
+            write_warn_str(str, epath);
+            if (highlight) write_warn(str, reset);
+        }
+        else {
+            /* emesg is a String instance */
+            const char *tail = 0;
+
+            if (highlight) write_warn(str, bold);
+            if (RSTRING_PTR(epath)[0] == '#')
+                epath = 0;
+            if ((tail = memchr(einfo, '\n', elen)) != 0) {
+                write_warn_enc(str, einfo, tail - einfo, eenc);
+                tail++;		/* skip newline */
+            }
+            else {
+                write_warn_str(str, emesg);
+            }
+            if (epath) {
+                write_warn(str, " (");
+                if (highlight) write_warn(str, underline);
+                write_warn_str(str, epath);
+                if (highlight) {
+                    write_warn(str, reset);
+                    write_warn(str, bold);
+                }
+                write_warn(str, ")");
+                if (highlight) write_warn(str, reset);
+            }
+            if (tail && einfo+elen > tail) {
+                if (!highlight) {
+                    write_warn(str, "\n");
+                    write_warn_enc(str, tail, einfo+elen-tail, eenc);
+                }
+                else {
+                    elen -= tail - einfo;
+                    einfo = tail;
+                    write_warn(str, "\n");
+                    while (elen > 0) {
+                        tail = memchr(einfo, '\n', elen);
+                        if (!tail || tail > einfo) {
+                            write_warn(str, bold);
+                            write_warn_enc(str, einfo, tail ? tail-einfo : elen, eenc);
+                            write_warn(str, reset);
+                            if (!tail) {
+                                break;
+                            }
+                        }
+                        elen -= tail - einfo;
+                        einfo = tail;
+                        do ++tail; while (tail < einfo+elen && *tail == '\n');
+                        write_warn_enc(str, einfo, tail-einfo, eenc);
+                        elen -= tail - einfo;
+                        einfo = tail;
+                    }
+                }
+            }
+        }
+    }
+
+    RB_GC_GUARD(emesg);
+
+    return str;
 }
 
 static void
-error_print(void)
+print_backtrace(const VALUE eclass, const VALUE errat, const VALUE str, int reverse, long backtrace_limit)
 {
-    volatile VALUE errat = Qundef;
-    rb_thread_t *th = GET_THREAD();
-    VALUE errinfo = th->errinfo;
-    int raised_flag = th->raised_flag;
-    volatile VALUE eclass = Qundef, e = Qundef;
-    const char *volatile einfo;
-    volatile long elen;
+    if (!NIL_P(errat)) {
+        long i;
+        long len = RARRAY_LEN(errat);
+        const int threshold = 1000000000;
+        int width = (len <= 1) ? INT_MIN : ((int)log10((double)(len > threshold ?
+                                         ((len - 1) / threshold) :
+                                         len - 1)) +
+                     (len < threshold ? 0 : 9) + 1);
+
+        long skip_start = -1, skip_len = 0;
+
+        // skip for stackoverflow
+        if (eclass == rb_eSysStackError) {
+            long trace_head = 9;
+            long trace_tail = 4;
+            long trace_max = trace_head + trace_tail + 5;
+            if (len > trace_max) {
+                skip_start = trace_head;
+                skip_len = len - trace_max + 5;
+            }
+        }
+
+        // skip for explicit limit
+        if (backtrace_limit >= 0 && len > backtrace_limit + 2) {
+            skip_start = backtrace_limit + 1;
+            skip_len = len - skip_start;
+        }
+
+        for (i = 1; i < len; i++) {
+            if (i == skip_start) {
+                write_warn_str(str, rb_sprintf("\t ... %ld levels...\n", skip_len));
+                i += skip_len;
+                if (i >= len) break;
+            }
+            VALUE line = RARRAY_AREF(errat, reverse ? len - i : i);
+            if (RB_TYPE_P(line, T_STRING)) {
+                VALUE bt = rb_str_new_cstr("\t");
+                if (reverse) rb_str_catf(bt, "%*ld: ", width, len - i);
+                write_warn_str(str, rb_str_catf(bt, "from %"PRIsVALUE"\n", line));
+            }
+        }
+    }
+}
+
+VALUE rb_get_detailed_message(VALUE exc, VALUE opt);
+
+static int
+shown_cause_p(VALUE cause, VALUE *shown_causes)
+{
+    VALUE shown = *shown_causes;
+    if (!shown) {
+        *shown_causes = shown = rb_obj_hide(rb_ident_hash_new());
+    }
+    if (rb_hash_has_key(shown, cause)) return TRUE;
+    rb_hash_aset(shown, cause, Qtrue);
+    return FALSE;
+}
+
+static void
+show_cause(VALUE errinfo, VALUE str, VALUE opt, VALUE highlight, VALUE reverse, long backtrace_limit, VALUE *shown_causes)
+{
+    VALUE cause = rb_attr_get(errinfo, id_cause);
+    if (!NIL_P(cause) && rb_obj_is_kind_of(cause, rb_eException) &&
+        !shown_cause_p(cause, shown_causes)) {
+        volatile VALUE eclass = CLASS_OF(cause);
+        VALUE errat = rb_get_backtrace(cause);
+        VALUE emesg = rb_get_detailed_message(cause, opt);
+        if (reverse) {
+            show_cause(cause, str, opt, highlight, reverse, backtrace_limit, shown_causes);
+            print_backtrace(eclass, errat, str, TRUE, backtrace_limit);
+            print_errinfo(eclass, errat, emesg, str, RTEST(highlight));
+        }
+        else {
+            print_errinfo(eclass, errat, emesg, str, RTEST(highlight));
+            print_backtrace(eclass, errat, str, FALSE, backtrace_limit);
+            show_cause(cause, str, opt, highlight, reverse, backtrace_limit, shown_causes);
+        }
+    }
+}
+
+void
+rb_exc_check_circular_cause(VALUE exc)
+{
+    VALUE cause = exc, shown_causes = 0;
+    do {
+        if (shown_cause_p(cause, &shown_causes)) {
+            rb_raise(rb_eArgError, "circular causes");
+        }
+    } while (!NIL_P(cause = rb_attr_get(cause, id_cause)));
+}
+
+void
+rb_error_write(VALUE errinfo, VALUE emesg, VALUE errat, VALUE str, VALUE opt, VALUE highlight, VALUE reverse)
+{
+    volatile VALUE eclass;
+    VALUE shown_causes = 0;
+    long backtrace_limit = rb_backtrace_length_limit;
 
     if (NIL_P(errinfo))
-	return;
-    rb_thread_raised_clear(th);
+        return;
 
-    TH_PUSH_TAG(th);
-    if (TH_EXEC_TAG() == 0) {
-	errat = get_backtrace(errinfo);
+    if (UNDEF_P(errat)) {
+        errat = Qnil;
     }
-    else if (errat == Qundef) {
-	errat = Qnil;
-    }
-    else if (eclass == Qundef || e != Qundef) {
-	goto error;
-    }
-    else {
-	goto no_message;
-    }
-    if (NIL_P(errat)) {
-	const char *file = rb_sourcefile();
-	int line = rb_sourceline();
-	if (!file)
-	    warn_printf("%d", line);
-	else if (!line)
-	    warn_printf("%s", file);
-	else
-	    warn_printf("%s:%d", file, line);
-    }
-    else if (RARRAY_LEN(errat) == 0) {
-	error_pos();
-    }
-    else {
-	VALUE mesg = RARRAY_AREF(errat, 0);
-
-	if (NIL_P(mesg))
-	    error_pos();
-	else {
-	    warn_print_str(mesg);
-	}
-    }
-
     eclass = CLASS_OF(errinfo);
-    if (eclass != Qundef &&
-	(e = rb_check_funcall(errinfo, rb_intern("message"), 0, 0)) != Qundef &&
-	(RB_TYPE_P(e, T_STRING) || !NIL_P(e = rb_check_string_type(e)))) {
-	einfo = RSTRING_PTR(e);
-	elen = RSTRING_LEN(e);
+    if (reverse) {
+        static const char traceback[] = "Traceback "
+            "(most recent call last):\n";
+        const int bold_part = rb_strlen_lit("Traceback");
+        char buff[sizeof(traceback)+sizeof(bold)+sizeof(reset)-2], *p = buff;
+        const char *msg = traceback;
+        long len = sizeof(traceback) - 1;
+        if (RTEST(highlight)) {
+#define APPEND(s, l) (memcpy(p, s, l), p += (l))
+            APPEND(bold, sizeof(bold)-1);
+            APPEND(traceback, bold_part);
+            APPEND(reset, sizeof(reset)-1);
+            APPEND(traceback + bold_part, sizeof(traceback)-bold_part-1);
+#undef APPEND
+            len = p - (msg = buff);
+        }
+        write_warn2(str, msg, len);
+        show_cause(errinfo, str, opt, highlight, reverse, backtrace_limit, &shown_causes);
+        print_backtrace(eclass, errat, str, TRUE, backtrace_limit);
+        print_errinfo(eclass, errat, emesg, str, RTEST(highlight));
     }
     else {
-      no_message:
-	einfo = "";
-	elen = 0;
+        print_errinfo(eclass, errat, emesg, str, RTEST(highlight));
+        print_backtrace(eclass, errat, str, FALSE, backtrace_limit);
+        show_cause(errinfo, str, opt, highlight, reverse, backtrace_limit, &shown_causes);
     }
-    if (eclass == rb_eRuntimeError && elen == 0) {
-	warn_print(": unhandled exception\n");
+}
+
+static void
+rb_ec_error_print_detailed(rb_execution_context_t *const ec, const VALUE errinfo, const VALUE str, VALUE emesg0)
+{
+    volatile uint8_t raised_flag = ec->raised_flag;
+    volatile VALUE errat = Qundef;
+    volatile bool written = false;
+    volatile VALUE emesg = emesg0;
+
+    VALUE opt = rb_hash_new();
+    VALUE highlight = rb_stderr_tty_p() ? Qtrue : Qfalse;
+    rb_hash_aset(opt, ID2SYM(rb_intern_const("highlight")), highlight);
+
+    if (NIL_P(errinfo))
+        return;
+    rb_ec_raised_clear(ec);
+
+    EC_PUSH_TAG(ec);
+    if (EC_EXEC_TAG() == TAG_NONE) {
+        errat = rb_get_backtrace(errinfo);
     }
-    else {
-	VALUE epath;
-
-	epath = rb_class_name(eclass);
-	if (elen == 0) {
-	    warn_print(": ");
-	    warn_print_str(epath);
-	    warn_print("\n");
-	}
-	else {
-	    char *tail = 0;
-	    long len = elen;
-
-	    if (RSTRING_PTR(epath)[0] == '#')
-		epath = 0;
-	    if ((tail = memchr(einfo, '\n', elen)) != 0) {
-		len = tail - einfo;
-		tail++;		/* skip newline */
-	    }
-	    warn_print(": ");
-	    warn_print_str(tail ? rb_str_subseq(e, 0, len) : e);
-	    if (epath) {
-		warn_print(" (");
-		warn_print_str(epath);
-		warn_print(")\n");
-	    }
-	    if (tail) {
-		warn_print_str(rb_str_subseq(e, tail - einfo, elen - len - 1));
-	    }
-	    if (tail ? einfo[elen-1] != '\n' : !epath) warn_print2("\n", 1);
-	}
+    if (UNDEF_P(emesg)) {
+        emesg = Qnil;
+        emesg = rb_get_detailed_message(errinfo, opt);
     }
 
-    if (!NIL_P(errat)) {
-	long i;
-	long len = RARRAY_LEN(errat);
-        int skip = eclass == rb_eSysStackError;
-
-#define TRACE_MAX (TRACE_HEAD+TRACE_TAIL+5)
-#define TRACE_HEAD 8
-#define TRACE_TAIL 5
-
-	for (i = 1; i < len; i++) {
-	    VALUE line = RARRAY_AREF(errat, i);
-	    if (RB_TYPE_P(line, T_STRING)) {
-		warn_printf("\tfrom %"PRIsVALUE"\n", line);
-	    }
-	    if (skip && i == TRACE_HEAD && len > TRACE_MAX) {
-		warn_printf("\t ... %ld levels...\n",
-			    len - TRACE_HEAD - TRACE_TAIL);
-		i = len - TRACE_TAIL;
-	    }
-	}
+    if (!written) {
+        written = true;
+        rb_error_write(errinfo, emesg, errat, str, opt, highlight, Qfalse);
     }
-  error:
-    TH_POP_TAG();
-    th->errinfo = errinfo;
-    rb_thread_raised_set(th, raised_flag);
+
+    EC_POP_TAG();
+    ec->errinfo = errinfo;
+    rb_ec_raised_set(ec, raised_flag);
 }
 
 void
-ruby_error_print(void)
+rb_ec_error_print(rb_execution_context_t *volatile ec, volatile VALUE errinfo)
 {
-    error_print();
+    rb_ec_error_print_detailed(ec, errinfo, Qnil, Qundef);
 }
 
-static const char *
-method_scope_name(int scope)
-{
-    const char *v;
-
-    switch (scope) {
-      default:
-      case NOEX_PUBLIC: v = ""; break;
-      case NOEX_PRIVATE: v = " private"; break;
-      case NOEX_PROTECTED: v = " protected"; break;
-    }
-    return v;
-}
+#define undef_mesg_for(v, k) rb_fstring_lit("undefined"v" method '%1$s' for "k" '%2$s'")
+#define undef_mesg(v) ( \
+        is_mod ? \
+        undef_mesg_for(v, "module") : \
+        undef_mesg_for(v, "class"))
 
 void
-rb_print_undef(VALUE klass, ID id, int scope)
+rb_print_undef(VALUE klass, ID id, rb_method_visibility_t visi)
 {
-    const char *v = method_scope_name(scope);
-    rb_name_error(id, "undefined%s method `%"PRIsVALUE"' for %s `% "PRIsVALUE"'", v,
-		  QUOTE_ID(id),
-		  (RB_TYPE_P(klass, T_MODULE)) ? "module" : "class",
-		  rb_class_name(klass));
+    const int is_mod = RB_TYPE_P(klass, T_MODULE);
+    VALUE mesg;
+    switch (visi & METHOD_VISI_MASK) {
+      case METHOD_VISI_UNDEF:
+      case METHOD_VISI_PUBLIC:    mesg = undef_mesg(""); break;
+      case METHOD_VISI_PRIVATE:   mesg = undef_mesg(" private"); break;
+      case METHOD_VISI_PROTECTED: mesg = undef_mesg(" protected"); break;
+      default: UNREACHABLE;
+    }
+    rb_name_err_raise_str(mesg, klass, ID2SYM(id));
 }
 
 void
 rb_print_undef_str(VALUE klass, VALUE name)
 {
-    rb_name_error_str(name, "undefined method `%"PRIsVALUE"' for %s `% "PRIsVALUE"'",
-		      QUOTE(name),
-		      (RB_TYPE_P(klass, T_MODULE)) ? "module" : "class",
-		      rb_class_name(klass));
+    const int is_mod = RB_TYPE_P(klass, T_MODULE);
+    rb_name_err_raise_str(undef_mesg(""), klass, name);
 }
 
+#define inaccessible_mesg_for(v, k) rb_fstring_lit("method '%1$s' for "k" '%2$s' is "v)
+#define inaccessible_mesg(v) ( \
+        is_mod ? \
+        inaccessible_mesg_for(v, "module") : \
+        inaccessible_mesg_for(v, "class"))
+
 void
-rb_print_inaccessible(VALUE klass, ID id, int scope)
+rb_print_inaccessible(VALUE klass, ID id, rb_method_visibility_t visi)
 {
-    const char *v = method_scope_name(scope);
-    rb_name_error(id, "method `%"PRIsVALUE"' for %s `% "PRIsVALUE"' is %s",
-		  QUOTE_ID(id),
-		  (RB_TYPE_P(klass, T_MODULE)) ? "module" : "class",
-		  rb_class_name(klass),
-		  v);
+    const int is_mod = RB_TYPE_P(klass, T_MODULE);
+    VALUE mesg;
+    switch (visi & METHOD_VISI_MASK) {
+      case METHOD_VISI_UNDEF:
+      case METHOD_VISI_PUBLIC:    mesg = inaccessible_mesg(""); break;
+      case METHOD_VISI_PRIVATE:   mesg = inaccessible_mesg("private"); break;
+      case METHOD_VISI_PROTECTED: mesg = inaccessible_mesg("protected"); break;
+      default: UNREACHABLE;
+    }
+    rb_name_err_raise_str(mesg, klass, ID2SYM(id));
 }
 
 static int
 sysexit_status(VALUE err)
 {
-    VALUE st = rb_iv_get(err, "status");
+    VALUE st = rb_ivar_get(err, id_status);
     return NUM2INT(st);
 }
 
+enum {
+    EXITING_WITH_MESSAGE = 1,
+    EXITING_WITH_STATUS = 2,
+    EXITING_WITH_SIGNAL = 4
+};
 static int
-error_handle(int ex)
+exiting_split(VALUE errinfo, volatile int *exitcode, volatile int *sigstatus)
+{
+    int ex = EXIT_SUCCESS;
+    VALUE signo;
+    int sig = 0;
+    int result = 0;
+
+    if (NIL_P(errinfo)) return 0;
+
+    if (THROW_DATA_P(errinfo)) {
+        int throw_state = ((const struct vm_throw_data *)errinfo)->throw_state;
+        ex = throw_state & VM_THROW_STATE_MASK;
+        result |= EXITING_WITH_STATUS;
+    }
+    else if (rb_obj_is_kind_of(errinfo, rb_eSystemExit)) {
+        ex = sysexit_status(errinfo);
+        result |= EXITING_WITH_STATUS;
+    }
+    else if (rb_obj_is_kind_of(errinfo, rb_eSignal)) {
+        signo = rb_ivar_get(errinfo, id_signo);
+        sig = FIX2INT(signo);
+        result |= EXITING_WITH_SIGNAL;
+        /* no message when exiting by signal */
+        if (signo == INT2FIX(SIGSEGV) || !rb_obj_is_instance_of(errinfo, rb_eSignal))
+            /* except for SEGV and subclasses */
+            result |= EXITING_WITH_MESSAGE;
+    }
+    else if (rb_obj_is_kind_of(errinfo, rb_eSystemCallError) &&
+        FIXNUM_P(signo = rb_attr_get(errinfo, id_signo))) {
+        sig = FIX2INT(signo);
+        result |= EXITING_WITH_SIGNAL;
+        /* no message when exiting by error to be mapped to signal */
+    }
+    else {
+        ex = EXIT_FAILURE;
+        result |= EXITING_WITH_STATUS | EXITING_WITH_MESSAGE;
+    }
+
+    if (exitcode && (result & EXITING_WITH_STATUS))
+        *exitcode = ex;
+    if (sigstatus && (result & EXITING_WITH_SIGNAL))
+        *sigstatus = sig;
+
+    return result;
+}
+
+#define unknown_longjmp_status(status) \
+    rb_bug("Unknown longjmp status %d", status)
+
+static int
+error_handle(rb_execution_context_t *ec, VALUE errinfo, enum ruby_tag_type ex)
 {
     int status = EXIT_FAILURE;
-    rb_thread_t *th = GET_THREAD();
 
-    if (rb_threadptr_set_raised(th))
-	return EXIT_FAILURE;
+    if (rb_ec_set_raised(ec))
+        return EXIT_FAILURE;
     switch (ex & TAG_MASK) {
       case 0:
-	status = EXIT_SUCCESS;
-	break;
+        status = EXIT_SUCCESS;
+        break;
 
       case TAG_RETURN:
-	error_pos();
-	warn_print(": unexpected return\n");
-	break;
+        error_pos(Qnil);
+        warn_print("unexpected return\n");
+        break;
       case TAG_NEXT:
-	error_pos();
-	warn_print(": unexpected next\n");
-	break;
+        error_pos(Qnil);
+        warn_print("unexpected next\n");
+        break;
       case TAG_BREAK:
-	error_pos();
-	warn_print(": unexpected break\n");
-	break;
+        error_pos(Qnil);
+        warn_print("unexpected break\n");
+        break;
       case TAG_REDO:
-	error_pos();
-	warn_print(": unexpected redo\n");
-	break;
+        error_pos(Qnil);
+        warn_print("unexpected redo\n");
+        break;
       case TAG_RETRY:
-	error_pos();
-	warn_print(": retry outside of rescue clause\n");
-	break;
+        error_pos(Qnil);
+        warn_print("retry outside of rescue clause\n");
+        break;
       case TAG_THROW:
-	/* TODO: fix me */
-	error_pos();
-	warn_printf(": unexpected throw\n");
-	break;
-      case TAG_RAISE: {
-	VALUE errinfo = GET_THREAD()->errinfo;
-	if (rb_obj_is_kind_of(errinfo, rb_eSystemExit)) {
-	    status = sysexit_status(errinfo);
-	}
-	else if (rb_obj_is_instance_of(errinfo, rb_eSignal) &&
-		 rb_iv_get(errinfo, "signo") != INT2FIX(SIGSEGV)) {
-	    /* no message when exiting by signal */
-	}
-	else {
-	    error_print();
-	}
-	break;
-      }
+        /* TODO: fix me */
+        error_pos(Qnil);
+        warn_print("unexpected throw\n");
+        break;
+      case TAG_RAISE:
+        if (!(exiting_split(errinfo, &status, NULL) & EXITING_WITH_MESSAGE)) {
+            break;
+        }
+        /* fallthrough */
       case TAG_FATAL:
-	error_print();
-	break;
+        rb_ec_error_print(ec, errinfo);
+        break;
       default:
-	rb_bug("Unknown longjmp status %d", ex);
-	break;
+        unknown_longjmp_status(ex);
+        break;
     }
-    rb_threadptr_reset_raised(th);
+    rb_ec_reset_raised(ec);
     return status;
 }
