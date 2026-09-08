@@ -6,6 +6,8 @@ cmake_minimum_required(VERSION 3.20.1)
 #--------------------------------------------------------------------------------
 
 set(ENGINE_RENDERER_SRC
+  device/gpu_audit.cc
+  device/gpu_audit.h
   device/render_device.cc
   device/render_device.h
   layout/vertex_layout.cc

@@ -68,7 +68,6 @@ public class AssetExtractor {
             // The root asset folder is represented by an empty string ""
             copyAssetFolder(assetManager, "", destinationDir.getAbsolutePath(), force);
             logExtract("extract done " + memSnapshot());
-            writeMarker("EXTRACT_DONE");
         } catch (IOException e) {
             logExtract("extract FAILED: " + e);
             Log.e(TAG, "Failed to extract assets.", e);

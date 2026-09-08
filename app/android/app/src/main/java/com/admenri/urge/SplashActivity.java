@@ -24,7 +24,7 @@ public class SplashActivity extends Activity {
     private final Runnable mStatusTick = new Runnable() {
         @Override
         public void run() {
-            if (mStatus != null) mStatus.setText(URGEMain.getDiagStatus());
+            if (mStatus != null) mStatus.setText("正在加载中");
             mHandler.postDelayed(this, 500);
         }
     };

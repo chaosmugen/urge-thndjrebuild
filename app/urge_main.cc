@@ -35,6 +35,7 @@
 #include <sys/system_properties.h>
 #include <unistd.h>
 
+#include "renderer/device/gpu_audit.h"
 #include "renderer/device/render_device.h"
 
 #if defined(OS_WIN)
@@ -269,8 +270,33 @@ _Unwind_Reason_Code UrgeUnwindCallback(struct _Unwind_Context* context,
   return _URC_NO_REASON;
 }
 
+// Dumps the ring buffer of recent GPU operations (see renderer/device/
+// gpu_audit.h): the engine operation that led to the crash, with the surface
+// state recorded at that moment.
+static void UrgeLogGpuAudit() {
+#if defined(OS_ANDROID)
+  char line[256];
+  const uint32_t count = renderer::GpuAudit::count();
+  if (!count)
+    return;
+
+  UrgeCrashLogLine("---- gpu operations before crash (oldest first) ----\n");
+  const renderer::GpuAudit::Entry& newest =
+      renderer::GpuAudit::Get(count - 1);
+  for (uint32_t i = 0; i < count; ++i) {
+    const renderer::GpuAudit::Entry& entry = renderer::GpuAudit::Get(i);
+    snprintf(line, sizeof(line), "gpu[%u] %s surface=%s t=-%.3fms\n",
+             entry.seq, entry.what ? entry.what : "?",
+             entry.surface_valid ? "valid" : "INVALID",
+             renderer::GpuAudit::MillisBefore(entry, newest));
+    UrgeCrashLogLine(line);
+  }
+#endif  //! OS_ANDROID
+}
+
 void UrgeWriteCrashReport(int signal_number,
                           siginfo_t* info,
+                          void* ucontext_void,
                           uintptr_t sp,
                           uintptr_t pc) {
   char line[320];
@@ -283,6 +309,51 @@ void UrgeWriteCrashReport(int signal_number,
                    signal_number, info ? info->si_addr : nullptr,
                    static_cast<size_t>(pc), static_cast<int>(getpid()));
   UrgeCrashLogLine(line);
+
+  // When the faulting pc itself is null (a call through an empty vtable or
+  // function pointer) the pc tells nothing — but lr (x30) still points at the
+  // instruction that made the call. Dump the core registers so those crashes
+  // are diagnosable too.
+  if (ucontext_void) {
+    auto* uc = static_cast<ucontext_t*>(ucontext_void);
+#if defined(__aarch64__)
+    n = snprintf(line, sizeof(line),
+                 "regs x0=%llx x1=%llx x2=%llx x3=%llx x4=%llx x5=%llx "
+                 "x6=%llx x7=%llx\n",
+                 (unsigned long long)uc->uc_mcontext.regs[0],
+                 (unsigned long long)uc->uc_mcontext.regs[1],
+                 (unsigned long long)uc->uc_mcontext.regs[2],
+                 (unsigned long long)uc->uc_mcontext.regs[3],
+                 (unsigned long long)uc->uc_mcontext.regs[4],
+                 (unsigned long long)uc->uc_mcontext.regs[5],
+                 (unsigned long long)uc->uc_mcontext.regs[6],
+                 (unsigned long long)uc->uc_mcontext.regs[7]);
+    UrgeCrashLogLine(line);
+    n = snprintf(line, sizeof(line),
+                 "regs x8=%llx x9=%llx x10=%llx x11=%llx x19=%llx x20=%llx "
+                 "x21=%llx x22=%llx\n",
+                 (unsigned long long)uc->uc_mcontext.regs[8],
+                 (unsigned long long)uc->uc_mcontext.regs[9],
+                 (unsigned long long)uc->uc_mcontext.regs[10],
+                 (unsigned long long)uc->uc_mcontext.regs[11],
+                 (unsigned long long)uc->uc_mcontext.regs[19],
+                 (unsigned long long)uc->uc_mcontext.regs[20],
+                 (unsigned long long)uc->uc_mcontext.regs[21],
+                 (unsigned long long)uc->uc_mcontext.regs[22]);
+    UrgeCrashLogLine(line);
+    n = snprintf(line, sizeof(line),
+                 "regs lr(x30)=0x%llx sp=0x%llx pc=0x%llx\n",
+                 (unsigned long long)uc->uc_mcontext.regs[30],
+                 (unsigned long long)uc->uc_mcontext.sp,
+                 (unsigned long long)uc->uc_mcontext.pc);
+    UrgeCrashLogLine(line);
+#endif
+  }
+
+  // GPU operations performed right before the crash. Written before the
+  // unwinder runs: the audit tells which engine operation preceded the driver
+  // crash, which the crash address alone can never reveal.
+  UrgeLogGpuAudit();
 
   // Safe scan first: if the unwinder below crashes on a table-less Ruby frame,
   // the scan (and the header) are already on disk.
@@ -428,7 +499,7 @@ void UrgeCrashHandler(int signal_number, siginfo_t* info, void* context) {
 #endif
   }
   UrgeSetCrashTag(pc);
-  UrgeWriteCrashReport(signal_number, info, sp, pc);
+  UrgeWriteCrashReport(signal_number, info, context, sp, pc);
   // Restore the default disposition and re-raise so the system still produces
   // its own tombstone / crash dump on top of our report.
   struct sigaction sa;
@@ -467,11 +538,22 @@ void InstallUrgeCrashHandler() {
            "==== engine start pid=%d diag=%s install=%d,%d,%d ====\n",
            static_cast<int>(getpid()), g_diag_path.c_str(), r_segv, r_abrt,
            r_bus);
-  UrgeCrashLogLine(banner);
+  // logcat only: no per-start file, the banner served its purpose long ago.
+  __android_log_print(ANDROID_LOG_INFO, "urgecrash", "%s", banner);
 }
 
 }  // namespace
 #endif  // OS_ANDROID
+
+#if defined(OS_ANDROID)
+// Re-arm hook for BindingEngineMri: ruby_init() installs its own SIGSEGV
+// handler (the "[BUG]" reporter) on top of ours, which left every native crash
+// in the game loop without any report at all. Call this right after the Ruby
+// VM is up.
+void UrgeRearmCrashHandler() {
+  InstallUrgeCrashHandler();
+}
+#endif  //! OS_ANDROID
 
 int main(int argc, char* argv[]) {
 #if defined(OS_ANDROID)
@@ -586,18 +668,17 @@ int main(int argc, char* argv[]) {
       std::make_shared<spdlog::sinks::android_sink_mt>("urgecore");
   android_sink->set_pattern("[%^%l%$] %v");
 
-  auto file_sink =
-      std::make_shared<spdlog::sinks::basic_file_sink_mt>(app + ".log", true);
+#if defined(OS_ANDROID)
+  // 所有日志统一并入 files/urge_debug/（Java 侧导出与收集只看这一个目录）。
+  std::string game_log_path = g_diag_path.empty()
+                                  ? app + ".log"
+                                  : g_diag_path + "/Game.log";
+#else
+  std::string game_log_path = app + ".log";
+#endif
+  auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+      game_log_path, true);
   file_sink->set_level(spdlog::level::trace);
-
-  // Extra sink on removable storage so the engine log is reachable without ADB
-  // even when the process native-crashes before Game.log can be copied.
-  std::shared_ptr<spdlog::sinks::basic_file_sink_mt> diag_sink;
-  if (!g_diag_path.empty()) {
-    diag_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-        g_diag_path + "/engine.log", true);
-    diag_sink->set_level(spdlog::level::trace);
-  }
 #else
   auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
   console_sink->set_pattern("[%^%l%$] %v");
@@ -607,7 +688,6 @@ int main(int argc, char* argv[]) {
 #if defined(OS_ANDROID)
   logger_sinks.push_back(android_sink);
   logger_sinks.push_back(file_sink);
-  if (diag_sink) logger_sinks.push_back(diag_sink);
 #else
   logger_sinks.push_back(console_sink);
 #endif
@@ -732,6 +812,15 @@ int main(int argc, char* argv[]) {
 
   TTF_Quit();
   SDL_Quit();
+
+#if defined(OS_ANDROID)
+  // Returning from SDL_main hands control back to SDLActivity, which then
+  // finishes the Activity: the static destructors of the engine and the Vulkan
+  // loader cleanup race against the dying Activity and kill the process with a
+  // silent SIGSEGV (no tombstone, no handler output - observed right after
+  // "Finished main function"). The OS reclaims everything anyway, so exit hard.
+  _exit(0);
+#endif  //! OS_ANDROID
 
   return 0;
 }

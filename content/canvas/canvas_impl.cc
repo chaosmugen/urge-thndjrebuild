@@ -17,6 +17,7 @@
 #include "content/gpu/texture_impl.h"
 #include "content/io/iostream_impl.h"
 #include "content/screen/renderscreen_impl.h"
+#include "renderer/device/gpu_audit.h"
 #include "renderer/utils/texture_utils.h"
 
 namespace content {
@@ -1354,6 +1355,7 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
   Diligent::TextureSubResData texture_sub_res_data(text->pixels, text->pitch);
   Diligent::Box box(0, text->w, 0, text->h);
 
+  URGE_GPU_AUDIT("canvas:update-text-texture", true);
   render_context->UpdateTexture(
       gpu_.text_cache_texture, 0, 0, box, texture_sub_res_data,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,

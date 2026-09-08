@@ -580,6 +580,12 @@ void TilemapImpl::OnObjectDisposed() {
 void TilemapImpl::GroundNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
+  // No table assigned yet (Tilemap.new without Tilemap#table): there is
+  // nothing to parse, upload or draw - the GPU resources of the tilemap are
+  // not created in that state.
+  if (!map_data_)
+    return;
+
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
     // Setup above layers if need.
     const auto viewport_bound = ground_node_.GetParentViewport()->bound;
@@ -626,6 +632,11 @@ void TilemapImpl::AboveNodeHandlerInternal(
     int32_t layer_index,
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
+  // Same guard as GroundNodeHandlerInternal: without a table the GPU
+  // resources of the above layers were never created.
+  if (!map_data_)
+    return;
+
   if (stage == DrawableNode::RenderStage::ON_RENDERING) {
     GPURenderAboveLayerInternal(params->context, params->world_binding,
                                 layer_index);
@@ -905,6 +916,12 @@ void TilemapImpl::ParseMapDataInternal(
   };
 
   auto process_buffer = [&]() {
+    // A Tilemap may enter a render pass before any table was assigned
+    // (Tilemap.new + immediate Graphics.update). Guard the map_data_
+    // dereference below against a not-yet-assigned table.
+    if (!map_data_)
+      return;
+
     for (int32_t x = 0; x < render_viewport_.width; ++x)
       for (int32_t y = 0; y < render_viewport_.height; ++y)
         for (int32_t z = 0; z < static_cast<int32_t>(map_data_->z_size()); ++z)

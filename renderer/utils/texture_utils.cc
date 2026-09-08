@@ -29,16 +29,30 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   std::memset(texture_desc.ClearValue.Color, 0,
               sizeof(texture_desc.ClearValue.Color));
 
+  // A zero-sized texture is invalid; reject it early instead of allocating a
+  // zero-length buffer and letting CreateTexture fail on a 0x0 dimension.
+  if (size.x <= 0 || size.y <= 0)
+    return;
+
+  // Depth-stencil textures must NOT be created with initial content: the
+  // Vulkan backend has no implementation for that path and asserts
+  // ("Initializing depth-stencil texture is currently not supported",
+  // TextureVkImpl.cpp). In release the assertion is compiled out and the
+  // unsupported path is taken silently, which is exactly what we do not want
+  // on a backend this strict. GL tolerates it, which is why this only ever
+  // showed up on Vulkan.
+  const bool is_depth_stencil =
+      (bind_flags & Diligent::BIND_DEPTH_STENCIL) != 0;
+  if (is_depth_stencil) {
+    device->CreateTexture(texture_desc, nullptr, texture);
+    return;
+  }
+
   // Vulkan 不会自动清零新分配的显存（OpenGL 多数驱动会），未初始化的
   // SRV 纹理（如 tilemap atlas）会呈现随机内容导致花屏。这里显式传入
   // 全 0 初始数据，确保所有平台创建时显存都被初始化为透明。
   const uint32_t bytes_per_element =
       Diligent::GetTextureFormatAttribs(texture_desc.Format).GetElementSize();
-
-  // A zero-sized texture is invalid; reject it early instead of allocating a
-  // zero-length buffer and letting CreateTexture fail on a 0x0 dimension.
-  if (size.x <= 0 || size.y <= 0)
-    return;
 
   // Reuse a per-thread zero buffer instead of allocating w*h*4 bytes on every
   // texture creation (screen buffers / atlases can be multi-MB). thread_local

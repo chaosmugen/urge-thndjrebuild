@@ -13,6 +13,7 @@
 #include "components/version/version.h"
 #include "content/context/execution_context.h"
 #include "content/profile/command_ids.h"
+#include "renderer/device/gpu_audit.h"
 
 namespace content {
 
@@ -302,6 +303,21 @@ void ContentRunner::CreateRenderComponents() {
 }
 
 void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {
+#if defined(OS_ANDROID)
+  // Honor the BackgroundRunning=false setting on Android too: while the
+  // surface is gone the frame loop parks here. The script keeps calling
+  // Graphics.update, but the engine issues no GPU work at all - the audit
+  // showed that Bitmap creations issued from the background script loop were
+  // uploading through the driver while the surface was dead, corrupting its
+  // state across suspend/resume. SDL events are still pumped so the resume
+  // notification arrives.
+  if (background_running_ && !profile_->background_running) {
+    SDL_PumpEvents();
+    SDL_Delay(16);
+    return;
+  }
+#endif  //! OS_ANDROID
+
 #if !defined(OS_EMSCRIPTEN)
   // Update network service queue
   network_service_->DispatchEvent();
@@ -321,6 +337,11 @@ void ContentRunner::TickHandlerInternal(Diligent::ITexture* present_buffer) {
   // ANativeWindow and crash inside the Vulkan driver.
   const bool surface_ready =
       render_device_->UpdateSwapChainState(device_context_);
+#if defined(OS_ANDROID)
+  if (!surface_ready)
+    LOG(INFO) << "[Content] Tick: surface not ready, rendering skipped";
+
+#endif  //! OS_ANDROID
 
   // Render GUI if need
   bool handle_event = true;
@@ -374,6 +395,15 @@ void ContentRunner::PollEventQueueInternal(bool handle_event) {
   // While the app is in background SDL blocks inside SDL_PollEvent
   // (SDL_HINT_ANDROID_BLOCK_ON_PAUSE), so the script loop stays parked here
   // until the activity resumes instead of spinning.
+#if defined(OS_ANDROID)
+  // Only traced while the surface is gone: that is both the interesting case
+  // and the only time this does not spam the log (the loop blocks in
+  // SDL_PollEvent while the activity is in background).
+  const bool traced = !execution_context_->render_device->IsSurfaceValid();
+  if (traced)
+    LOG(INFO) << "[Content] Poll: enter";
+#endif  //! OS_ANDROID
+
   SDL_Event queued_event;
   while (SDL_PollEvent(&queued_event)) {
     // Quit event
@@ -406,6 +436,11 @@ void ContentRunner::PollEventQueueInternal(bool handle_event) {
       event_controller_->DispatchEvent(&queued_event);
     }
   }
+
+#if defined(OS_ANDROID)
+  if (traced)
+    LOG(INFO) << "[Content] Poll: leave";
+#endif  //! OS_ANDROID
 }
 
 void ContentRunner::UpdateDisplayFPSInternal() {
@@ -441,9 +476,14 @@ void ContentRunner::UpdateWindowViewportInternal() {
 
   if (window_size.x != static_cast<int32_t>(swapchain->GetDesc().Width) ||
       window_size.y != static_cast<int32_t>(swapchain->GetDesc().Height)) {
-    // Resize screen surface
+    URGE_GPU_AUDIT("swapchain:resize", render_device_->IsSurfaceValid());
+    // Must match the pre-transform the swap chain was created with
+    // (SURFACE_TRANSFORM_IDENTITY in RenderDevice::Create). Passing OPTIMAL
+    // here makes Diligent swap width/height on 90-degree-rotated surfaces, so
+    // the "resize" kept asking for a size that never matched the window and
+    // recreated the whole swap chain on every frame after resume.
     swapchain->Resize(window_size.x, window_size.y,
-                      Diligent::SURFACE_TRANSFORM_OPTIMAL);
+                      Diligent::SURFACE_TRANSFORM_IDENTITY);
   }
 
   // Update real display viewport
@@ -591,9 +631,15 @@ bool ContentRunner::EventWatchHandlerInternal(void* userdata,
 
   if (is_focus_lost) {
     LOG(INFO) << "[Content] Enter background running.";
+#if defined(OS_ANDROID)
+    LOG(INFO) << "[Content] Suspend: pausing audio";
+#endif  //! OS_ANDROID
     if (self->audio_server_)
       self->audio_server_->PauseDevice();
     self->execution_context_->render_device->SuspendContext();
+#if defined(OS_ANDROID)
+    LOG(INFO) << "[Content] Suspend: render context suspended";
+#endif  //! OS_ANDROID
     self->background_running_ = true;
   } else if (is_focus_gained) {
     LOG(INFO) << "[Content] Resume foreground running.";

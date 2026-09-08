@@ -7,6 +7,7 @@
 
 #include "binding/mri/mri_main.h"
 
+#include "SDL3/SDL_events.h"
 #include "SDL3/SDL_messagebox.h"
 #include "zlib/zlib.h"
 
@@ -24,6 +25,13 @@ void Init_zlib(void);
 void Init_ffi_c(void);
 void rb_call_builtin_inits();
 }
+
+#if defined(OS_ANDROID)
+// Defined in app/urge_main.cc: re-arms the engine's crash handler after the
+// Ruby VM replaced it with its own "[BUG]" reporter during ruby_init().
+void UrgeRearmCrashHandler();
+#include <sys/system_properties.h>
+#endif  //! OS_ANDROID
 
 namespace binding {
 
@@ -172,6 +180,13 @@ void BindingEngineMri::PreEarlyInitialization(
   ruby_init();
   ruby_init_loadpath();
 
+#if defined(OS_ANDROID)
+  // ruby_init() installs its own SIGSEGV handler (the "[BUG]" reporter),
+  // replacing the engine's crash handler: from here on a native crash in the
+  // game loop produced no report at all. Re-arm ours on top.
+  UrgeRearmCrashHandler();
+#endif  //! OS_ANDROID
+
   // Platform flags for the game scripts: the Android TV boot path cannot feed
   // the full data preload (the box runs out of RAM before the title screen).
   rb_define_global_const("URGE_ANDROID_TV", s_tv_device ? Qtrue : Qfalse);
@@ -290,6 +305,16 @@ void BindingEngineMri::ResetSignalRequired() {
 void BindingEngineMri::LoadPackedScripts(
     content::ContentProfile* profile,
     content::ExceptionState& exception_state) {
+  // No events are pumped while the scripts load (tens of seconds), so the
+  // lifecycle state runs stale: a pause/resume from that window must be
+  // processed before any GPU work happens again, otherwise the swap chain is
+  // still bound to a surface that no longer exists (freeAllBuffers while
+  // being dequeued, then SIGSEGV). Blocking pump semantics even park the
+  // load itself while the user is away, which is the desired behavior.
+#if defined(OS_ANDROID)
+  SDL_PumpEvents();
+#endif  //! OS_ANDROID
+
   VALUE packed_scripts = MriLoadData(profile->script_path, exception_state);
   if (exception_state.HadException())
     return;
@@ -384,6 +409,15 @@ void BindingEngineMri::LoadPackedScripts(
                    << StringValueCStr(script_name) << "\"";
         break;
       }
+
+      // The eval pass takes tens of seconds without any event pump of its
+      // own: process pending lifecycle events regularly, so a pause/resume
+      // from that window does not leave the swap chain bound to a dead
+      // surface for the whole game session.
+#if defined(OS_ANDROID)
+      if ((i % 16) == 0)
+        SDL_PumpEvents();
+#endif  //! OS_ANDROID
 
       // Logged before every eval, so the last "Evaluating script" line in the log
       // identifies the exact script that dies inside the Ruby VM (a native crash

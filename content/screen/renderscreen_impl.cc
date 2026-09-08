@@ -4,10 +4,13 @@
 
 #include "content/screen/renderscreen_impl.h"
 
+#include <sys/system_properties.h>
 #include <unordered_map>
 
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_timer.h"
+
+#include "renderer/device/gpu_audit.h"
 #include "magic_enum/magic_enum.hpp"
 
 #include "Common/interface/BasicMath.hpp"
@@ -16,6 +19,7 @@
 #include "Graphics/GraphicsEngineOpenGL/interface/RenderDeviceGLES.h"
 #endif
 
+#include "base/debug/logging.h"
 #include "content/canvas/canvas_scheduler.h"
 #include "content/common/rect_impl.h"
 #include "content/context/execution_context.h"
@@ -128,6 +132,19 @@ void RenderScreenImpl::CreateButtonGUISettings() {
 }
 
 void RenderScreenImpl::Update(ExceptionState& exception_state) {
+#if defined(OS_ANDROID)
+  // Sync pending lifecycle events BEFORE the render decision: while the
+  // scripts were loading no events were pumped, so a background/foreground
+  // transition from that window only surfaces here. Without this sync the
+  // first frame submits GPU commands on a surface that is already gone.
+  SDL_PumpEvents();
+
+  // Traced only while the surface is gone (see PollEventQueueInternal).
+  const bool traced = !context()->render_device->IsSurfaceValid();
+  if (traced)
+    LOG(INFO) << "[Graphics] update enter (surface invalid)";
+#endif  //! OS_ANDROID
+
   const bool frozen_render = frozen_;
   const bool need_skip_frame = limiter_.RequireFrameSkip() &&
                                context()->engine_profile->allow_skip_frame;
@@ -144,6 +161,11 @@ void RenderScreenImpl::Update(ExceptionState& exception_state) {
   // Process frame delay
   // This calling will yield to event coroutine and present
   FrameProcessInternal(gpu_.screen_buffer);
+
+#if defined(OS_ANDROID)
+  if (traced)
+    LOG(INFO) << "[Graphics] update leave (surface invalid)";
+#endif  //! OS_ANDROID
 }
 
 void RenderScreenImpl::Wait(uint32_t duration,
@@ -306,6 +328,20 @@ uint32_t RenderScreenImpl::Height(ExceptionState& exception_state) {
 void RenderScreenImpl::ResizeScreen(uint32_t width,
                                     uint32_t height,
                                     ExceptionState& exception_state) {
+  // Debounce: rebuilding the screen buffers frees and reallocates a whole
+  // device-local memory page per call. Something triggers this every other
+  // frame (the GPU audit shows ~22 rebuilds/s), which shreds the driver's
+  // memory manager and eventually crashes it. Same size = no-op.
+  if (context()->resolution == base::Vec2i(width, height)) {
+    LOG(INFO) << "[Graphics] resize_screen(" << width << ", " << height
+              << ") ignored: resolution unchanged.";
+    return;
+  }
+
+  LOG(INFO) << "[Graphics] resize_screen(" << width << ", " << height
+            << ") from " << context()->resolution.x << "x"
+            << context()->resolution.y;
+
   context()->resolution = base::Vec2i(width, height);
   GPUResetScreenBufferInternal();
 }
@@ -485,6 +521,13 @@ void RenderScreenImpl::FrameProcessInternal(
 
 void RenderScreenImpl::RenderFrameInternal(Diligent::ITexture* render_target,
                                            Diligent::ITexture* depth_stencil) {
+  // Submitting GPU commands after the surface has been taken away crashes the
+  // Vulkan driver (the buffers it is rendering into no longer exist), and it is
+  // also forbidden on Android once the activity is in background. The frame
+  // logic keeps running: only the GPU work is skipped.
+  if (!context()->render_device->IsSurfaceValid())
+    return;
+
   // Submit pending canvas commands
   context()->canvas_scheduler->SubmitPendingPaintCommands();
 
@@ -618,7 +661,13 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
     Diligent::ImGuiDiligentRenderer* gui_renderer) {
   // Initial swapchain attribute
   Diligent::ISwapChain* swapchain = context()->render_device->GetSwapChain();
+  if (!swapchain || !context()->render_device->IsSurfaceValid())
+    return;
+
   auto* render_target_view = swapchain->GetCurrentBackBufferRTV();
+
+  URGE_GPU_AUDIT("present:bind-backbuffer",
+                 context()->render_device->IsSurfaceValid());
 
   // Prepare for rendering
   float clear_color[] = {0, 0, 0, 1};
@@ -715,6 +764,10 @@ void RenderScreenImpl::GPUFrameEndRenderPassInternal(
 void RenderScreenImpl::GPURenderAlphaTransitionFrameInternal(
     Diligent::IDeviceContext* render_context,
     float progress) {
+  // See RenderFrameInternal(): no GPU work while the surface is gone.
+  if (!context()->render_device->IsSurfaceValid())
+    return;
+
   // Update transition uniform
   renderer::Quad transient_quad;
   renderer::Quad::SetPositionRect(&transient_quad,
@@ -773,6 +826,10 @@ void RenderScreenImpl::GPURenderVagueTransitionFrameInternal(
     Diligent::ITextureView* trans_mapping,
     float progress,
     float vague) {
+  // See RenderFrameInternal(): no GPU work while the surface is gone.
+  if (!context()->render_device->IsSurfaceValid())
+    return;
+
   // Update transition uniform
   renderer::Quad transient_quad;
   renderer::Quad::SetPositionRect(&transient_quad,
