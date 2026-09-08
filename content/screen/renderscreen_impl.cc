@@ -664,19 +664,31 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   if (!swapchain || !context()->render_device->IsSurfaceValid())
     return;
 
+  // The swap chain was rebuilt this frame: let the driver publish the new
+  // surface geometry before the first vkQueuePresentKHR.
+  if (context()->render_device->ConsumeSkipPresentOnce()) {
+    URGE_GPU_AUDIT("present:skip-after-recreate", true);
+    return;
+  }
+
   auto* render_target_view = swapchain->GetCurrentBackBufferRTV();
+  URGE_GPU_AUDIT("present:get-rtv", render_target_view != nullptr);
+  if (!render_target_view)
+    return;
 
   URGE_GPU_AUDIT("present:bind-backbuffer",
                  context()->render_device->IsSurfaceValid());
 
   // Prepare for rendering
   float clear_color[] = {0, 0, 0, 1};
+  URGE_GPU_AUDIT("present:before-setrt", true);
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
   render_context->ClearRenderTarget(
       render_target_view, clear_color,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  URGE_GPU_AUDIT("present:after-clear", true);
 
   // Apply present scissor
   Diligent::Rect present_scissor(0, 0, swapchain->GetDesc().Width,
@@ -685,9 +697,12 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
 
   // Render GUI and present
   gui_renderer->RenderDrawData(render_context, ImGui::GetDrawData());
+  URGE_GPU_AUDIT("present:after-gui", true);
 
   // Flush command buffer and present GPU surface
+  URGE_GPU_AUDIT("present:before-present", true);
   swapchain->Present(context()->engine_profile->vsync);
+  URGE_GPU_AUDIT("present:after-present", true);
 }
 
 void RenderScreenImpl::GPUFrameBeginRenderPassInternal(

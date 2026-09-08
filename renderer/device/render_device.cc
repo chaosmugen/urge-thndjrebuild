@@ -17,6 +17,8 @@
 #endif  //! GL_SUPPORTED || GLES_SUPPORTED
 #if VULKAN_SUPPORTED
 #include "Graphics/GraphicsEngineVulkan/interface/EngineFactoryVk.h"
+#include "Graphics/GraphicsEngineVulkan/include/VulkanUtilities/VulkanHeaders.h"
+#include "Graphics/GraphicsEngineVulkan/interface/SwapChainVk.h"
 #endif  // !VULKAN_SUPPORTED
 #if D3D11_SUPPORTED
 #include "Graphics/GraphicsEngineD3D11/interface/EngineFactoryD3D11.h"
@@ -34,6 +36,7 @@
 #endif
 
 #include "base/debug/logging.h"
+#include "renderer/device/gpu_audit.h"
 #include "ui/widget/widget.h"
 
 #if defined(OS_ANDROID)
@@ -474,6 +477,8 @@ int32_t RenderDevice::ResumeContext(
 bool RenderDevice::UpdateSwapChainState(
     Diligent::IDeviceContext* immediate_context) {
 #if defined(OS_ANDROID)
+  URGE_GPU_AUDIT("swapchain:update-enter", IsSurfaceValid());
+
   // GLES keeps its swap chain object alive across suspend/resume, the surface
   // state alone decides whether rendering is allowed.
   if (device_type_ != Diligent::RENDER_DEVICE_TYPE_VULKAN)
@@ -482,12 +487,36 @@ bool RenderDevice::UpdateSwapChainState(
   if (IsSurfaceValid())
     return static_cast<bool>(swapchain_);
 
-  if (!pending_recreate_.load(std::memory_order_acquire))
+  // The surface was reported lost from URGEMain.onPause()
+  // (nativeSuspendGraphics), which runs BEFORE surfaceDestroyed(): this is the
+  // last moment the ANativeWindow is still alive. Destroying the swap chain
+  // later - once SDL released the window - crashes inside the Vulkan driver
+  // (SIGSEGV, pc=0x0, observed in swapchain_.Release()). Release it now, on the
+  // render thread, while the window is still usable.
+  {
+    std::lock_guard<std::mutex> lock(swapchain_lock_);
+    // Keep the swap chain object alive across the surface loss. For Vulkan we recover
+    // it in place on the new native window (reusing oldSwapchain); releasing it here
+    // would force a brand-new swap chain that the Adreno driver cannot present while
+    // the GPU holds the in-game scene. Record its live descriptor so the recovered or
+    // rebuilt chain can be validated against it (size / transform).
+    if (swapchain_) {
+      live_swapchain_desc_ = swapchain_->GetDesc();
+      has_live_swapchain_desc_ = true;
+      URGE_GPU_AUDIT("swapchain:lost-recorded", IsSurfaceValid());
+    }
+  }
+
+  if (!pending_recreate_.load(std::memory_order_acquire)) {
+    URGE_GPU_AUDIT("swapchain:invalid-no-pending-recreate", false);
     return false;
+  }
 
   void* android_native_window = GetAndroidNativeWindow();
-  if (!android_native_window)
+  if (!android_native_window) {
+    URGE_GPU_AUDIT("swapchain:no-native-window", false);
     return false;
+  }
 
   // Prefer a brand new window: SDL publishes it from surfaceCreated(), where
   // the window is guaranteed to be usable. Comparing pointers never
@@ -496,17 +525,60 @@ bool RenderDevice::UpdateSwapChainState(
       pending_frame_count_.load(std::memory_order_relaxed) <
           kMaxSurfaceWaitFrames) {
     pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
+    URGE_GPU_AUDIT("swapchain:wait-new-window", false);
+    return false;
+  }
+
+  // SurfaceFlinger only publishes real geometry shortly after
+  // surfaceCreated(). A swap chain built on a 0x0 ANativeWindow cannot be
+  // presented: the Adreno driver NULL-dereferences inside vkQueuePresentKHR.
+  // Wait for sane extents before touching the driver.
+  {
+    auto* native_window = static_cast<ANativeWindow*>(android_native_window);
+    const int32_t window_width = ANativeWindow_getWidth(native_window);
+    const int32_t window_height = ANativeWindow_getHeight(native_window);
+    if (window_width <= 0 || window_height <= 0) {
+      pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
+      URGE_GPU_AUDIT("swapchain:window-not-ready", false);
+      LOG(ERROR) << "[Renderer] Native window not ready (" << window_width
+                 << "x" << window_height << "), deferring swap chain.";
+      return false;
+    }
+  }
+
+  // Give the freshly published surface a few frames to settle before building a
+  // swap chain on it. Creating it too early hands the driver a surface it cannot
+  // present (vkQueuePresentKHR then SIGSEGVs inside the driver), which is why
+  // the crash rate depends on how quickly the app returns to the foreground.
+  constexpr int32_t kSurfaceSettleFrames = 20;
+  if (pending_frame_count_.load(std::memory_order_relaxed) <
+      kSurfaceSettleFrames) {
+    pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
+    URGE_GPU_AUDIT("swapchain:settle-wait", false);
     return false;
   }
 
   std::lock_guard<std::mutex> lock(swapchain_lock_);
   RecreateSwapChainInternal(immediate_context, android_native_window);
 
+  URGE_GPU_AUDIT("swapchain:update-after-recreate", IsSurfaceValid());
   return IsSurfaceValid() && static_cast<bool>(swapchain_);
 #else
   (void)immediate_context;
   return true;
 #endif  // OS_ANDROID
+}
+
+bool RenderDevice::ConsumeSkipPresentOnce() {
+  return skip_present_once_.exchange(false, std::memory_order_acq_rel);
+}
+
+bool RenderDevice::ConsumeResizeSuppression() {
+  int32_t remaining = resize_suppress_frames_.load(std::memory_order_acquire);
+  if (remaining <= 0)
+    return false;
+  resize_suppress_frames_.store(remaining - 1, std::memory_order_release);
+  return true;
 }
 
 void RenderDevice::MarkSurfaceLost() {
@@ -547,6 +619,8 @@ void RenderDevice::ReleaseAcquiredWindow() {
 void RenderDevice::RecreateSwapChainInternal(
     Diligent::IDeviceContext* immediate_context,
     void* native_window) {
+  URGE_GPU_AUDIT("swapchain:recreate-enter", IsSurfaceValid());
+
   // Retire pending GPU work before dropping the old swap chain.
   try {
     device_->IdleGPU();
@@ -554,8 +628,93 @@ void RenderDevice::RecreateSwapChainInternal(
     LOG(ERROR) << "[Renderer] IdleGPU failed: " << error.what();
   }
 
+  URGE_GPU_AUDIT("swapchain:idle-gpu-done", IsSurfaceValid());
+
+  // NOTE: do NOT record any commands here (no SetRenderTargets / no
+  // ReleaseStaleResources) before the swap chain rebuild. Commands recorded after
+  // IdleGPU() are submitted by SwapChainVkImpl::ReleaseSwapChainResources() through
+  // its own Flush(), and a command buffer touching back-buffer state after the
+  // surface was lost SIGSEGVs (pc=0x0) inside the Adreno driver at submit time.
+  // Unbinding the back-buffer RTV and idling the GPU is already done inside
+  // ReleaseSwapChainResources() itself (UnbindTextureFromFramebuffer + IdleGPU).
+  URGE_GPU_AUDIT("swapchain:release-stale-done", IsSurfaceValid());
+
+  // Vulkan recovery: destroy the old VkSwapchainKHR together with its back buffers
+  // (ReleaseSwapChainResources) and build a fresh chain on the new surface. The old
+  // chain belongs to a dead surface, so it cannot legally be passed as oldSwapchain
+  // (VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933).
+  if (device_type_ == Diligent::RENDER_DEVICE_TYPE_VULKAN && swapchain_) {
+    Diligent::ISwapChainVk* swapchain_vk = nullptr;
+    swapchain_->QueryInterface(Diligent::IID_SwapChainVk,
+                                reinterpret_cast<Diligent::IObject**>(&swapchain_vk));
+    if (swapchain_vk) {
+      Diligent::NativeWindow window;
+      window.pAWindow = native_window;
+      bool ok = true;
+      try {
+        swapchain_vk->RecreateForAndroidSurfaceLoss(immediate_context, window);
+      } catch (const std::exception& error) {
+        LOG(ERROR) << "[Renderer] In-place swap chain recover failed: " << error.what();
+        ok = false;
+      }
+      swapchain_vk->Release();
+      if (ok) {
+        URGE_GPU_AUDIT("swapchain:recovered-inplace", true);
+        // Reclaim stale resources only now that the queue is healthy again. Doing
+        // it earlier would record commands into the buffer that
+        // ReleaseSwapChainResources() submits while the surface is still lost
+        // (Adreno driver SIGSEGV at submit, pc=0x0 - see note above).
+        try {
+          device_->ReleaseStaleResources(true);
+        } catch (const std::exception& error) {
+          LOG(ERROR) << "[Renderer] ReleaseStaleResources failed: " << error.what();
+        }
+        // The driver needs one frame to publish the new surface geometry before it can
+        // be presented; a Resize() right after can SIGSEGV in the driver too.
+        skip_present_once_.store(true, std::memory_order_release);
+        constexpr int32_t kSuppressResizeFrames = 10;
+        resize_suppress_frames_.store(kSuppressResizeFrames, std::memory_order_release);
+        ReleaseAcquiredWindow();
+        ANativeWindow_acquire(static_cast<ANativeWindow*>(native_window));
+        acquired_window_ = static_cast<ANativeWindow*>(native_window);
+        bound_window_ = native_window;
+        pending_recreate_.store(false, std::memory_order_release);
+        surface_valid_.store(true, std::memory_order_release);
+        const Diligent::SwapChainDesc& built = swapchain_->GetDesc();
+        LOG(INFO) << "[Renderer] Swap chain recovered in place: desc " << built.Width
+                  << "x" << built.Height << " pretransform="
+                  << static_cast<int>(built.PreTransform)
+                  << " buffers=" << built.BufferCount;
+        return;
+      }
+      LOG(ERROR) << "[Renderer] In-place recovery failed, falling back to full rebuild.";
+    }
+  }
+
+  // Falling back to a full rebuild: the context may still hold commands recorded
+  // against the dead swap chain (e.g. the back-buffer commands recorded by the
+  // pre-acquire at the end of the last Present()). Submitting them after the
+  // rebuild crashes inside the Adreno driver, so drop them before tearing the
+  // swap chain down.
+  if (device_type_ == Diligent::RENDER_DEVICE_TYPE_VULKAN && swapchain_) {
+    Diligent::ISwapChainVk* swapchain_vk = nullptr;
+    swapchain_->QueryInterface(Diligent::IID_SwapChainVk,
+                               reinterpret_cast<Diligent::IObject**>(&swapchain_vk));
+    if (swapchain_vk) {
+      try {
+        swapchain_vk->DiscardPendingCommands(immediate_context);
+      } catch (const std::exception& error) {
+        LOG(ERROR) << "[Renderer] DiscardPendingCommands failed: " << error.what();
+      }
+      swapchain_vk->Release();
+      URGE_GPU_AUDIT("swapchain:discard-pending-done", IsSurfaceValid());
+    }
+  }
+
   swapchain_.Release();
+  URGE_GPU_AUDIT("swapchain:release-old-done", IsSurfaceValid());
   ReleaseAcquiredWindow();
+  URGE_GPU_AUDIT("swapchain:release-window-done", IsSurfaceValid());
 
   Diligent::NativeWindow window;
   window.pAWindow = native_window;
@@ -568,15 +727,107 @@ void RenderDevice::RecreateSwapChainInternal(
     using Diligent::GetEngineFactoryVk;
 #endif
     auto* factory = GetEngineFactoryVk();
-    factory->CreateSwapChainVk(device_, immediate_context, swapchain_desc_,
+    URGE_GPU_AUDIT("swapchain:factory-ready", IsSurfaceValid());
+    auto* android_window = static_cast<ANativeWindow*>(native_window);
+    const int32_t window_width = ANativeWindow_getWidth(android_window);
+    const int32_t window_height = ANativeWindow_getHeight(android_window);
+
+    // Rebuild with the descriptor the live swap chain actually used. The stored
+    // swapchain_desc_ is only the creation-time one (3 buffers / FIFO), which
+    // does not match what the renderer resized to (4 buffers / MAILBOX) and
+    // made Diligent recreate the swap chain a second time immediately after
+    // every resume - two Vulkan swap chains built and torn down within ~20 ms.
+    // Rebuild with the extents the live swap chain had. They are the *physical*
+    // ones: under the ROTATE_90 pre-transform the renderer derives the logical
+    // size as (Height, Width), so requesting them reproduces the exact state it
+    // was happy with before the surface was lost and needs no follow-up
+    // Resize(). Requesting the raw window extents instead produces a swap chain
+    // whose logical size is swapped, which triggers that Resize() - and a
+    // Resize() right after a rebuild SIGSEGVs inside the Adreno driver.
+    Diligent::SwapChainDesc create_desc = swapchain_desc_;
+    if (swapchain_) {
+      create_desc = swapchain_->GetDesc();
+    } else if (has_live_swapchain_desc_) {
+      create_desc = live_swapchain_desc_;
+    } else if (window_width > 0 && window_height > 0) {
+      create_desc.Width = static_cast<uint32_t>(window_width);
+      create_desc.Height = static_cast<uint32_t>(window_height);
+    }
+    // RenderDevice::Create asks for SURFACE_TRANSFORM_OPTIMAL and Diligent
+    // resolves it to the surface's current transform (ROTATE_90 here), storing
+    // the resolved value in the descriptor. Feeding that back would size the
+    // swap chain from currentExtent instead of the identity extent, leaving it
+    // at a size the renderer does not expect and forcing a follow-up Resize()
+    // that crashes the driver. Keep the original OPTIMAL intent.
+    create_desc.PreTransform = Diligent::SURFACE_TRANSFORM_OPTIMAL;
+    LOG(INFO) << "[Renderer] Creating swap chain on window " << window_width
+              << "x" << window_height << " (requested " << create_desc.Width
+              << "x" << create_desc.Height << ", buffers "
+              << create_desc.BufferCount << ")";
+    // The observed SIGSEGV happens inside vkCreateAndroidSurfaceKHR: this is
+    // the call that dereferences the (possibly disconnected) native window.
+    URGE_GPU_AUDIT("swapchain:CreateSwapChainVk:enter", IsSurfaceValid());
+    factory->CreateSwapChainVk(device_, immediate_context, create_desc,
                                window, &swapchain_);
+    URGE_GPU_AUDIT("swapchain:CreateSwapChainVk:done", IsSurfaceValid());
     recreated = static_cast<bool>(swapchain_);
   } catch (const std::exception& error) {
     LOG(ERROR) << "[Renderer] Failed to recreate swap chain: " << error.what();
+    URGE_GPU_AUDIT("swapchain:CreateSwapChainVk:throw", IsSurfaceValid());
     recreated = false;
   }
 
   if (recreated) {
+    // A swap chain can be created without throwing yet carry no images if the
+    // underlying VkSwapchainKHR failed (e.g. surface not ready). Presenting such
+    // a chain dereferences a null vtable and SIGSEGVs. Discard it and retry.
+    const Diligent::SwapChainDesc& recreated_desc = swapchain_->GetDesc();
+    if (recreated_desc.Width == 0 || recreated_desc.Height == 0) {
+      LOG(ERROR) << "[Renderer] Recreated swap chain has no images ("
+                 << recreated_desc.Width << "x" << recreated_desc.Height
+                 << "), discarding for retry.";
+      swapchain_.Release();
+      surface_valid_.store(false, std::memory_order_release);
+      URGE_GPU_AUDIT("swapchain:recreate-no-images", false);
+      recreated = false;
+    }
+  }
+
+  if (recreated && has_live_swapchain_desc_) {
+    // Right after surfaceCreated() the presentation engine transiently reports
+    // an unsettled surface transform (IDENTITY instead of the ROTATE_90 this
+    // device settles on). A swap chain built on that reading gets a transform
+    // that does not match the display, and the first vkQueuePresentKHR then
+    // crashes inside the driver - which is why the crash rate depends on how
+    // fast the app returns to the foreground. Discard and retry until the
+    // surface reports the transform it had before the surface was lost.
+    constexpr int32_t kMaxTransformWaitFrames = 120;
+    const Diligent::SURFACE_TRANSFORM built_transform =
+        swapchain_->GetDesc().PreTransform;
+    if (built_transform != live_swapchain_desc_.PreTransform &&
+        pending_frame_count_.load(std::memory_order_relaxed) <
+            kMaxTransformWaitFrames) {
+      pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
+      LOG(ERROR) << "[Renderer] Swap chain transform " << built_transform
+                 << " != " << live_swapchain_desc_.PreTransform
+                 << ", retrying next frame.";
+      swapchain_.Release();
+      surface_valid_.store(false, std::memory_order_release);
+      URGE_GPU_AUDIT("swapchain:transform-mismatch", false);
+      recreated = false;
+    }
+  }
+
+  if (recreated) {
+    URGE_GPU_AUDIT("swapchain:recreated", true);
+    // Skip the very first Present() on the rebuilt chain: the driver needs one
+    // frame to publish the new surface geometry before it can be presented.
+    skip_present_once_.store(true, std::memory_order_release);
+    // Likewise a Resize() on a freshly rebuilt chain SIGSEGVs in the driver,
+    // and the window size can still be stale for a few frames after a resume.
+    constexpr int32_t kSuppressResizeFrames = 10;
+    resize_suppress_frames_.store(kSuppressResizeFrames,
+                                  std::memory_order_release);
     // Keep the window alive for the driver: SDL calls ANativeWindow_release()
     // from the UI thread as soon as the surface is destroyed, while the Vulkan
     // driver keeps a pointer to it until the surface is destroyed.
@@ -586,9 +837,14 @@ void RenderDevice::RecreateSwapChainInternal(
 
     pending_recreate_.store(false, std::memory_order_release);
     surface_valid_.store(true, std::memory_order_release);
-    LOG(INFO) << "[Renderer] Swap chain rebuilt on the new native window.";
+    const Diligent::SwapChainDesc& built = swapchain_->GetDesc();
+    LOG(INFO) << "[Renderer] Swap chain rebuilt on the new native window: desc "
+              << built.Width << "x" << built.Height << " pretransform="
+              << static_cast<int>(built.PreTransform)
+              << " buffers=" << built.BufferCount;
   } else {
     surface_valid_.store(false, std::memory_order_release);
+    URGE_GPU_AUDIT("swapchain:recreate-failed", false);
     LOG(ERROR) << "[Renderer] Swap chain rebuild failed, retry next frame.";
   }
 }

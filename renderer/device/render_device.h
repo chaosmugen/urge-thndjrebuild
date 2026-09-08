@@ -57,6 +57,17 @@ class RenderDevice {
   void SuspendContext();
   int32_t ResumeContext(Diligent::IDeviceContext* immediate_context);
 
+  // Returns true once right after the swap chain was rebuilt, asking the
+  // caller to skip Present() for that single frame. On Android the freshly
+  // published ANativeWindow needs one frame before the driver can safely
+  // present it (vkQueuePresentKHR NULL-dereferences otherwise).
+  bool ConsumeSkipPresentOnce();
+
+  // Suppresses the Resize() that would otherwise follow a rebuild for a few
+  // frames: resizing a swap chain that was just rebuilt crashes inside the
+  // Adreno driver, and the window size can still be stale right after a resume.
+  bool ConsumeResizeSuppression();
+
   // Whether the rendering surface is usable right now.
   //
   // On Android the ANativeWindow is released by SDL on surfaceDestroyed()
@@ -99,6 +110,11 @@ class RenderDevice {
   Diligent::RENDER_DEVICE_TYPE device_type_;
   SDL_GLContext gl_context_;
 
+  // Set for a single frame when the swap chain was rebuilt, consumed by
+  // ConsumeSkipPresentOnce(). Never set outside the Android Vulkan path.
+  std::atomic<bool> skip_present_once_{false};
+  std::atomic<int32_t> resize_suppress_frames_{0};
+
 #if defined(OS_ANDROID)
   // Native window the current swap chain is bound to. Only compared against
   // the value published by SDL, never dereferenced.
@@ -114,6 +130,14 @@ class RenderDevice {
   std::atomic<bool> pending_recreate_{false};
   std::atomic<int32_t> pending_frame_count_{0};
   std::mutex swapchain_lock_;
+
+  // Descriptor of the swap chain that was live before the surface was lost.
+  // swapchain_desc_ is only the creation-time one (3 buffers / FIFO) and does
+  // not match what the renderer later resized to (4 buffers / MAILBOX);
+  // rebuilding from it forces Diligent to recreate the swap chain a second
+  // time right after every resume.
+  Diligent::SwapChainDesc live_swapchain_desc_;
+  bool has_live_swapchain_desc_ = false;
 
   void* GetAndroidNativeWindow() const;
   void ReleaseAcquiredWindow();

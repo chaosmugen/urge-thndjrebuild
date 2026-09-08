@@ -136,13 +136,17 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
         Diligent::TEX_FORMAT_UNKNOWN, default_sample);
   }
 
-  // Plane (flat) - with scissor - no depth
+  // Plane (flat) - with scissor - no depth test, but drawn inside a render pass
+  // that keeps a depth-stencil buffer bound
   for (size_t i = 0; i < BLEND_TYPE_NUMS; ++i) {
     // With blend
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(static_cast<BlendType>(i));
 
-    // Disable depth test (matches 29213aee Window Flat (viewport))
+    // Disable depth test (matches 29213aee Window Flat (viewport)).
+    // The DSV format below is declared as the one the viewport render pass
+    // actually binds (D24_UNORM_S8_UINT): declaring TEX_FORMAT_UNKNOWN here
+    // makes Diligent log a format-mismatch warning on every single draw.
     Diligent::DepthStencilStateDesc depth_stencil_state =
         GetDefaultDepthStencilState(false);
 
@@ -153,7 +157,7 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
 
     loader->viewport.BuildPipeline(
         &plane[i], blend_state, rasterizer_state, depth_stencil_state,
-        primitive_topology, {target_format}, Diligent::TEX_FORMAT_UNKNOWN,
+        primitive_topology, {target_format}, depth_stencil_format,
         default_sample);
   }
 

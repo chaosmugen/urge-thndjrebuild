@@ -474,16 +474,46 @@ void ContentRunner::UpdateWindowViewportInternal() {
   if (!swapchain || !render_device_->IsSurfaceValid())
     return;
 
-  if (window_size.x != static_cast<int32_t>(swapchain->GetDesc().Width) ||
-      window_size.y != static_cast<int32_t>(swapchain->GetDesc().Height)) {
-    URGE_GPU_AUDIT("swapchain:resize", render_device_->IsSurfaceValid());
-    // Must match the pre-transform the swap chain was created with
-    // (SURFACE_TRANSFORM_IDENTITY in RenderDevice::Create). Passing OPTIMAL
-    // here makes Diligent swap width/height on 90-degree-rotated surfaces, so
-    // the "resize" kept asking for a size that never matched the window and
-    // recreated the whole swap chain on every frame after resume.
-    swapchain->Resize(window_size.x, window_size.y,
-                      Diligent::SURFACE_TRANSFORM_IDENTITY);
+  // Diligent stores the *physical* (post-transform) extents in the swap chain
+  // descriptor: under a 90/270-degree pre-transform SwapChainVkImpl::Resize
+  // swaps them (SwapChainVkImpl.cpp:903-921). RenderDevice::Create requests
+  // SURFACE_TRANSFORM_OPTIMAL, which resolves to ROTATE_90 on this device, so
+  // comparing the window size (logical) against those physical extents never
+  // matches and recreated the swap chain on every frame. Compare against the
+  // logical extents instead, and keep OPTIMAL so the pre-transform stays
+  // consistent with the one the swap chain was created with.
+  const Diligent::SwapChainDesc& swapchain_desc = swapchain->GetDesc();
+  const bool rotated =
+      swapchain_desc.PreTransform == Diligent::SURFACE_TRANSFORM_ROTATE_90 ||
+      swapchain_desc.PreTransform == Diligent::SURFACE_TRANSFORM_ROTATE_270 ||
+      swapchain_desc.PreTransform ==
+          Diligent::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90 ||
+      swapchain_desc.PreTransform ==
+          Diligent::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270;
+  const int32_t logical_width =
+      rotated ? static_cast<int32_t>(swapchain_desc.Height)
+              : static_cast<int32_t>(swapchain_desc.Width);
+  const int32_t logical_height =
+      rotated ? static_cast<int32_t>(swapchain_desc.Width)
+              : static_cast<int32_t>(swapchain_desc.Height);
+
+  if (window_size.x != logical_width || window_size.y != logical_height) {
+    // Resizing a swap chain that was just rebuilt crashes inside the Adreno
+    // driver at the very same PC as the present crashes, so let it settle for
+    // one frame and reconsider on the next one.
+    LOG(INFO) << "[Renderer] Swap chain resize triggered: window "
+              << window_size.x << "x" << window_size.y << " vs logical "
+              << logical_width << "x" << logical_height << " (rotated="
+              << rotated << ", pretransform="
+              << static_cast<int>(swapchain_desc.PreTransform) << ")";
+    if (render_device_->ConsumeResizeSuppression()) {
+      URGE_GPU_AUDIT("swapchain:resize-skip-after-recreate",
+                     render_device_->IsSurfaceValid());
+    } else {
+      URGE_GPU_AUDIT("swapchain:resize", render_device_->IsSurfaceValid());
+      swapchain->Resize(window_size.x, window_size.y,
+                        Diligent::SURFACE_TRANSFORM_OPTIMAL);
+    }
   }
 
   // Update real display viewport
