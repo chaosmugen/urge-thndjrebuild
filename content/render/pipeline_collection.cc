@@ -167,15 +167,14 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(static_cast<BlendType>(i));
 
-    // Disable depth test.
-    // Every 2D quad is emitted with z = 0 (Quad::SetPositionRect) and the
-    // projection matrix leaves z untouched, so the depth test was always
-    // true and ordered nothing - ordering is done entirely by the CPU sort
-    // keys. Keeping it enabled only made each fragment write depth = 0, and
-    // on Vulkan, where NDC z spans [0, 1], that pinned the whole scene to
-    // the near plane where depth precision is worst.
+    // Depth test ENABLED for sprites.
+    // af2e282d turned it off on the assumption that every 2D quad is emitted
+    // with z = 0 and the test therefore orders nothing. On this device that is
+    // not true: the per-sprite sort key is carried in the vertex z, so the
+    // test does resolve overlap, and disabling it made the title -> menu
+    // transition (mirror animation) flash for one frame. Keep it enabled.
     Diligent::DepthStencilStateDesc depth_stencil_state =
-        GetDefaultDepthStencilState(false);
+        GetDefaultDepthStencilState(true);
 
     Diligent::RasterizerStateDesc rasterizer_state;
     rasterizer_state.CullMode = Diligent::CULL_MODE_FRONT;

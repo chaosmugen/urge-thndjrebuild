@@ -53,7 +53,7 @@ namespace {
 // before rebuilding the swap chain on the window we already have. Some
 // background transitions (power button, notification shade) never destroy the
 // surface, so SDL never publishes a new window in those cases.
-constexpr int32_t kMaxSurfaceWaitFrames = 30;
+constexpr int32_t kMaxSurfaceWaitFrames = 5;
 }  // namespace
 #endif  //! OS_ANDROID
 
@@ -550,7 +550,7 @@ bool RenderDevice::UpdateSwapChainState(
   // swap chain on it. Creating it too early hands the driver a surface it cannot
   // present (vkQueuePresentKHR then SIGSEGVs inside the driver), which is why
   // the crash rate depends on how quickly the app returns to the foreground.
-  constexpr int32_t kSurfaceSettleFrames = 20;
+  constexpr int32_t kSurfaceSettleFrames = 3;
   if (pending_frame_count_.load(std::memory_order_relaxed) <
       kSurfaceSettleFrames) {
     pending_frame_count_.fetch_add(1, std::memory_order_relaxed);
