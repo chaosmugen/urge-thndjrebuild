@@ -1,15 +1,16 @@
 cmake_minimum_required(VERSION 3.18.0)
 
-# Ruby 3.4.0 vendored sources for Android (mini runtime form).
+# Ruby 4.0.6 vendored sources for Android (mini runtime form).
 #
 # The source list mirrors the object set of the official cross build
-# (NDK r28c / clang 19, API 21, YJIT/RJIT/ZJIT disabled, --with-out-ext=,
+# (NDK r28c / clang 19, API 21, YJIT/ZJIT disabled, --with-out-ext=,
 # miniinit replacing localeinit). Reference artifacts were produced by
 # `configure --host=<triple> && make` inside WSL; scripts in D:/wsl-setup.
 #
 # Conventions:
 # - Per-ABI generated config.h lives in config/<ANDROID_ABI>/ruby/config.h.
 # - verconf.h is force-included (-include) to provide RUBY_LIB_VERSION etc.
+# - 4.0 builtin blobs are emitted as builtin_binary.rbbin (3.4 used .inc).
 # - Files that are #included by other sources (id.c, id_table.c, vm_eval.c,
 #   vm_args.c, vm_exec.c, thread_sync.c, thread_pthread.c, mini_builtin.c,
 #   prism_compile.c, universal_parser.c, miniprelude.c) must NOT be listed
@@ -17,7 +18,7 @@ cmake_minimum_required(VERSION 3.18.0)
 #   provided by miniinit.c), builtin.c (builtin/Init_prelude symbols are
 #   provided by miniinit.c in the mini form; builtin.c is the full-form
 #   counterpart and the two are mutually exclusive), or main() providers
-#   (main.c, goruby.c, rubystub.c, ruby-runner.c, node_dump.c).
+#   (main.c, goruby.c, rubystub.c, ruby-runner.c).
 
 set(SRC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -27,7 +28,7 @@ include_directories(
   ${SRC}
   ${SRC}/ccan
   ${SRC}/prism
-  ${SRC}/enc/unicode/15.0.0
+  ${SRC}/enc/unicode/17.0.0
 )
 
 set(MRI_SOURCE_FILES
@@ -36,10 +37,12 @@ set(MRI_SOURCE_FILES
   ${SRC}/array.c
   ${SRC}/ast.c
   ${SRC}/bignum.c
+  ${SRC}/box.c
   ${SRC}/class.c
   ${SRC}/compar.c
   ${SRC}/compile.c
   ${SRC}/complex.c
+  ${SRC}/concurrent_set.c
   ${SRC}/cont.c
   ${SRC}/debug.c
   ${SRC}/debug_counter.c
@@ -71,6 +74,7 @@ set(MRI_SOURCE_FILES
   ${SRC}/pack.c
   ${SRC}/parse.c
   ${SRC}/parser_st.c
+  ${SRC}/pathname.c
   ${SRC}/proc.c
   ${SRC}/process.c
   ${SRC}/ractor.c
@@ -84,11 +88,10 @@ set(MRI_SOURCE_FILES
   ${SRC}/regexec.c
   ${SRC}/regparse.c
   ${SRC}/regsyntax.c
-  ${SRC}/rjit.c
-  ${SRC}/rjit_c.c
   ${SRC}/ruby.c
   ${SRC}/ruby_parser.c
   ${SRC}/scheduler.c
+  ${SRC}/set.c
   ${SRC}/shape.c
   ${SRC}/signal.c
   ${SRC}/sprintf.c
@@ -186,16 +189,15 @@ target_compile_options(mri_ruby PRIVATE
 )
 # NOTE: the official build uses -fvisibility=hidden, but the engine links
 # internal symbols across the .so boundary (e.g. rb_call_builtin_inits),
-# which hidden visibility would hide. Keep default visibility like the old
-# vendored build did.
+# which hidden visibility would hide. Keep default visibility.
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   target_compile_definitions(mri_ruby PUBLIC ARCH_32BIT)
   # 【32 位构建绕行】vm_exec_core 确定性崩溃（switch/computed-goto 均复现），
   # 临时整体降级优化并关闭严格别名，排除编译器代码生成问题。
   target_compile_options(mri_ruby PRIVATE -O1 -fno-strict-aliasing)
-  message("${ANDROID_ABI} ruby 32 bit build (O1 debug override)")
+  message("${ANDROID_ABI} ruby 40 32 bit build (O1 debug override)")
 else()
   target_compile_definitions(mri_ruby PUBLIC ARCH_64BIT)
-  message("${ANDROID_ABI} ruby 64 bit build")
+  message("${ANDROID_ABI} ruby 40 64 bit build")
 endif()

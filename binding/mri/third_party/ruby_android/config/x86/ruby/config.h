@@ -1,7 +1,6 @@
 #ifndef INCLUDE_RUBY_CONFIG_H
 #define INCLUDE_RUBY_CONFIG_H 1
 /* confdefs.h */
-#define RUBY_ABI_VERSION 1
 #define HAVE_STDIO_H 1
 #define HAVE_STDLIB_H 1
 #define HAVE_STRING_H 1
@@ -53,6 +52,7 @@
 #define HAVE_PWD_H 1
 #define HAVE_SANITIZER_ASAN_INTERFACE_H 1
 #define HAVE_SANITIZER_MSAN_INTERFACE_H 1
+#define HAVE_SANITIZER_TSAN_INTERFACE_H 1
 #define HAVE_STDALIGN_H 1
 #define HAVE_STDIO_H 1
 #define HAVE_SYS_EVENTFD_H 1
@@ -172,7 +172,6 @@
 #define WARNINGFUNC(mesg,x) __attribute__ ((__warning__ mesg)) x
 #define WEAK(x) __attribute__ ((__weak__)) x
 #define HAVE_FUNC_WEAK 1
-#define RUBY_CXX_DEPRECATED(msg) __attribute__((__deprecated__(msg)))
 #define HAVE_NULLPTR 1
 #define FUNC_STDCALL(x) __attribute__ ((__stdcall__)) x
 #define FUNC_CDECL(x) __attribute__ ((__cdecl__)) x
@@ -181,6 +180,7 @@
 #define RUBY_ALIAS_FUNCTION_TYPE(type, prot, name, args) type prot __attribute__((alias(#name)));
 #define RUBY_ALIAS_FUNCTION_VOID(prot, name, args) RUBY_ALIAS_FUNCTION_TYPE(void, prot, name, args)
 #define HAVE_GCC_ATOMIC_BUILTINS 1
+#define HAVE_GCC_ATOMIC_BUILTINS_64 1
 #define HAVE_GCC_SYNC_BUILTINS 1
 #define HAVE___BUILTIN_UNREACHABLE 1
 #define RUBY_FUNC_EXPORTED __attribute__ ((__visibility__("default"))) extern
@@ -455,7 +455,7 @@
 #define RUBY_LONGJMP(env,val) __builtin_longjmp((void **)(env),val)
 #define USE_MODULAR_GC 0
 #define USE_YJIT 0
-#define USE_RJIT 0
+#define USE_ZJIT 0
 #define RUBY_PLATFORM "i686-linux-android-android"
 #define RB_DEFAULT_PARSER RB_DEFAULT_PARSER_PRISM
 #endif /* INCLUDE_RUBY_CONFIG_H */

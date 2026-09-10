@@ -772,9 +772,10 @@ int main(int argc, char* argv[]) {
       // SDL and its subsystems may install their own handlers during Init;
       // re-arm ours so a crash in the game loop still produces a report.
       InstallUrgeCrashHandler();
-#endif
 
+      // g_tv_device is only defined in the Android section of this file.
       binding::MriSetTvDevice(g_tv_device);
+#endif
 
       // Setup content runner module
       content::ContentRunner::InitParams content_params;

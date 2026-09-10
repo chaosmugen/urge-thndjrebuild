@@ -4,7 +4,9 @@
 
 #include "content/screen/renderscreen_impl.h"
 
+#if defined(OS_ANDROID)
 #include <sys/system_properties.h>
+#endif
 #include <unordered_map>
 
 #include "SDL3/SDL_events.h"

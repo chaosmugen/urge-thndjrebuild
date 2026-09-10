@@ -24,6 +24,14 @@ endif ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+  if (MSVC)
+    # CMAKE_CXX_FLAGS is empty for this project, which also drops CMake's
+    # default /EHsc. MSVC 14.44 headers (<chrono>, <ostream>) then emit
+    # C4530, and the /WX on our targets turns that into a fatal C2220.
+    # Restore the standard exception handling model explicitly.
+    # Limited to C/CXX so assembler rules (nasm / ml64) are left untouched.
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/EHsc>")
+  endif ()
   link_libraries(
     "shell32;ws2_32;iphlpapi;imagehlp;shlwapi;bcrypt"
     "setupapi;advapi32;uuid;version;oleaut32;ole32;imm32;winmm;user32;rpcrt4;usp10"
@@ -68,6 +76,16 @@ include_directories(third_party/SDL/include)
 ## Diligent Engine
 add_subdirectory(third_party/DiligentCore)
 include_directories(third_party/DiligentCore)
+
+# On Windows/MSVC the Diligent Vulkan backend is linked statically, and the
+# Vulkan include directory is only a PRIVATE dependency of that static library,
+# so it does not propagate to our own targets even though they include
+# Diligent's public VulkanHeaders.h (<vulkan/vulkan.h>). Expose the SDK include
+# directory globally for that configuration. Other platforms (Android/NDK)
+# already provide the headers through their own toolchain and are unaffected.
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND VULKAN_SUPPORTED AND Vulkan_INCLUDE_DIR)
+  include_directories("${Vulkan_INCLUDE_DIR}")
+endif ()
 
 ## image loader (SDL_image)
 add_subdirectory(third_party/image_loader)

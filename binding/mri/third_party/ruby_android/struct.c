@@ -52,7 +52,8 @@ struct_ivar_get(VALUE c, ID id)
         RUBY_ASSERT(RB_TYPE_P(c, T_CLASS));
         ivar = rb_attr_get(c, id);
         if (!NIL_P(ivar)) {
-            return rb_ivar_set(orig, id, ivar);
+            if (!OBJ_FROZEN(orig)) rb_ivar_set(orig, id, ivar);
+            return ivar;
         }
     }
 }
@@ -532,7 +533,7 @@ rb_struct_define_under(VALUE outer, const char *name, ...)
  *    Foo = Struct.new('Foo', :foo, :bar) # => Struct::Foo
  *    f = Foo.new(0, 1)                   # => #<struct Struct::Foo foo=0, bar=1>
  *
- *  <b>\Class Name</b>
+ *  <b>Class Name</b>
  *
  *  With string argument +class_name+,
  *  returns a new subclass of +Struct+ named <tt>Struct::<em>class_name</em></tt>:
@@ -587,7 +588,7 @@ rb_struct_define_under(VALUE outer, const char *name, ...)
  *
  *  A subclass returned by Struct.new has these singleton methods:
  *
- *  - \Method <tt>::new </tt> creates an instance of the subclass:
+ *  - Method <tt>::new </tt> creates an instance of the subclass:
  *
  *      Foo.new          # => #<struct Struct::Foo foo=nil, bar=nil>
  *      Foo.new(0)       # => #<struct Struct::Foo foo=0, bar=nil>
@@ -600,12 +601,12 @@ rb_struct_define_under(VALUE outer, const char *name, ...)
  *      Foo.new(foo: 0, bar: 1, baz: 2)
  *      # Raises ArgumentError: unknown keywords: baz
  *
- *  - \Method <tt>:inspect</tt> returns a string representation of the subclass:
+ *  - Method <tt>:inspect</tt> returns a string representation of the subclass:
  *
  *      Foo.inspect
  *      # => "Struct::Foo"
  *
- *  - \Method <tt>::members</tt> returns an array of the member names:
+ *  - Method <tt>::members</tt> returns an array of the member names:
  *
  *      Foo.members # => [:foo, :bar]
  *
@@ -715,15 +716,17 @@ num_members(VALUE klass)
 struct struct_hash_set_arg {
     VALUE self;
     VALUE unknown_keywords;
+    VALUE missing_keywords;
+    long missing_count;
 };
 
-static int rb_struct_pos(VALUE s, VALUE *name);
+static int rb_struct_pos(VALUE s, VALUE *name, bool name_only);
+static VALUE deconstruct_keys(VALUE s, VALUE keys, bool name_only);
 
 static int
-struct_hash_set_i(VALUE key, VALUE val, VALUE arg)
+struct_hash_aset(VALUE key, VALUE val, struct struct_hash_set_arg *args, bool name_only)
 {
-    struct struct_hash_set_arg *args = (struct struct_hash_set_arg *)arg;
-    int i = rb_struct_pos(args->self, &key);
+    int i = rb_struct_pos(args->self, &key, name_only);
     if (i < 0) {
         if (NIL_P(args->unknown_keywords)) {
             args->unknown_keywords = rb_ary_new();
@@ -734,6 +737,14 @@ struct_hash_set_i(VALUE key, VALUE val, VALUE arg)
         rb_struct_modify(args->self);
         RSTRUCT_SET(args->self, i, val);
     }
+    return i;
+}
+
+static int
+struct_hash_set_i(VALUE key, VALUE val, VALUE arg)
+{
+    struct struct_hash_set_arg *args = (struct struct_hash_set_arg *)arg;
+    struct_hash_aset(key, val, args, false);
     return ST_CONTINUE;
 }
 
@@ -766,12 +777,13 @@ rb_struct_initialize_m(int argc, const VALUE *argv, VALUE self)
         break;
     }
     if (keyword_init) {
-        struct struct_hash_set_arg arg;
+        struct struct_hash_set_arg arg = {
+            .self = self,
+            .unknown_keywords = Qnil,
+        };
         rb_mem_clear((VALUE *)RSTRUCT_CONST_PTR(self), n);
-        arg.self = self;
-        arg.unknown_keywords = Qnil;
         rb_hash_foreach(argv[0], struct_hash_set_i, (VALUE)&arg);
-        if (arg.unknown_keywords != Qnil) {
+        if (UNLIKELY(!NIL_P(arg.unknown_keywords))) {
             rb_raise(rb_eArgError, "unknown keywords: %s",
                      RSTRING_PTR(rb_ary_join(arg.unknown_keywords, rb_str_new2(", "))));
         }
@@ -810,12 +822,31 @@ struct_alloc(VALUE klass)
 {
     long n = num_members(klass);
     size_t embedded_size = offsetof(struct RStruct, as.ary) + (sizeof(VALUE) * n);
+    if (RCLASS_MAX_IV_COUNT(klass) > 0) {
+        embedded_size += sizeof(VALUE);
+    }
+
     VALUE flags = T_STRUCT | (RGENGC_WB_PROTECTED_STRUCT ? FL_WB_PROTECTED : 0);
 
     if (n > 0 && rb_gc_size_allocatable_p(embedded_size)) {
         flags |= n << RSTRUCT_EMBED_LEN_SHIFT;
+        if (RCLASS_MAX_IV_COUNT(klass) == 0) {
+            // We set the flag before calling `NEWOBJ_OF` in case a NEWOBJ tracepoint does
+            // attempt to write fields. We'll remove it later if no fields was written to.
+            flags |= RSTRUCT_GEN_FIELDS;
+        }
 
         NEWOBJ_OF(st, struct RStruct, klass, flags, embedded_size, 0);
+        if (RCLASS_MAX_IV_COUNT(klass) == 0) {
+            if (!rb_shape_obj_has_fields((VALUE)st)
+                    && embedded_size < rb_gc_obj_slot_size((VALUE)st)) {
+                FL_UNSET_RAW((VALUE)st, RSTRUCT_GEN_FIELDS);
+                RSTRUCT_SET_FIELDS_OBJ((VALUE)st, 0);
+            }
+        }
+        else {
+            RSTRUCT_SET_FIELDS_OBJ((VALUE)st, 0);
+        }
 
         rb_mem_clear((VALUE *)st->as.ary, n);
 
@@ -823,6 +854,10 @@ struct_alloc(VALUE klass)
     }
     else {
         NEWOBJ_OF(st, struct RStruct, klass, flags, sizeof(struct RStruct), 0);
+
+        st->as.heap.ptr = NULL;
+        st->as.heap.fields_obj = 0;
+        st->as.heap.len = 0;
 
         st->as.heap.ptr = struct_heap_alloc((VALUE)st, n);
         rb_mem_clear((VALUE *)st->as.heap.ptr, n);
@@ -1090,6 +1125,12 @@ rb_struct_to_h(VALUE s)
 static VALUE
 rb_struct_deconstruct_keys(VALUE s, VALUE keys)
 {
+    return deconstruct_keys(s, keys, false);
+}
+
+static VALUE
+deconstruct_keys(VALUE s, VALUE keys, bool name_only)
+{
     VALUE h;
     long i;
 
@@ -1108,7 +1149,7 @@ rb_struct_deconstruct_keys(VALUE s, VALUE keys)
     h = rb_hash_new_with_size(RARRAY_LEN(keys));
     for (i=0; i<RARRAY_LEN(keys); i++) {
         VALUE key = RARRAY_AREF(keys, i);
-        int i = rb_struct_pos(s, &key);
+        int i = rb_struct_pos(s, &key, name_only);
         if (i < 0) {
             return h;
         }
@@ -1136,7 +1177,7 @@ rb_struct_init_copy(VALUE copy, VALUE s)
 }
 
 static int
-rb_struct_pos(VALUE s, VALUE *name)
+rb_struct_pos(VALUE s, VALUE *name, bool name_only)
 {
     long i;
     VALUE idx = *name;
@@ -1144,7 +1185,7 @@ rb_struct_pos(VALUE s, VALUE *name)
     if (SYMBOL_P(idx)) {
         return struct_member_pos(s, idx);
     }
-    else if (RB_TYPE_P(idx, T_STRING)) {
+    else if (name_only || RB_TYPE_P(idx, T_STRING)) {
         idx = rb_check_symbol(name);
         if (NIL_P(idx)) return -1;
         return struct_member_pos(s, idx);
@@ -1216,7 +1257,7 @@ invalid_struct_pos(VALUE s, VALUE idx)
 VALUE
 rb_struct_aref(VALUE s, VALUE idx)
 {
-    int i = rb_struct_pos(s, &idx);
+    int i = rb_struct_pos(s, &idx, false);
     if (i < 0) invalid_struct_pos(s, idx);
     return RSTRUCT_GET(s, i);
 }
@@ -1254,7 +1295,7 @@ rb_struct_aref(VALUE s, VALUE idx)
 VALUE
 rb_struct_aset(VALUE s, VALUE idx, VALUE val)
 {
-    int i = rb_struct_pos(s, &idx);
+    int i = rb_struct_pos(s, &idx, false);
     if (i < 0) invalid_struct_pos(s, idx);
     rb_struct_modify(s);
     RSTRUCT_SET(s, i, val);
@@ -1262,18 +1303,18 @@ rb_struct_aset(VALUE s, VALUE idx, VALUE val)
 }
 
 FUNC_MINIMIZED(VALUE rb_struct_lookup(VALUE s, VALUE idx));
-NOINLINE(static VALUE rb_struct_lookup_default(VALUE s, VALUE idx, VALUE notfound));
+NOINLINE(static VALUE rb_struct_lookup_default(VALUE s, VALUE idx, VALUE notfound, bool name_only));
 
 VALUE
 rb_struct_lookup(VALUE s, VALUE idx)
 {
-    return rb_struct_lookup_default(s, idx, Qnil);
+    return rb_struct_lookup_default(s, idx, Qnil, false);
 }
 
 static VALUE
-rb_struct_lookup_default(VALUE s, VALUE idx, VALUE notfound)
+rb_struct_lookup_default(VALUE s, VALUE idx, VALUE notfound, bool name_only)
 {
-    int i = rb_struct_pos(s, &idx);
+    int i = rb_struct_pos(s, &idx, name_only);
     if (i < 0) return notfound;
     return RSTRUCT_GET(s, i);
 }
@@ -1552,7 +1593,7 @@ rb_struct_dig(int argc, VALUE *argv, VALUE self)
 /*
  *  Document-class: Data
  *
- *  \Class \Data provides a convenient way to define simple classes
+ *  Class \Data provides a convenient way to define simple classes
  *  for value-alike objects.
  *
  *  The simplest example of usage:
@@ -1709,6 +1750,21 @@ rb_data_define(VALUE super, ...)
     return klass;
 }
 
+static int
+data_hash_set_i(VALUE key, VALUE val, VALUE arg)
+{
+    struct struct_hash_set_arg *args = (struct struct_hash_set_arg *)arg;
+    int i = struct_hash_aset(key, val, args, true);
+    if (i >= 0 && args->missing_count > 0) {
+        VALUE k = RARRAY_AREF(args->missing_keywords, i);
+        if (!NIL_P(k)) {
+            RARRAY_ASET(args->missing_keywords, i, Qnil);
+            args->missing_count--;
+        }
+    }
+    return ST_CONTINUE;
+}
+
 /*
  *  call-seq:
  *    DataClass::members -> array_of_symbols
@@ -1759,7 +1815,8 @@ rb_data_define(VALUE super, ...)
  *  important for redefining initialize in order to convert arguments or provide
  *  defaults:
  *
- *     Measure = Data.define(:amount, :unit) do
+ *     Measure = Data.define(:amount, :unit)
+ *     class Measure
  *       NONE = Data.define
  *
  *       def initialize(amount:, unit: NONE.new)
@@ -1768,7 +1825,7 @@ rb_data_define(VALUE super, ...)
  *     end
  *
  *     Measure.new('10', 'km') # => #<data Measure amount=10.0, unit="km">
- *     Measure.new(10_000)     # => #<data Measure amount=10000.0, unit=#<data NONE>>
+ *     Measure.new(10_000)     # => #<data Measure amount=10000.0, unit=#<data Measure::NONE>>
  *
  */
 
@@ -1784,28 +1841,38 @@ rb_data_initialize_m(int argc, const VALUE *argv, VALUE self)
         if (num_members > 0) {
             rb_exc_raise(rb_keyword_error_new("missing", members));
         }
+        OBJ_FREEZE(self);
         return Qnil;
     }
     if (argc > 1 || !RB_TYPE_P(argv[0], T_HASH)) {
         rb_error_arity(argc, 0, 0);
     }
 
-    if (RHASH_SIZE(argv[0]) < num_members) {
-        VALUE missing = rb_ary_diff(members, rb_hash_keys(argv[0]));
-        rb_exc_raise(rb_keyword_error_new("missing", missing));
-    }
-
-    struct struct_hash_set_arg arg;
+    VALUE missing = rb_ary_dup(members);
+    RBASIC_CLEAR_CLASS(missing);
+    struct struct_hash_set_arg arg = {
+        .self = self,
+        .unknown_keywords = Qnil,
+        .missing_keywords = missing,
+        .missing_count = (long)num_members,
+    };
     rb_mem_clear((VALUE *)RSTRUCT_CONST_PTR(self), num_members);
-    arg.self = self;
-    arg.unknown_keywords = Qnil;
-    rb_hash_foreach(argv[0], struct_hash_set_i, (VALUE)&arg);
+    rb_hash_foreach(argv[0], data_hash_set_i, (VALUE)&arg);
     // Freeze early before potentially raising, so that we don't leave an
     // unfrozen copy on the heap, which could get exposed via ObjectSpace.
     OBJ_FREEZE(self);
-    if (arg.unknown_keywords != Qnil) {
-        rb_exc_raise(rb_keyword_error_new("unknown", arg.unknown_keywords));
+    if (UNLIKELY(arg.missing_count > 0)) {
+        rb_ary_compact_bang(missing);
+        RUBY_ASSERT(RARRAY_LEN(missing) == arg.missing_count, "missing_count=%ld but %ld", arg.missing_count, RARRAY_LEN(missing));
+        RBASIC_SET_CLASS_RAW(missing, rb_cArray);
+        rb_exc_raise(rb_keyword_error_new("missing", missing));
     }
+    VALUE unknown_keywords = arg.unknown_keywords;
+    if (UNLIKELY(!NIL_P(unknown_keywords))) {
+        RBASIC_SET_CLASS_RAW(unknown_keywords, rb_cArray);
+        rb_exc_raise(rb_keyword_error_new("unknown", unknown_keywords));
+    }
+
     return Qnil;
 }
 
@@ -2060,12 +2127,16 @@ rb_data_inspect(VALUE s)
  *    end
  */
 
-#define rb_data_deconstruct_keys rb_struct_deconstruct_keys
+static VALUE
+rb_data_deconstruct_keys(VALUE s, VALUE keys)
+{
+    return deconstruct_keys(s, keys, true);
+}
 
 /*
  *  Document-class: Struct
  *
- *  \Class \Struct provides a convenient way to create a simple class
+ *  Class \Struct provides a convenient way to create a simple class
  *  that can store and fetch values.
  *
  *  This example creates a subclass of +Struct+, <tt>Struct::Customer</tt>;
@@ -2105,7 +2176,7 @@ rb_data_inspect(VALUE s)
  *
  *  == What's Here
  *
- *  First, what's elsewhere. \Class \Struct:
+ *  First, what's elsewhere. Class \Struct:
  *
  *  - Inherits from {class Object}[rdoc-ref:Object@What-27s+Here].
  *  - Includes {module Enumerable}[rdoc-ref:Enumerable@What-27s+Here],

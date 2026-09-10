@@ -142,18 +142,21 @@ static const rb_random_interface_t random_mt_if = {
 };
 
 static rb_random_mt_t *
-rand_mt_start(rb_random_mt_t *r)
+rand_mt_start(rb_random_mt_t *r, VALUE obj)
 {
     if (!genrand_initialized(&r->mt)) {
         r->base.seed = rand_init(&random_mt_if, &r->base, random_seed(Qundef));
+        if (obj) {
+            RB_OBJ_WRITTEN(obj, Qundef, r->base.seed);
+        }
     }
     return r;
 }
 
 static rb_random_t *
-rand_start(rb_random_mt_t *r)
+rand_start(rb_random_mt_t *r, VALUE obj)
 {
-    return &rand_mt_start(r)->base;
+    return &rand_mt_start(r, obj)->base;
 }
 
 static rb_ractor_local_key_t default_rand_key;
@@ -192,7 +195,13 @@ default_rand(void)
 static rb_random_mt_t *
 default_mt(void)
 {
-    return rand_mt_start(default_rand());
+    return rand_mt_start(default_rand(), Qfalse);
+}
+
+static rb_random_t *
+default_rand_start(void)
+{
+    return &default_mt()->base;
 }
 
 unsigned int
@@ -221,7 +230,7 @@ int_pair_to_real_inclusive(uint32_t a, uint32_t b)
     const uint128_t m = ((uint128_t)1 << dig) | 1;
     uint128_t x = ((uint128_t)a << 32) | b;
     r = (double)(uint64_t)((x * m) >> 64);
-#elif defined HAVE_UINT64_T && !MSC_VERSION_BEFORE(1300)
+#elif defined HAVE_UINT64_T
     uint64_t x = ((uint64_t)a << dig_u) +
         (((uint64_t)b + (a >> dig_u)) >> dig_r64);
     r = (double)x;
@@ -263,7 +272,7 @@ const rb_data_type_t rb_random_data_type = {
         random_free,
         random_memsize,
     },
-    0, 0, RUBY_TYPED_FREE_IMMEDIATELY
+    0, 0, RUBY_TYPED_FREE_IMMEDIATELY | RUBY_TYPED_WB_PROTECTED
 };
 
 #define random_mt_mark rb_random_mark
@@ -284,7 +293,7 @@ static const rb_data_type_t random_mt_type = {
     },
     &rb_random_data_type,
     (void *)&random_mt_if,
-    RUBY_TYPED_FREE_IMMEDIATELY
+    RUBY_TYPED_FREE_IMMEDIATELY | RUBY_TYPED_WB_PROTECTED
 };
 
 static rb_random_t *
@@ -293,7 +302,7 @@ get_rnd(VALUE obj)
     rb_random_t *ptr;
     TypedData_Get_Struct(obj, rb_random_t, &rb_random_data_type, ptr);
     if (RTYPEDDATA_TYPE(obj) == &random_mt_type)
-        return rand_start((rb_random_mt_t *)ptr);
+        return rand_start((rb_random_mt_t *)ptr, obj);
     return ptr;
 }
 
@@ -309,11 +318,11 @@ static rb_random_t *
 try_get_rnd(VALUE obj)
 {
     if (obj == rb_cRandom) {
-        return rand_start(default_rand());
+        return default_rand_start();
     }
     if (!rb_typeddata_is_kind_of(obj, &rb_random_data_type)) return NULL;
     if (RTYPEDDATA_TYPE(obj) == &random_mt_type)
-        return rand_start(DATA_PTR(obj));
+        return rand_start(DATA_PTR(obj), obj);
     rb_random_t *rnd = DATA_PTR(obj);
     if (!rnd) {
         rb_raise(rb_eArgError, "uninitialized random: %s",
@@ -422,10 +431,10 @@ random_init(int argc, VALUE *argv, VALUE obj)
     argc = rb_check_arity(argc, 0, 1);
     rb_check_frozen(obj);
     if (argc == 0) {
-        rnd->seed = rand_init_default(rng, rnd);
+        RB_OBJ_WRITE(obj, &rnd->seed, rand_init_default(rng, rnd));
     }
     else {
-        rnd->seed = rand_init(rng, rnd, rb_to_int(argv[0]));
+        RB_OBJ_WRITE(obj, &rnd->seed, rand_init(rng, rnd, rb_to_int(argv[0])));
     }
     return obj;
 }
@@ -438,23 +447,17 @@ random_init(int argc, VALUE *argv, VALUE obj)
 # define USE_DEV_URANDOM 0
 #endif
 
-#ifdef HAVE_GETENTROPY
-# define MAX_SEED_LEN_PER_READ 256
-static int
-fill_random_bytes_urandom(void *seed, size_t size)
-{
-     unsigned char *p = (unsigned char *)seed;
-     while (size) {
-        size_t len = size < MAX_SEED_LEN_PER_READ ? size : MAX_SEED_LEN_PER_READ;
-        if (getentropy(p, len) != 0) {
-            return -1;
-        }
-        p += len;
-        size -= len;
-     }
-     return 0;
-}
-#elif USE_DEV_URANDOM
+#if ! defined HAVE_GETRANDOM && defined __linux__ && defined __NR_getrandom
+# ifndef GRND_NONBLOCK
+#   define GRND_NONBLOCK 0x0001	/* not defined in musl libc */
+# endif
+# define getrandom(ptr, size, flags) \
+    (ssize_t)syscall(__NR_getrandom, (ptr), (size), (flags))
+# define HAVE_GETRANDOM 1
+#endif
+
+/* fill random bytes by reading random device directly */
+#if USE_DEV_URANDOM
 static int
 fill_random_bytes_urandom(void *seed, size_t size)
 {
@@ -494,15 +497,7 @@ fill_random_bytes_urandom(void *seed, size_t size)
 # define fill_random_bytes_urandom(seed, size) -1
 #endif
 
-#if ! defined HAVE_GETRANDOM && defined __linux__ && defined __NR_getrandom
-# ifndef GRND_NONBLOCK
-#   define GRND_NONBLOCK 0x0001	/* not defined in musl libc */
-# endif
-# define getrandom(ptr, size, flags) \
-    (ssize_t)syscall(__NR_getrandom, (ptr), (size), (flags))
-# define HAVE_GETRANDOM 1
-#endif
-
+/* fill random bytes by library */
 #if 0
 #elif defined MAC_OS_X_VERSION_10_7 && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_7
 
@@ -520,7 +515,7 @@ fill_random_bytes_urandom(void *seed, size_t size)
 # endif
 
 static int
-fill_random_bytes_syscall(void *seed, size_t size, int unused)
+fill_random_bytes_lib(void *seed, size_t size)
 {
 #if USE_COMMON_RANDOM
     CCRNGStatus status = CCRandomGenerateBytes(seed, size);
@@ -547,18 +542,16 @@ fill_random_bytes_syscall(void *seed, size_t size, int unused)
     }
     return 0;
 }
-#elif defined(HAVE_ARC4RANDOM_BUF)
+#elif defined(HAVE_ARC4RANDOM_BUF) && \
+    ((defined(__OpenBSD__) && OpenBSD >= 201411) || \
+     (defined(__NetBSD__)  && __NetBSD_Version__ >= 700000000) || \
+     (defined(__FreeBSD__) && __FreeBSD_version >= 1200079))
+// [Bug #15039] arc4random_buf(3) should used only if we know it is fork-safe
 static int
-fill_random_bytes_syscall(void *buf, size_t size, int unused)
+fill_random_bytes_lib(void *buf, size_t size)
 {
-#if (defined(__OpenBSD__) && OpenBSD >= 201411) || \
-    (defined(__NetBSD__)  && __NetBSD_Version__ >= 700000000) || \
-    (defined(__FreeBSD__) && __FreeBSD_version >= 1200079)
     arc4random_buf(buf, size);
     return 0;
-#else
-    return -1;
-#endif
 }
 #elif defined(_WIN32)
 
@@ -638,11 +631,17 @@ fill_random_bytes_bcrypt(void *seed, size_t size)
 }
 
 static int
-fill_random_bytes_syscall(void *seed, size_t size, int unused)
+fill_random_bytes_lib(void *seed, size_t size)
 {
     if (fill_random_bytes_bcrypt(seed, size) == 0) return 0;
     return fill_random_bytes_crypt(seed, size);
 }
+#else
+# define fill_random_bytes_lib(seed, size) -1
+#endif
+
+/* fill random bytes by dedicated syscall */
+#if 0
 #elif defined HAVE_GETRANDOM
 static int
 fill_random_bytes_syscall(void *seed, size_t size, int need_secure)
@@ -666,6 +665,31 @@ fill_random_bytes_syscall(void *seed, size_t size, int need_secure)
     }
     return -1;
 }
+#elif defined(HAVE_GETENTROPY)
+/*
+ * The Open Group Base Specifications Issue 8 - IEEE Std 1003.1-2024
+ * https://pubs.opengroup.org/onlinepubs/9799919799/functions/getentropy.html
+ *
+ * NOTE: `getentropy`(3) on Linux is implemented using `getrandom`(2),
+ * prefer the latter over this if both are defined.
+ */
+#ifndef GETENTROPY_MAX
+# define GETENTROPY_MAX 256
+#endif
+static int
+fill_random_bytes_syscall(void *seed, size_t size, int need_secure)
+{
+    unsigned char *p = (unsigned char *)seed;
+    while (size) {
+        size_t len = size < GETENTROPY_MAX ? size : GETENTROPY_MAX;
+        if (getentropy(p, len) != 0) {
+            return -1;
+        }
+        p += len;
+        size -= len;
+    }
+    return 0;
+}
 #else
 # define fill_random_bytes_syscall(seed, size, need_secure) -1
 #endif
@@ -675,6 +699,7 @@ ruby_fill_random_bytes(void *seed, size_t size, int need_secure)
 {
     int ret = fill_random_bytes_syscall(seed, size, need_secure);
     if (ret == 0) return ret;
+    if (fill_random_bytes_lib(seed, size) == 0) return 0;
     return fill_random_bytes_urandom(seed, size);
 }
 
@@ -813,6 +838,7 @@ rand_mt_copy(VALUE obj, VALUE orig)
     mt = &rnd1->mt;
 
     *rnd1 = *rnd2;
+    RB_OBJ_WRITTEN(obj, Qundef, rnd1->base.seed);
     mt->next = mt->state + numberof(mt->state) - mt->left + 1;
     return obj;
 }
@@ -900,7 +926,7 @@ rand_mt_load(VALUE obj, VALUE dump)
     }
     mt->left = (unsigned int)x;
     mt->next = mt->state + numberof(mt->state) - x + 1;
-    rnd->base.seed = rb_to_int(seed);
+    RB_OBJ_WRITE(obj, &rnd->base.seed, rb_to_int(seed));
 
     return obj;
 }
@@ -959,7 +985,7 @@ static VALUE
 rb_f_srand(int argc, VALUE *argv, VALUE obj)
 {
     VALUE seed, old;
-    rb_random_mt_t *r = rand_mt_start(default_rand());
+    rb_random_mt_t *r = default_mt();
 
     if (rb_check_arity(argc, 0, 1) == 0) {
         seed = random_seed(obj);
@@ -1321,7 +1347,7 @@ rb_random_bytes(VALUE obj, long n)
 static VALUE
 random_s_bytes(VALUE obj, VALUE len)
 {
-    rb_random_t *rnd = rand_start(default_rand());
+    rb_random_t *rnd = default_rand_start();
     return rand_bytes(&random_mt_if, rnd, NUM2LONG(rb_to_int(len)));
 }
 
@@ -1343,7 +1369,7 @@ random_s_bytes(VALUE obj, VALUE len)
 static VALUE
 random_s_seed(VALUE obj)
 {
-    rb_random_mt_t *rnd = rand_mt_start(default_rand());
+    rb_random_mt_t *rnd = default_mt();
     return rnd->base.seed;
 }
 
@@ -1526,9 +1552,11 @@ static VALUE rand_random(int argc, VALUE *argv, VALUE obj, rb_random_t *rnd);
  *   prng.rand(100)       # => 42
  *
  * When +max+ is a Float, +rand+ returns a random floating point number
- * between 0.0 and +max+, including 0.0 and excluding +max+.
+ * between 0.0 and +max+, including 0.0 and excluding +max+. Note that it
+ * behaves differently from Kernel.rand.
  *
- *   prng.rand(1.5)       # => 1.4600282860034115
+ *   prng.rand(1.5)  # => 1.4600282860034115
+ *   rand(1.5)       # => 0
  *
  * When +range+ is a Range, +rand+ returns a random number where
  * <code>range.member?(number) == true</code>.
@@ -1666,14 +1694,16 @@ rand_mt_equal(VALUE self, VALUE other)
  * Kernel.srand may be used to ensure that sequences of random numbers are
  * reproducible between different runs of a program.
  *
- * See also Random.rand.
+ * Related: Random.rand.
+ *   rand(100.0)        # => 64 (Integer because max.to_i is 100)
+ *   Random.rand(100.0) # => 30.315320967824523
  */
 
 static VALUE
 rb_f_rand(int argc, VALUE *argv, VALUE obj)
 {
     VALUE vmax;
-    rb_random_t *rnd = rand_start(default_rand());
+    rb_random_t *rnd = default_rand_start();
 
     if (rb_check_arity(argc, 0, 1) && !NIL_P(vmax = argv[0])) {
         VALUE v = rand_range(obj, rnd, vmax);
@@ -1700,7 +1730,7 @@ rb_f_rand(int argc, VALUE *argv, VALUE obj)
 static VALUE
 random_s_rand(int argc, VALUE *argv, VALUE obj)
 {
-    VALUE v = rand_random(argc, argv, Qnil, rand_start(default_rand()));
+    VALUE v = rand_random(argc, argv, Qnil, default_rand_start());
     check_random_number(v, argv);
     return v;
 }
