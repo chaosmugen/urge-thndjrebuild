@@ -29,7 +29,7 @@
 
 1. Execute the clone command:
    ```
-   git clone --recursive https://github.com/Admenri/urge.git
+   git clone --recursive https://github.com/chaosmugen/urge-thndjrebuild.git
    ```
 2. Execute the build script:
    ```
