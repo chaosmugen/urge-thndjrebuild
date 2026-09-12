@@ -143,9 +143,9 @@ if defined VULKAN_SDK (
 set "RUBYOPT=-EUTF-8"
 
 set "Ruby_EXECUTABLE=%RUBY_ROOT%\bin\ruby.exe"
-set "Ruby_LIBRARY=%RUBY_ROOT%\lib\x64-vcruntime140-ruby400.lib"
-set "Ruby_INCLUDE_DIR=%RUBY_ROOT%\include\ruby-4.0.0"
-set "Ruby_CONFIG_INCLUDE_DIR=%RUBY_ROOT%\include\ruby-4.0.0\x64-mswin64_140"
+set "Ruby_LIBRARY=%RUBY_ROOT%\lib\libx64-ucrt-ruby400.dll.a"
+set "Ruby_INCLUDE_DIR=%RUBY_ROOT%\include"
+set "Ruby_CONFIG_INCLUDE_DIR=%RUBY_ROOT%\include"
 
 if not exist "%Ruby_EXECUTABLE%" (
     set "ERR_MSG=Bundled ruby not found at %Ruby_EXECUTABLE%"

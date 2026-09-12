@@ -456,7 +456,7 @@
 #define RUBY_LONGJMP(env,val) _longjmp((env),val)
 #define RUBY_JMP_BUF jmp_buf
 #define USE_MODULAR_GC 0
-#define USE_YJIT 0
+#define USE_YJIT 1
 #define USE_ZJIT 0
 #define RUBY_PLATFORM "aarch64-linux-android-android"
 #define RB_DEFAULT_PARSER RB_DEFAULT_PARSER_PRISM

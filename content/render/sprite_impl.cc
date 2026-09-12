@@ -380,7 +380,7 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     },
     {
       DISPOSE_CHECK;
-      blend_type_ = value;
+      blend_type_ = std::clamp<int32_t>(value, 0, BLEND_TYPE_NUMS - 1);
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(

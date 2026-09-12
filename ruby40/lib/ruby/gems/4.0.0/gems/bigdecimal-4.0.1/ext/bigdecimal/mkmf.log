@@ -1,779 +1,669 @@
-have_builtin_func: checking for __builtin_clz()... -------------------- no
+have_builtin_func: checking for __builtin_clz()... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
-conftest.c(13): error C4013: “__builtin_clz”未定义；假设外部返回 int
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int foo;
-13: int main() { __builtin_clz(0); return 0; }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int foo;
+6: int main() { __builtin_clz(0); return 0; }
 /* end */
 
 --------------------
 
-have_builtin_func: checking for __builtin_clzl()... -------------------- no
+have_builtin_func: checking for __builtin_clzl()... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
-conftest.c(13): error C4013: “__builtin_clzl”未定义；假设外部返回 int
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int foo;
-13: int main() { __builtin_clzl(0); return 0; }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int foo;
+6: int main() { __builtin_clzl(0); return 0; }
 /* end */
 
 --------------------
 
-have_builtin_func: checking for __builtin_clzll()... -------------------- no
+have_builtin_func: checking for __builtin_clzll()... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
-conftest.c(13): error C4013: “__builtin_clzll”未定义；假设外部返回 int
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int foo;
-13: int main() { __builtin_clzll(0); return 0; }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int foo;
+6: int main() { __builtin_clzll(0); return 0; }
 /* end */
 
 --------------------
 
 have_header: checking for float.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <float.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <float.h>
 /* end */
 
 --------------------
 
 have_header: checking for math.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <math.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <math.h>
 /* end */
 
 --------------------
 
 have_header: checking for stdbool.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <stdbool.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <stdbool.h>
 /* end */
 
 --------------------
 
 have_header: checking for stdlib.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <stdlib.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <stdlib.h>
 /* end */
 
 --------------------
 
-have_header: checking for x86intrin.h... -------------------- no
+have_header: checking for x86intrin.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
-conftest.c(12): fatal error C1083: 无法打开包括文件: “x86intrin.h”: No such file or directory
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
+checked program was:
+/* begin */
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <x86intrin.h>
+/* end */
+
+--------------------
+
+have_func: checking for _lzcnt_u32() in x86intrin.h... -------------------- no
+
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+D:/msys64/ucrt64/bin/../lib/gcc/x86_64-w64-mingw32/16.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: D:\msys64\tmp\cc8qim2a.o:conftest.c:(.rdata$.refptr._lzcnt_u32[.refptr._lzcnt_u32]+0x0): undefined reference to `_lzcnt_u32'
+collect2.exe: error: ld returned 1 exit status
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <x86intrin.h>
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <x86intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))_lzcnt_u32; return !p; }
+/* end */
+
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+conftest.c:18:13: error: conflicting types for '_lzcnt_u32'; have 'void(void)'
+   18 | extern void _lzcnt_u32();
+      |             ^~~~~~~~~~
+In file included from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86gprintrin.h:61,
+                 from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86intrin.h:27,
+                 from D:/msys64/ucrt64/include/winnt.h:1688,
+                 from D:/msys64/ucrt64/include/minwindef.h:163,
+                 from D:/msys64/ucrt64/include/windef.h:9,
+                 from D:/msys64/ucrt64/include/windows.h:69,
+                 from D:/msys64/ucrt64/include/winsock2.h:23,
+                 from ../../../../.././include/ruby/win32.h:33,
+                 from ../../../../.././include/ruby/internal/dosish.h:38,
+                 from ../../../../.././include/ruby/defines.h:78,
+                 from ../../../../.././include/ruby/ruby.h:25,
+                 from ../../../../.././include/ruby.h:38,
+                 from conftest.c:1:
+D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/lzcntintrin.h:51:1: note: previous definition of '_lzcnt_u32' with type 'unsigned int(unsigned int)'
+   51 | _lzcnt_u32 (unsigned int __X)
+      | ^~~~~~~~~~
+checked program was:
+/* begin */
+ 1: #include "ruby.h"
+ 2: 
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <x86intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: extern void _lzcnt_u32();
+19: int t(void) { _lzcnt_u32(); return 0; }
+/* end */
+
+--------------------
+
+have_func: checking for _lzcnt_u64() in x86intrin.h... -------------------- no
+
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+D:/msys64/ucrt64/bin/../lib/gcc/x86_64-w64-mingw32/16.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: D:\msys64\tmp\ccpjt80J.o:conftest.c:(.rdata$.refptr._lzcnt_u64[.refptr._lzcnt_u64]+0x0): undefined reference to `_lzcnt_u64'
+collect2.exe: error: ld returned 1 exit status
+checked program was:
+/* begin */
+ 1: #include "ruby.h"
+ 2: 
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <x86intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))_lzcnt_u64; return !p; }
+/* end */
+
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+conftest.c:18:13: error: conflicting types for '_lzcnt_u64'; have 'void(void)'
+   18 | extern void _lzcnt_u64();
+      |             ^~~~~~~~~~
+In file included from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86gprintrin.h:61,
+                 from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86intrin.h:27,
+                 from D:/msys64/ucrt64/include/winnt.h:1688,
+                 from D:/msys64/ucrt64/include/minwindef.h:163,
+                 from D:/msys64/ucrt64/include/windef.h:9,
+                 from D:/msys64/ucrt64/include/windows.h:69,
+                 from D:/msys64/ucrt64/include/winsock2.h:23,
+                 from ../../../../.././include/ruby/win32.h:33,
+                 from ../../../../.././include/ruby/internal/dosish.h:38,
+                 from ../../../../.././include/ruby/defines.h:78,
+                 from ../../../../.././include/ruby/ruby.h:25,
+                 from ../../../../.././include/ruby.h:38,
+                 from conftest.c:1:
+D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/lzcntintrin.h:64:1: note: previous definition of '_lzcnt_u64' with type 'long long unsigned int(long long unsigned int)'
+   64 | _lzcnt_u64 (unsigned long long __X)
+      | ^~~~~~~~~~
+checked program was:
+/* begin */
+ 1: #include "ruby.h"
+ 2: 
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <x86intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: extern void _lzcnt_u64();
+19: int t(void) { _lzcnt_u64(); return 0; }
 /* end */
 
 --------------------
 
 have_header: checking for intrin.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <intrin.h>
 /* end */
 
 --------------------
 
 have_func: checking for __lzcnt() in intrin.h... -------------------- no
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.obj : error LNK2019: 无法解析的外部符号 __lzcnt，函数 t 中引用了该符号
-conftest.exe : fatal error LNK1120: 1 个无法解析的外部命令
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+conftest.c: In function 't':
+conftest.c:18:57: error: '__lzcnt' undeclared (first use in this function); did you mean '__lzcnt64'?
+   18 | int t(void) { void ((*volatile p)()); p = (void ((*)()))__lzcnt; return !p; }
+      |                                                         ^~~~~~~
+      |                                                         __lzcnt64
+conftest.c:18:57: note: each undeclared identifier is reported only once for each function it appears in
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))__lzcnt; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))__lzcnt; return !p; }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.c(25): warning C4391: “void __lzcnt()”: 不正确的内部函数返回类型，应为“unsigned int”
-conftest.c(26): error C2168: “__lzcnt”: 内部函数的实参太少
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+D:/msys64/ucrt64/bin/../lib/gcc/x86_64-w64-mingw32/16.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: D:\msys64\tmp\ccrHjHZ4.o: in function `t':
+D:/ruby-build/ruby40-ucrt/.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal/conftest.c:19:(.text+0x5): undefined reference to `__lzcnt'
+collect2.exe: error: ld returned 1 exit status
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: extern void __lzcnt();
-26: int t(void) { __lzcnt(); return 0; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: extern void __lzcnt();
+19: int t(void) { __lzcnt(); return 0; }
 /* end */
 
 --------------------
 
 have_func: checking for __lzcnt64() in intrin.h... -------------------- no
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.obj : error LNK2019: 无法解析的外部符号 __lzcnt64，函数 t 中引用了该符号
-conftest.exe : fatal error LNK1120: 1 个无法解析的外部命令
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+D:/msys64/ucrt64/bin/../lib/gcc/x86_64-w64-mingw32/16.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: D:\msys64\tmp\ccLk33dL.o:conftest.c:(.rdata$.refptr.__lzcnt64[.refptr.__lzcnt64]+0x0): undefined reference to `__lzcnt64'
+collect2.exe: error: ld returned 1 exit status
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))__lzcnt64; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))__lzcnt64; return !p; }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.c(25): warning C4391: “void __lzcnt64()”: 不正确的内部函数返回类型，应为“unsigned __int64”
-conftest.c(26): error C2168: “__lzcnt64”: 内部函数的实参太少
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+conftest.c:18:13: error: conflicting types for '__lzcnt64'; have 'void(void)'
+   18 | extern void __lzcnt64();
+      |             ^~~~~~~~~
+In file included from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86gprintrin.h:61,
+                 from D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/x86intrin.h:27,
+                 from D:/msys64/ucrt64/include/winnt.h:1688,
+                 from D:/msys64/ucrt64/include/minwindef.h:163,
+                 from D:/msys64/ucrt64/include/windef.h:9,
+                 from D:/msys64/ucrt64/include/windows.h:69,
+                 from D:/msys64/ucrt64/include/winsock2.h:23,
+                 from ../../../../.././include/ruby/win32.h:33,
+                 from ../../../../.././include/ruby/internal/dosish.h:38,
+                 from ../../../../.././include/ruby/defines.h:78,
+                 from ../../../../.././include/ruby/ruby.h:25,
+                 from ../../../../.././include/ruby.h:38,
+                 from conftest.c:1:
+D:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/16.2.0/include/lzcntintrin.h:58:1: note: previous definition of '__lzcnt64' with type 'long long unsigned int(long long unsigned int)'
+   58 | __lzcnt64 (unsigned long long __X)
+      | ^~~~~~~~~
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: extern void __lzcnt64();
-26: int t(void) { __lzcnt64(); return 0; }
-/* end */
-
---------------------
-
-have_func: checking for _BitScanReverse() in intrin.h... -------------------- no
-
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.obj : error LNK2019: 无法解析的外部符号 _BitScanReverse，函数 t 中引用了该符号
-conftest.exe : fatal error LNK1120: 1 个无法解析的外部命令
-checked program was:
-/* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))_BitScanReverse; return !p; }
-/* end */
-
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.c(25): warning C4391: “void _BitScanReverse()”: 不正确的内部函数返回类型，应为“unsigned char”
-conftest.c(26): error C2168: “_BitScanReverse”: 内部函数的实参太少
-checked program was:
-/* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: extern void _BitScanReverse();
-26: int t(void) { _BitScanReverse(); return 0; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: extern void __lzcnt64();
+19: int t(void) { __lzcnt64(); return 0; }
 /* end */
 
 --------------------
 
-have_func: checking for _BitScanReverse64() in intrin.h... -------------------- no
+have_func: checking for _BitScanReverse() in intrin.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.obj : error LNK2019: 无法解析的外部符号 _BitScanReverse64，函数 t 中引用了该符号
-conftest.exe : fatal error LNK1120: 1 个无法解析的外部命令
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))_BitScanReverse64; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))_BitScanReverse; return !p; }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.c(25): warning C4391: “void _BitScanReverse64()”: 不正确的内部函数返回类型，应为“unsigned char”
-conftest.c(26): error C2168: “_BitScanReverse64”: 内部函数的实参太少
+--------------------
+
+have_func: checking for _BitScanReverse64() in intrin.h... -------------------- yes
+
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <intrin.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: extern void _BitScanReverse64();
-26: int t(void) { _BitScanReverse64(); return 0; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <intrin.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))_BitScanReverse64; return !p; }
 /* end */
 
 --------------------
 
 have_header: checking for ruby/atomic.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby/atomic.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <ruby/atomic.h>
 /* end */
 
 --------------------
 
 have_header: checking for ruby/internal/has/builtin.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby/internal/has/builtin.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <ruby/internal/has/builtin.h>
 /* end */
 
 --------------------
 
 have_header: checking for ruby/internal/static_assert.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby/internal/static_assert.h>
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <ruby/internal/static_assert.h>
 /* end */
 
 --------------------
 
 have_func: checking for rb_complex_real() in ruby.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-  正在创建库 conftest.lib 和对象 conftest.exp
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_complex_real; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <ruby.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_complex_real; return !p; }
 /* end */
 
 --------------------
 
 have_func: checking for rb_complex_imag() in ruby.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-  正在创建库 conftest.lib 和对象 conftest.exp
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_complex_imag; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <ruby.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_complex_imag; return !p; }
 /* end */
 
 --------------------
 
 have_func: checking for rb_opts_exception_p() in ruby.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-conftest.c(25): error C2065: “rb_opts_exception_p”: 未声明的标识符
-conftest.c(25): warning C4312: “类型强制转换”: 从“int”转换到更大的“void (__cdecl *)()”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
+conftest.c: In function 't':
+conftest.c:18:57: error: 'rb_opts_exception_p' undeclared (first use in this function); did you mean 'rb_make_exception'?
+   18 | int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_opts_exception_p; return !p; }
+      |                                                         ^~~~~~~~~~~~~~~~~~~
+      |                                                         rb_make_exception
+conftest.c:18:57: note: each undeclared identifier is reported only once for each function it appears in
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_opts_exception_p; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <ruby.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_opts_exception_p; return !p; }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-  正在创建库 conftest.lib 和对象 conftest.exp
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: extern void rb_opts_exception_p();
-26: int t(void) { rb_opts_exception_p(); return 0; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <ruby.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: extern void rb_opts_exception_p();
+19: int t(void) { rb_opts_exception_p(); return 0; }
 /* end */
 
 --------------------
 
 have_func: checking for rb_category_warn() in ruby.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
-  正在创建库 conftest.lib 和对象 conftest.exp
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
  1: #include "ruby.h"
  2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: extern int t(void);
-16: int main(int argc, char **argv)
-17: {
-18:   if (argc > 1000000) {
-19:     int (* volatile tp)(void)=(int (*)(void))&t;
-20:     printf("%d", (*tp)());
-21:   }
-22: 
-23:   return !!argv[argc];
-24: }
-25: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_category_warn; return !p; }
+ 3: #include <winsock2.h>
+ 4: #include <windows.h>
+ 5: #include <ruby.h>
+ 6: 
+ 7: /*top*/
+ 8: extern int t(void);
+ 9: int main(int argc, char **argv)
+10: {
+11:   if (argc > 1000000) {
+12:     int (* volatile tp)(void)=(int (*)(void))&t;
+13:     printf("%d", (*tp)());
+14:   }
+15: 
+16:   return !!argv[argc];
+17: }
+18: int t(void) { void ((*volatile p)()); p = (void ((*)()))rb_category_warn; return !p; }
 /* end */
 
 --------------------
 
 have_const: checking for RB_WARN_CATEGORY_DEPRECATED in ruby.h... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600    -c conftest.c"
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/bigdecimal-4.0.1/ext/bigdecimal -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g   -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: #include <ruby.h>
-13: 
-14: /*top*/
-15: typedef int conftest_type;
-16: conftest_type conftestval = (int)RB_WARN_CATEGORY_DEPRECATED;
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: #include <ruby.h>
+6: 
+7: /*top*/
+8: typedef int conftest_type;
+9: conftest_type conftestval = (int)RB_WARN_CATEGORY_DEPRECATED;
 /* end */
 
 --------------------
@@ -782,19 +672,25 @@ extconf.h is:
 /* begin */
  1: #ifndef EXTCONF_H
  2: #define EXTCONF_H
- 3: #define HAVE_FLOAT_H 1
- 4: #define HAVE_MATH_H 1
- 5: #define HAVE_STDBOOL_H 1
- 6: #define HAVE_STDLIB_H 1
- 7: #define HAVE_INTRIN_H 1
- 8: #define HAVE_RUBY_ATOMIC_H 1
- 9: #define HAVE_RUBY_INTERNAL_HAS_BUILTIN_H 1
-10: #define HAVE_RUBY_INTERNAL_STATIC_ASSERT_H 1
-11: #define HAVE_RB_COMPLEX_REAL 1
-12: #define HAVE_RB_COMPLEX_IMAG 1
-13: #define HAVE_RB_OPTS_EXCEPTION_P 1
-14: #define HAVE_RB_CATEGORY_WARN 1
-15: #define HAVE_CONST_RB_WARN_CATEGORY_DEPRECATED 1
-16: #endif
+ 3: #define HAVE_BUILTIN___BUILTIN_CLZ 1
+ 4: #define HAVE_BUILTIN___BUILTIN_CLZL 1
+ 5: #define HAVE_BUILTIN___BUILTIN_CLZLL 1
+ 6: #define HAVE_FLOAT_H 1
+ 7: #define HAVE_MATH_H 1
+ 8: #define HAVE_STDBOOL_H 1
+ 9: #define HAVE_STDLIB_H 1
+10: #define HAVE_X86INTRIN_H 1
+11: #define HAVE_INTRIN_H 1
+12: #define HAVE__BITSCANREVERSE 1
+13: #define HAVE__BITSCANREVERSE64 1
+14: #define HAVE_RUBY_ATOMIC_H 1
+15: #define HAVE_RUBY_INTERNAL_HAS_BUILTIN_H 1
+16: #define HAVE_RUBY_INTERNAL_STATIC_ASSERT_H 1
+17: #define HAVE_RB_COMPLEX_REAL 1
+18: #define HAVE_RB_COMPLEX_IMAG 1
+19: #define HAVE_RB_OPTS_EXCEPTION_P 1
+20: #define HAVE_RB_CATEGORY_WARN 1
+21: #define HAVE_CONST_RB_WARN_CATEGORY_DEPRECATED 1
+22: #endif
 /* end */
 

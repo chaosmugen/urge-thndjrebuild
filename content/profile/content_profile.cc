@@ -205,6 +205,34 @@ bool ContentProfile::LoadConfigure(const std::string& app) {
   ReplaceStringWidth(default_font_path, '\\', '/');
   i18n_xml_path =
       reader->Get("Engine", "I18nXMLPath", std::string(app + ".xml"));
+  // YJIT only pays off where its compilation cost stays small next to the frame
+  // budget. Measured on the Windows mingw-ucrt build over the same ~118 s battle
+  // (harness in Scripts/, see the "spike"/"final" lines of yjit_bench.log):
+  //   YJIT on : p50 0.90 ms, 51 hitches >=30 ms, 4093 ms of hitches in total
+  //   YJIT off: p50 1.09 ms, 12 hitches,          918 ms
+  // 90% of the hitches with YJIT on were compilation itself (the per-frame
+  // "d_compile_ms" in the log), while p50 stayed around 5% of the 16.7 ms frame
+  // budget either way - so the interpreter wins on what players actually feel.
+  // Windows therefore defaults to off. Android keeps it on (there it measured
+  // 1.35 -> 1.14 ms median frame, worst frame 21.3 -> 15.7 ms).
+  // Note this is a property of the compiler and the frame budget, not of the
+  // toolchain: moving Windows to mingw-ucrt did not remove the hitches, because
+  // they are compile cost rather than interpreter speed.
+  // Set [Engine] YJIT=1 to opt back in.
+#if defined(OS_ANDROID)
+  const bool yjit_default = true;
+#else
+  const bool yjit_default = false;
+#endif
+  yjit = reader->GetBoolean("Engine", "YJIT", yjit_default);
+  yjit_call_threshold = static_cast<int>(
+      reader->GetInteger("Engine", "YJITCallThreshold", yjit_call_threshold));
+  if (yjit_call_threshold < 1)
+    yjit_call_threshold = 1;
+  yjit_mem_size = static_cast<int>(
+      reader->GetInteger("Engine", "YJITMemSize", yjit_mem_size));
+  if (yjit_mem_size < 16)
+    yjit_mem_size = 16;
 
   if (api_version == APIVersion::RGSS1)
     resolution = base::Vec2i(640, 480);

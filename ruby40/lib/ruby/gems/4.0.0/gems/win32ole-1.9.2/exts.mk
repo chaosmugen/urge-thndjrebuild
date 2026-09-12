@@ -4,18 +4,17 @@ Q1 = $(V:1=)
 Q = $(Q1:0=@)
 ECHO1 = $(V:1=@:)
 ECHO = $(ECHO1:0=@echo)
-MFLAGS = -$(MAKEFLAGS)
 override MFLAGS := $(filter-out -j%,$(MFLAGS))
 ext_build_dir = .bundle/gems/win32ole-1.9.2
 
-ruby = $(topdir:/=\)\miniruby.exe -I'$(topdir)' -I'$(top_srcdir)/lib' \
+ruby = $(topdir)/miniruby.exe -I'$(topdir)' -I'$(top_srcdir)/lib' \
        -I'$(extout)/$(arch)' -I'$(extout)/common'
 RUBY = $(ruby)
 extensions = .bundle/gems/win32ole-1.9.2/ext/win32ole/.
-EXTOBJS = dmyext.obj
+EXTOBJS = dmyext.o
 EXTLIBS =
 EXTSO =
-EXTLDFLAGS =
+EXTLDFLAGS = -static-libgcc
 EXTINITS =
 SUBMAKEOPTS = DLDOBJS="$(EXTOBJS) $(EXTENCS)" EXTOBJS= \
 	      EXTSOLIBS="$(EXTLIBS)" LIBRUBY_SO_UPDATE=$(LIBRUBY_EXTS) \
@@ -23,12 +22,12 @@ SUBMAKEOPTS = DLDOBJS="$(EXTOBJS) $(EXTENCS)" EXTOBJS= \
 	      SHOWFLAGS=
 NOTE_MESG = $(RUBY) $(top_srcdir)/tool/lib/colorize.rb skip
 NOTE_NAME = $(RUBY) $(top_srcdir)/tool/lib/colorize.rb fail
-RM = $(COMSPEC) /C $(top_srcdir:/=\)\win32\rm.bat
-RMDIRS = $(COMSPEC) /C $(top_srcdir:/=\)\win32\rmdirs.bat -p
-RMDIR = $(COMSPEC) /C $(top_srcdir:/=\)\win32\rmdirs.bat
-RMALL = $(COMSPEC) /C $(top_srcdir:/=\)\win32\rm.bat -f -r
-MESSAGE_BEGIN = @(for %I in (
-MESSAGE_END = ) do @echo.%~I)
+RM = rm -f
+RMDIRS = rmdir --ignore-fail-on-non-empty -p
+RMDIR = rmdir --ignore-fail-on-non-empty
+RMALL = rm -fr
+MESSAGE_BEGIN = @for line in
+MESSAGE_END = ; do echo "$$line"; done
 
 all: $(extensions:/.=/all)
 all: note
@@ -45,7 +44,7 @@ distclean: $(extensions:/.=/distclean)
 realclean: $(extensions:/.=/realclean)
 
 clean:
-	-$(Q)$(RM) ext/extinit.obj
+	-$(Q)$(RM) ext/extinit.o
 distclean:
 	-$(Q)$(RM) ext/extinit.c
 
@@ -60,23 +59,23 @@ libencs:
 	$(Q)$(MAKE) -f enc.mk V=$(V) $@
 
 .bundle/gems/win32ole-1.9.2/ext/win32ole/all:
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/install:
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/static:
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/install-so:
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/install-rb:
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/clean: clean-local
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/distclean: clean-local
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 	$(Q)$(RM) $(ext_build_dir)/exts.mk
 	$(Q)$(RMDIRS) $(@D)
 .bundle/gems/win32ole-1.9.2/ext/win32ole/realclean: clean-local
-	$(Q)cd $(@D:/=\) && $(MAKE) $(MFLAGS) V=$(V) $(@F)
+	$(Q)$(MAKE) -C $(@D) $(MFLAGS) V=$(V) $(@F)
 	$(Q)$(RM) $(ext_build_dir)/exts.mk
 	$(Q)$(RMDIRS) $(@D)
 

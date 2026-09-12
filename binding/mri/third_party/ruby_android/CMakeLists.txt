@@ -173,6 +173,41 @@ list(APPEND MRI_SOURCE_FILES ${SRC}/coroutine/${CORO_ARCH}/Context.S)
 set_source_files_properties(${SRC}/coroutine/${CORO_ARCH}/Context.S
   PROPERTIES COMPILE_OPTIONS "-DPREFIXED_SYMBOL(name)=name")
 
+# ---------------------------------------------------------------------------
+# YJIT (optional, 64-bit ABIs only)
+#
+# YJIT's core is written in Rust and cross-compiled separately:
+#   rustup target add aarch64-linux-android
+#   configure --host=aarch64-linux-android ... --enable-yjit   (explicit, since
+#     configure.ac hard-excludes Android from JIT_TARGET_OK)
+#   make RUSTC="rustc --target=aarch64-linux-android"
+# The resulting staticlib must be partially linked and symbol-localized
+# (`ld.lld -r --whole-archive` + `objcopy --keep-global-symbol='rb_*'`) so its
+# libc-ish symbols do not clash with Ruby's missing/*.c replacements; the
+# result lands in prebuilt/<ABI>/libyjit.o.
+#
+# When that object exists and the ABI is 64-bit, YJIT is compiled in and
+# config/<ABI>/ruby/config.h must have USE_YJIT=1. 32-bit ABIs cannot have it
+# at all: yjit.h raises #error on any non x86_64/aarch64 target.
+# ---------------------------------------------------------------------------
+set(RUBY_YJIT_OBJ "")
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  if(EXISTS "${SRC}/prebuilt/${ANDROID_ABI}/libyjit.o")
+    set(RUBY_YJIT_OBJ "${SRC}/prebuilt/${ANDROID_ABI}/libyjit.o")
+  endif()
+endif()
+
+if(RUBY_YJIT_OBJ)
+  message("ruby_android: YJIT enabled for ${ANDROID_ABI}")
+  list(APPEND MRI_SOURCE_FILES
+    ${SRC}/jit.c
+    ${SRC}/yjit.c
+    ${RUBY_YJIT_OBJ}
+  )
+else()
+  message("ruby_android: YJIT disabled for ${ANDROID_ABI} (no prebuilt Rust core)")
+endif()
+
 # Define the library to be built and its sources
 add_library(mri_ruby SHARED ${MRI_SOURCE_FILES})
 

@@ -49,16 +49,15 @@ else()
   # Find config file
   add_library(mri_ruby UNKNOWN IMPORTED)  
   if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    # Using specific configure for Windows
-    # y1s1, Ruby's Windows adaptation is similar to dogshit :(
     if (CMAKE_SIZEOF_VOID_P EQUAL 4)
       message(FATAL_ERROR "URGE Ruby Configure: Unsupport architecture")
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-      set(RUBY_INCLUDE_PATH
-        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ruby_extern/config/"
-        ${RUBY_INCLUDE_PATH}
-      )
     endif ()
+    # NOTE: on 64-bit Windows the Ruby in ruby40/ is our own mingw build -- the
+    # only way to get YJIT there, because it needs GCC's computed goto for
+    # direct threaded code. That build ships a complete, self-consistent
+    # config.h (ruby40/include/ruby/config.h), so the legacy mswin
+    # ruby_extern/config shim must NOT be prepended here: it would shadow the
+    # mingw config.h with one generated for a different toolchain.
   endif ()
 
   message(STATUS "[Binding] Ruby Include Path: ${RUBY_INCLUDE_PATH}")

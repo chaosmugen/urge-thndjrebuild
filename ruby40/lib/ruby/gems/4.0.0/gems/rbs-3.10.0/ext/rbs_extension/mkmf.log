@@ -1,173 +1,97 @@
-append_cflags: checking for whether -std=gnu99 is accepted as CFLAGS... -------------------- no
+append_cflags: checking for whether -std=gnu99 is accepted as CFLAGS... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -Feconftest -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -I../../../../.././include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600  conftest.c   x64-vcruntime140-ruby400-static.lib user32.lib advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib   user32.lib  -link -incremental:no -debug -opt:ref -opt:icf -manifest:embed,ID=2  -libpath:. -libpath:../../../../.. "
-conftest.c
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -o conftest.exe -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g conftest.c -L. -L../../../../.. -L. -fstack-protector-strong -Wl,--no-as-needed     -lx64-ucrt-ruby400-static -lgmp -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt -lntdll -luserenv -ladvapi32   -lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt  "
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -std=gnu99 -WX -c conftest.c"
-conftest.c
-cl: 命令行 warning D9002 :忽略未知选项“-std=gnu99”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g  -std=gnu99 -Werror -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
 --------------------
 
-append_cflags: checking for whether -Wimplicit-fallthrough is accepted as CFLAGS... -------------------- no
+append_cflags: checking for whether -Wimplicit-fallthrough is accepted as CFLAGS... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -Wimplicit-fallthrough -WX -c conftest.c"
-cl: 命令行 error D8021 :无效的数值参数“/Wimplicit-fallthrough”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g -std=gnu99  -Wimplicit-fallthrough -Werror -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
 --------------------
 
-append_cflags: checking for whether -Wunused-result is accepted as CFLAGS... -------------------- no
+append_cflags: checking for whether -Wunused-result is accepted as CFLAGS... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -Wunused-result -WX -c conftest.c"
-cl: 命令行 error D8021 :无效的数值参数“/Wunused-result”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g -std=gnu99 -Wimplicit-fallthrough  -Wunused-result -Werror -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
 --------------------
 
-append_cflags: checking for whether -Wc++-compat is accepted as CFLAGS... -------------------- no
+append_cflags: checking for whether -Wc++-compat is accepted as CFLAGS... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -Wc++-compat -WX -c conftest.c"
-cl: 命令行 error D8021 :无效的数值参数“/Wc++-compat”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g -std=gnu99 -Wimplicit-fallthrough -Wunused-result  -Wc++-compat -Werror -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
 --------------------
 
-append_cflags: checking for whether -O0 is accepted as CFLAGS... -------------------- no
+append_cflags: checking for whether -DNDEBUG is accepted as CFLAGS... -------------------- yes
 
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -O0 -WX -c conftest.c"
-conftest.c
-cl: 命令行 warning D9002 :忽略未知选项“-O0”
+PATH=.;../../../../..;D:\msys64\ucrt64\bin;D:\msys64\usr\bin;C:\Users\ChaosMugen\.cargo\bin;D:\msys64\mingw64\bin;D:\msys64\usr\local\bin;D:\msys64\usr\bin;D:\msys64\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;D:\msys64\usr\bin\site_perl;D:\msys64\usr\bin\vendor_perl;D:\msys64\usr\bin\core_perl LSAN_OPTIONS=detect_leaks=0 "x86_64-w64-mingw32-cc -I../../../../../.ext/include/x64-mingw-ucrt -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include -D_WIN32_WINNT=0x0600 -D__MINGW_USE_VC2005_COMPAT -D_FILE_OFFSET_BITS=64  -O2 -g -std=gnu99 -Wimplicit-fallthrough -Wunused-result -Wc++-compat  -DNDEBUG -Werror -c conftest.c"
 checked program was:
 /* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
-/* end */
-
---------------------
-
-append_cflags: checking for whether -pg is accepted as CFLAGS... -------------------- no
-
-PATH=".;../../../../..;.;C:\Ruby34-x64\bin;C:\Program Files (x86)\Microsoft Visual Studio\Installer;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\bin\Roslyn;C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Team Tools\DiagnosticsHub\Collector;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin;C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Professional\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\;c;D:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\ChaosMugen\bin;C:\Users\ChaosMugen\.vscode\extensions\tencent-cloud.coding-copilot-4.11.37554360\out\vendor\shim\safe-bin;C:\Ruby34-x64\bin;C:\VulkanSDK\1.4.341.1\Bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;D:\soft\sunshine;D:\soft\sunshine\tools;C:\Program Files\dotnet;C:\Program Files\Git\cmd;C:\Program Files\CMake\bin;C:\ninja;C:\NASM;C:\Program Files (x86)\Incredibuild;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\Program Files\nodejs;D:\soft\IDA Professional 9.4\tools\teams;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314\Scripts;C:\Users\ChaosMugen\AppData\Local\Programs\Python\Python314;C:\Users\ChaosMugen\AppData\Local\Microsoft\WindowsApps;D:\soft\Bandizip;D:\soft\Microsoft VS Code\bin;C:\Users\ChaosMugen\AppData\Roaming\npm;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg" LSAN_OPTIONS=detect_leaks=0 "cl -nologo -source-charset:utf-8 -I../../../../../.ext/include/x64-mswin64_140 -I../../../../.././include -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension -I../../../../../. -I../../../../.././.bundle/gems/rbs-3.10.0/ext/rbs_extension/../../include  -D_WIN32_WINNT=_WIN32_WINNT_WIN8   -MD -Zi -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574  -wd4668 -wd4710 -wd4711 -wd4820 -wd4996  -we4028 -we4142 -we4047 -we4013 -wd5287 -O2sy- -Zc:inline -Zm600   -pg -WX -c conftest.c"
-conftest.c
-cl: 命令行 warning D9002 :忽略未知选项“-pg”
-checked program was:
-/* begin */
- 1: #include "ruby.h"
- 2: 
- 3: #ifndef WIN32_LEAN_AND_MEAN
- 4: #define WIN32_LEAN_AND_MEAN
- 5: #endif /* WIN32_LEAN_AND_MEAN */
- 6: #ifndef WIN32
- 7: #define WIN32
- 8: #endif /* WIN32 */
- 9: #include <winsock2.h>
-10: #include <ws2tcpip.h>
-11: #include <windows.h>
-12: int main(int argc, char **argv)
-13: {
-14:   return !!argv[argc];
-15: }
+1: #include "ruby.h"
+2: 
+3: #include <winsock2.h>
+4: #include <windows.h>
+5: int main(int argc, char **argv)
+6: {
+7:   return !!argv[argc];
+8: }
 /* end */
 
 --------------------

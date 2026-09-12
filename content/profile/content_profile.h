@@ -49,6 +49,21 @@ class ContentProfile {
   std::string i18n_xml_path;
   base::Vec2i window_size;
   base::Vec2i resolution;
+  // YJIT is on by default; set [Engine] YJIT=0 to run on the interpreter.
+  // Only meaningful on builds that ship a JIT (Android arm64), ignored
+  // elsewhere.
+  bool yjit = true;
+
+  // YJIT tuning ([Engine] YJITCallThreshold / YJITMemSize in Game.ini).
+  // call_threshold: how many calls an iseq must see before YJIT compiles it.
+  // Raising it compiles far less code, which removes the multi-hundred-ms
+  // compilation stalls at the start of a battle -- the game is not Ruby bound
+  // (script time is ~1ms of a 16.7ms frame), so the lost coverage costs
+  // nothing visible while the smoothness gain is obvious.
+  // mem_size: soft limit for compiled code in MiB; too small triggers code GC
+  // and the recompilation that follows shows up as repeated stutter.
+  int yjit_call_threshold = 500;
+  int yjit_mem_size = 256;
 
   // GUI
   bool disable_settings = false;

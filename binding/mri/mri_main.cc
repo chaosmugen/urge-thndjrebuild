@@ -31,7 +31,29 @@ void rb_call_builtin_inits();
 // Ruby VM replaced it with its own "[BUG]" reporter during ruby_init().
 void UrgeRearmCrashHandler();
 #include <sys/system_properties.h>
+#include <android/log.h>
 #endif  //! OS_ANDROID
+
+// YJIT is compiled into the 64-bit builds that ship a JIT core:
+//   - Android arm64/x86_64, via the vendored third_party/ruby_android tree;
+//   - Windows x64, via the mingw-ucrt build, which has direct threaded code
+//     (computed goto). The MSVC (mswin) build cannot provide that and ships
+//     no YJIT at all, so the runtime probe below still has to confirm it.
+#if (defined(OS_ANDROID) && (defined(__aarch64__) || defined(__x86_64__))) || \
+    defined(_WIN64)
+# define URGE_YJIT_AVAILABLE 1
+#else
+# define URGE_YJIT_AVAILABLE 0
+#endif
+
+#if URGE_YJIT_AVAILABLE
+// Defined by the YJIT Rust core (yjit.rs). Used to rebuild the builtin CME
+// table right before enabling YJIT from the embedder.
+extern "C" void rb_yjit_init_builtin_cmes(void);
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#endif  //! URGE_YJIT_AVAILABLE
 
 namespace binding {
 
@@ -40,6 +62,34 @@ extern filesystem::IOService* g_io_service;
 
 namespace {
 bool s_tv_device = false;
+
+#if URGE_YJIT_AVAILABLE
+// Trial marker, written right before YJIT is enabled and removed again as soon
+// as the warm-up self-test came back clean. It therefore covers only the narrow
+// window in which turning the JIT on can take the process down. If it is still
+// there on the next launch, the previous run died inside that window, so YJIT is
+// skipped that time; everything that happens later (a crash, the task manager,
+// an ordinary early quit) leaves YJIT enabled for the next launch. That is the
+// automatic fallback path: the game always keeps running on the interpreter.
+constexpr const char* kJitTrialFile = "urge.jit.try";
+
+bool ConsumeJitTrialFile() {
+  std::error_code ec;
+  const bool existed = std::filesystem::exists(kJitTrialFile, ec);
+  if (existed)
+    std::filesystem::remove(kJitTrialFile, ec);
+  return existed;
+}
+
+void WriteJitTrialFile() {
+  std::ofstream(kJitTrialFile, std::ios::binary) << '1';
+}
+
+void ClearJitTrialFile() {
+  std::error_code ec;
+  std::filesystem::remove(kJitTrialFile, ec);
+}
+#endif  //! URGE_YJIT_AVAILABLE
 }  // namespace
 
 void MriSetTvDevice(bool is_tv) { s_tv_device = is_tv; }
@@ -174,6 +224,7 @@ void BindingEngineMri::PreEarlyInitialization(
 
   int32_t argc = 0;
   char** argv = nullptr;
+
   ruby_sysinit(&argc, &argv);
 
   RUBY_INIT_STACK;
@@ -190,12 +241,98 @@ void BindingEngineMri::PreEarlyInitialization(
   // Platform flags for the game scripts: the Android TV boot path cannot feed
   // the full data preload (the box runs out of RAM before the title screen).
   rb_define_global_const("URGE_ANDROID_TV", s_tv_device ? Qtrue : Qfalse);
+#if defined(OS_ANDROID)
   LOG(INFO) << "[Binding] URGE_ANDROID_TV = "
             << (s_tv_device ? "true" : "false");
+#endif
 
 #if RAPI_FULL >= 300
   rb_call_builtin_inits();
 #endif  //! RAPI_FULL >= 300
+
+#if URGE_YJIT_AVAILABLE
+  // YJIT is on by default (64-bit ABIs only; the 32-bit build has no JIT core
+  // at all, see third_party/ruby_android/CMakeLists.txt). Turn it off with
+  //   [Engine]
+  //   YJIT = 0
+  // in Game.ini ([Engine] YJIT=0), or on Android temporarily from a shell with
+  //   adb shell setprop debug.urge.yjit 0   (takes precedence; restart app)
+  //
+  // Fallbacks: if the JIT is unavailable, if the configuration disables it, or
+  // if a previous launch died while warming it up, YJIT is skipped and the
+  // game keeps running on the interpreter.
+  bool yjit_wanted = profile->yjit;
+#if defined(OS_ANDROID)
+  char yjit_prop[PROP_VALUE_MAX] = {0};
+  __system_property_get("debug.urge.yjit", yjit_prop);
+  if (yjit_prop[0] == '0' || yjit_prop[0] == '1')
+    yjit_wanted = (yjit_prop[0] == '1');
+#endif  //! OS_ANDROID
+
+  if (yjit_wanted && ConsumeJitTrialFile()) {
+    yjit_wanted = false;
+    LOG(WARNING) << "[Binding] YJIT off: the previous run died while YJIT was "
+                    "starting up; falling back to the interpreter";
+  }
+
+  if (yjit_wanted) {
+    int probe_state = 0;
+    VALUE available = rb_eval_string_protect(
+        "defined?(RubyVM::YJIT) ? true : false", &probe_state);
+    if (probe_state != 0 || available != Qtrue) {
+      yjit_wanted = false;
+      LOG(WARNING) << "[Binding] YJIT off: not available in this build";
+    }
+  }
+
+  if (yjit_wanted) {
+    // The builtin CME table consulted by YJIT's cfunc fast paths must exist
+    // before anything gets compiled. ruby.c builds it during boot, but this
+    // embedder calls rb_call_builtin_inits() once more after ruby_init() (see
+    // above), which leaves the table empty; compiling an optimized cfunc then
+    // panics inside YJIT's Rust code (METHOD_CODEGEN_TABLE unwrap). Rebuild it
+    // right before enabling.
+    WriteJitTrialFile();
+    rb_yjit_init_builtin_cmes();
+
+    int jit_state = 0;
+    // Options can only be set on the first enable, so pass them here:
+    //   call_threshold - only compile iseqs that are actually hot
+    //   mem_size       - keep enough room to avoid code GC recompilation
+    const std::string enable_expr =
+        "RubyVM::YJIT.enable(mem_size: " +
+        std::to_string(profile->yjit_mem_size) +
+        ", call_threshold: " +
+        std::to_string(profile->yjit_call_threshold) +
+        ") if defined?(RubyVM::YJIT) && !RubyVM::YJIT.enabled?";
+    rb_eval_string_protect(enable_expr.c_str(), &jit_state);
+
+    // Warm-up self-test: force a compilation and run it. If it does not come
+    // back clean the marker file stays behind, so the next launch falls back
+    // to the interpreter instead of dying again.
+    VALUE ok = rb_eval_string_protect(
+        "if defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?;"
+        "  t = 0; 100_000.times { t += 1 }; t == 100_000;"
+        "else; false; end",
+        &jit_state);
+    if (jit_state == 0 && ok == Qtrue) {
+      LOG(INFO) << "[Binding] YJIT: on";
+      // The JIT compiled and executed code without taking the process down, so
+      // the trial is over: drop the marker right here. From this point on
+      // nothing that happens to the process may disable YJIT for the next
+      // launch. Clearing it on a timer instead (the previous behaviour) meant
+      // that quitting early - or killing the process while the scripts were
+      // still loading - turned YJIT off for the following run, even though the
+      // JIT had been working fine.
+      ClearJitTrialFile();
+    } else {
+      LOG(WARNING) << "[Binding] YJIT warm-up self-test failed; the next "
+                      "launch will use the interpreter";
+    }
+  } else {
+    LOG(INFO) << "[Binding] YJIT: off (interpreter)";
+  }
+#endif  //! URGE_YJIT_AVAILABLE
 
   rb_enc_set_default_internal(rb_enc_from_encoding(rb_utf8_encoding()));
   rb_enc_set_default_external(rb_enc_from_encoding(rb_utf8_encoding()));
@@ -271,6 +408,14 @@ void BindingEngineMri::OnMainMessageLoopRun(
 }
 
 void BindingEngineMri::PostMainLoopRunning() {
+#if URGE_YJIT_AVAILABLE
+  // Clean shutdown: YJIT did not take the process down, so keep it for the next
+  // launch. The marker is normally already gone (it is dropped right after the
+  // warm-up self-test); this only covers a shutdown that raced start-up. It used
+  // to be Android-only, which left Windows with no clean-exit path at all.
+  ClearJitTrialFile();
+#endif  //! URGE_YJIT_AVAILABLE
+
   // Show exception info
   VALUE exception = rb_errinfo();
   std::string exception_message;

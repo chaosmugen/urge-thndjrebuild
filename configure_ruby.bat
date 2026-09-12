@@ -47,9 +47,9 @@ if not exist "%~dp0build" mkdir "%~dp0build"
 
 cmake -B "%~dp0build" -A x64 ^
   -DRuby_EXECUTABLE="%RUBY_ROOT%\bin\ruby.exe" ^
-  -DRuby_LIBRARY="%RUBY_ROOT%\lib\x64-vcruntime140-ruby400.lib" ^
-  -DRuby_INCLUDE_DIR="%RUBY_ROOT%\include\ruby-4.0.0" ^
-  -DRuby_CONFIG_INCLUDE_DIR="%RUBY_ROOT%\include\ruby-4.0.0\x64-mswin64_140" ^
+  -DRuby_LIBRARY="%RUBY_ROOT%\lib\libx64-ucrt-ruby400.dll.a" ^
+  -DRuby_INCLUDE_DIR="%RUBY_ROOT%\include" ^
+  -DRuby_CONFIG_INCLUDE_DIR="%RUBY_ROOT%\include" ^
   > "%~dp0build\configure.log" 2>&1
 set "RC=%errorlevel%"
 echo EXIT_CODE=%RC% >> "%~dp0build\configure.log"

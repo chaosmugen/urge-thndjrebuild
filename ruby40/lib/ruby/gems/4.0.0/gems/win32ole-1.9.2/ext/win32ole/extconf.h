@@ -2,6 +2,6 @@
 #define EXTCONF_H
 #define HAVE_WINDOWS_H 1
 #define HAVE_TYPE_IMULTILANGUAGE2 1
-#define RB_THREAD_SPECIFIC __declspec(thread)
+#define RB_THREAD_SPECIFIC __thread
 #define HAVE_RB_DEPRECATE_CONSTANT 1
 #endif
