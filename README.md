@@ -29,7 +29,7 @@
 
 1. 递归拉取源码
 ```
-git clone --recursive https://github.com/Admenri/urge.git
+git clone --recursive https://github.com/chaosmugen/urge-thndjrebuild.git
 ```
 2. 执行构建脚本
 ```
