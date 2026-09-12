@@ -180,6 +180,12 @@ MRI_METHOD(MRI_RGSSMain) {
         MriGetException(content::ExceptionCode::CODE_NUMS)) {
       gc_required = true;
       MriProcessReset();
+    } else if (rb_obj_is_kind_of(exception, rb_eSystemExit)) {
+      // Normal quit: the scripts called exit. Re-raise as before, but this is
+      // not an error and must not read like one in the console.
+      gc_required = false;
+      LOG(INFO) << "[Binding] Game exit requested (SystemExit)";
+      rb_exc_raise(exception);
     } else {
       gc_required = false;
       // The game raised for real. Log it before re-raising — this is the only
@@ -582,6 +588,11 @@ void BindingEngineMri::LoadPackedScripts(
       if (state) {
         // A failed eval used to break out silently: the engine kept running
         // without the rest of the scripts and the reason never reached any log.
+        // A SystemExit here is the normal quit path, not a failure.
+        if (rb_obj_is_kind_of(rb_errinfo(), rb_eSystemExit)) {
+          LOG(INFO) << "[Binding] Game exited (SystemExit)";
+          break;
+        }
         LOG(ERROR) << "[Binding] Script eval failed: "
                    << ParseExeceptionInfo(rb_errinfo());
         break;
