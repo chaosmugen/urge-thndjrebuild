@@ -598,6 +598,38 @@ void RenderDevice::NotifySurfaceLosing() {
 #endif  //! OS_ANDROID
 }
 
+void RenderDevice::NotifySurfaceResuming() {
+#if defined(OS_ANDROID)
+  // Called on the Java UI thread: only the atomic state is touched here, the
+  // render thread owns every other member.
+  //
+  // onResume() fires both for a real background round trip (surface destroyed
+  // and recreated) and for a mere overlay (screenshot preview: onPause with no
+  // surfaceDestroyed). The former already re-arms via DID_ENTER_FOREGROUND in
+  // ResumeContext(); the latter reaches us with no SDL event at all, so the
+  // rebuild has to be armed here or the surface stays invalid forever.
+  RenderDevice* device = current_device_.load(std::memory_order_acquire);
+  if (!device)
+    return;
+  if (device->device_type_ == Diligent::RENDER_DEVICE_TYPE_VULKAN) {
+    // Only arm while the surface is actually flagged invalid. A real background
+    // round trip may already have been re-armed (or even rebuilt) through SDL's
+    // DID_ENTER_FOREGROUND; leaving the flag armed afterwards would make the
+    // next onPause rebuild on a window that is about to be released - exactly
+    // the crash this whole path exists to prevent.
+    if (!device->surface_valid_.load(std::memory_order_acquire)) {
+      // UpdateSwapChainState() performs the rebuild on an upcoming frame, once
+      // the ANativeWindow is usable again (width/height checks guard the driver).
+      device->pending_recreate_.store(true, std::memory_order_release);
+    }
+  } else if (!device->surface_valid_.load(std::memory_order_acquire)) {
+    // GLES keeps its swap chain object alive across suspend/resume; the surface
+    // flag alone decides whether rendering is allowed.
+    device->surface_valid_.store(true, std::memory_order_release);
+  }
+#endif  //! OS_ANDROID
+}
+
 #if defined(OS_ANDROID)
 void* RenderDevice::GetAndroidNativeWindow() const {
   if (!window_.get())

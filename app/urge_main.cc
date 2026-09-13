@@ -105,6 +105,16 @@ Java_com_admenri_urge_URGEMain_nativeSuspendGraphics(JNIEnv*, jclass) {
   renderer::RenderDevice::NotifySurfaceLosing();
 }
 
+// Called from URGEMain.onResume() (Java UI thread). A screenshot preview (or any
+// translucent overlay) pauses the activity WITHOUT destroying the surface, so SDL
+// dispatches no foreground event and the rebuild armed by onPause is never
+// re-armed. Without this the surface stays flagged invalid and every frame is
+// skipped => the picture freezes until the app is backgrounded again.
+extern "C" JNIEXPORT void JNICALL
+Java_com_admenri_urge_URGEMain_nativeResumeGraphics(JNIEnv*, jclass) {
+  renderer::RenderDevice::NotifySurfaceResuming();
+}
+
 // Called from URGEMain.onCreate (Java) right after the native libs are loaded,
 // to tell the engine where to dump logs on removable storage.
 extern "C" JNIEXPORT void JNICALL

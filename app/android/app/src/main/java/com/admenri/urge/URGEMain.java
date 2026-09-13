@@ -140,6 +140,22 @@ public class URGEMain extends SDLActivity {
         super.onPause();
     }
 
+    /**
+     * Re-arm the deferred swap chain rebuild on every resume.
+     *
+     * A screenshot preview (or any translucent overlay) pauses the activity
+     * without destroying the surface, so SDL never dispatches a foreground event
+     * and the rebuild armed by onPause() is never re-armed. The surface would then
+     * stay flagged invalid and every frame is skipped => the picture freezes until
+     * the app is backgrounded again. Calling this here covers that path; a real
+     * background round trip arms the same flag through SDL's foreground event.
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        nativeResumeGraphics();
+    }
+
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
@@ -153,6 +169,9 @@ public class URGEMain extends SDLActivity {
     }
 
     public static native void nativeSuspendGraphics();
+    // Re-arms the deferred swap chain rebuild after a resume that did NOT destroy
+    // the surface (screenshot preview / overlay), where SDL sends no foreground event.
+    public static native void nativeResumeGraphics();
     // Pass the removable-storage diag dir to the native engine so it can tee its
     // stdout/stderr and spdlog output to a file reachable without ADB.
     public static native void nativeSetDiagPath(String path);
@@ -190,23 +209,67 @@ public class URGEMain extends SDLActivity {
         return null;
     }
 
-    public static boolean checkMD5Consistent(Context context, String currentMD5) {
-        File recordFile = new File(GAME_PATH, MD5_VFY_FILE);
+    /**
+     * Cheap identity of the installed APK: its byte size and last-modified time.
+     * Both change whenever the APK is replaced, and reading them costs a single
+     * stat call - unlike the full-APK MD5, which has to stream the whole (possibly
+     * multi-GB) file.
+     */
+    private static String apkFingerprint(Context context) {
         try {
-            if (!recordFile.exists()) return false;
-
-            BufferedReader reader = new BufferedReader(new FileReader(recordFile));
-            String savedMD5 = reader.readLine();
-            reader.close();
-
-            Log.i(TAG, "Current MD5: " + currentMD5);
-            Log.i(TAG, "Local Resource MD5: " + savedMD5);
-
-            return savedMD5 != null && savedMD5.equals(currentMD5);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
+            File apk = new File(context.getPackageResourcePath());
+            return apk.length() + "|" + apk.lastModified();
+        } catch (Throwable t) {
+            return null;
         }
+    }
+
+    /** First line of a record file under GAME_PATH, or null when absent. */
+    private static String readRecord(String name) {
+        File recordFile = new File(GAME_PATH, name);
+        try {
+            if (!recordFile.exists()) return null;
+            BufferedReader reader = new BufferedReader(new FileReader(recordFile));
+            String line = reader.readLine();
+            reader.close();
+            return line;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The verification record is written as "&lt;size&gt;|&lt;lastModified&gt;|&lt;md5&gt;".
+     * Records written by an older build carry the MD5 only (no "|"), so this
+     * returns the raw line in that case and the caller falls back to a full MD5
+     * check exactly once before the record is rewritten in the new form.
+     */
+    private static String md5PartOf(String record) {
+        if (record == null) return null;
+        int bar = record.lastIndexOf('|');
+        return bar >= 0 ? record.substring(bar + 1) : record;
+    }
+
+    /**
+     * True when the recorded APK fingerprint still matches the installed APK,
+     * i.e. the data already extracted is known to be valid and the expensive
+     * full-APK MD5 can be skipped entirely. This is what keeps a cold start after
+     * the process was killed cheap on a large (resource-carrying) package.
+     */
+    private static boolean isApkFingerprintCurrent(Context context) {
+        String record = readRecord(MD5_VFY_FILE);
+        String fingerprint = apkFingerprint(context);
+        return record != null && fingerprint != null
+                && record.startsWith(fingerprint + "|");
+    }
+
+    public static boolean checkMD5Consistent(Context context, String currentMD5) {
+        String savedMD5 = md5PartOf(readRecord(MD5_VFY_FILE));
+
+        Log.i(TAG, "Current MD5: " + currentMD5);
+        Log.i(TAG, "Local Resource MD5: " + savedMD5);
+
+        return savedMD5 != null && savedMD5.equals(currentMD5);
     }
 
     /**
@@ -223,55 +286,64 @@ public class URGEMain extends SDLActivity {
             GAME_PATH = data_dir.toString();
         }
         logDiag("prepareAssets: before getApkMD5");
-        String currentMD5 = getApkMD5(context);
-        logDiag("prepareAssets: after getApkMD5");
-        if (!checkMD5Consistent(context, currentMD5)) {
-            if (sDiagDir != null) {
-                AssetExtractor.setExtractLog(new File(sDiagDir, "extract.log"));
-            }
-            // Extraction of this APK gets interrupted before it finishes on some
-            // devices. Without a marker meaning "already in progress for THIS apk",
-            // every launch would restart at the first file, redo most of the work and
-            // get killed again, so the game would never start. Resuming skips what is
-            // already on disk and only copies the remainder.
-            boolean resume = checkPartialConsistent(currentMD5);
-            if (!resume) {
-                writeRecord(MD5_PARTIAL_FILE, currentMD5);
-            }
-            logDiag("prepareAssets: start extractAssets (resume=" + resume + ")");
-            AssetExtractor.note("prepareAssets: start extractAssets (resume=" + resume + ")");
-            AssetExtractor.extractAssets(context, !resume);
-            logDiag("prepareAssets: end extractAssets");
-            AssetExtractor.note("prepareAssets: end extractAssets");
+        if (isApkFingerprintCurrent(context)) {
+            // Same APK (byte size + last-modified unchanged) as the one already
+            // extracted, so the data on disk is known to be valid. Skip the
+            // full-APK MD5 entirely: on a resource-carrying package that read is
+            // the single biggest chunk of a cold start, and it also floods the
+            // page cache - which is what gets the process killed in the first
+            // place.
+            logDiag("prepareAssets: skipped (apk fingerprint unchanged)");
+            AssetExtractor.note("prepareAssets: skipped (apk fingerprint unchanged)");
         } else {
-            logDiag("prepareAssets: extract skipped (md5 consistent)");
-            AssetExtractor.note("prepareAssets: extract skipped (md5 consistent)");
+            String currentMD5 = getApkMD5(context);
+            logDiag("prepareAssets: after getApkMD5");
+            if (!checkMD5Consistent(context, currentMD5)) {
+                if (sDiagDir != null) {
+                    AssetExtractor.setExtractLog(new File(sDiagDir, "extract.log"));
+                }
+                // Extraction of this APK gets interrupted before it finishes on some
+                // devices. Without a marker meaning "already in progress for THIS apk",
+                // every launch would restart at the first file, redo most of the work and
+                // get killed again, so the game would never start. Resuming skips what is
+                // already on disk and only copies the remainder.
+                boolean resume = checkPartialConsistent(currentMD5);
+                if (!resume) {
+                    writeRecord(MD5_PARTIAL_FILE, currentMD5);
+                }
+                logDiag("prepareAssets: start extractAssets (resume=" + resume + ")");
+                AssetExtractor.note("prepareAssets: start extractAssets (resume=" + resume + ")");
+                AssetExtractor.extractAssets(context, !resume);
+                logDiag("prepareAssets: end extractAssets");
+                AssetExtractor.note("prepareAssets: end extractAssets");
+            } else {
+                logDiag("prepareAssets: extract skipped (md5 consistent)");
+                AssetExtractor.note("prepareAssets: extract skipped (md5 consistent)");
+            }
+            // Remember the fingerprint alongside the MD5 so the next cold start can
+            // take the fast path above instead of hashing the whole APK again.
+            writeRecord(MD5_VFY_FILE, apkFingerprint(context) + "|" + currentMD5);
+
+            // The extraction streamed ~1GB of game data (plus the ~1GB APK read for
+            // the MD5) through the page cache. On this TV that leaves only ~60MB of
+            // free RAM, and the engine's startup burst (RSS +90MB in seconds) then
+            // forces heavy direct reclaim — lmkd answers that by killing the process
+            // right before the first script even runs. Releasing our own clean cache
+            // gives that burst headroom again.
+            //
+            // Only the path that actually streamed data needs this. On the fast path
+            // it would recursively walk the whole extracted resource tree (tens of
+            // thousands of files) for no benefit - needless work on exactly the cold
+            // start we are trying to make cheap.
+            try {
+                if (GAME_PATH != null) nativeDropPageCache(GAME_PATH);
+                nativeDropPageCache(context.getPackageResourcePath());
+                logDiag("prepareAssets: page cache dropped");
+            } catch (Throwable t) {
+                logDiag("prepareAssets: nativeDropPageCache failed: " + t);
+            }
         }
 
-        // The extraction streamed ~1GB of game data (plus the ~1GB APK read for the
-        // MD5) through the page cache. On this TV that leaves only ~60MB of free
-        // RAM, and the engine's startup burst (RSS +90MB in seconds) then forces
-        // heavy direct reclaim — lmkd answers that by killing the process right
-        // before the first script even runs. Releasing our own clean cache gives
-        // that burst headroom again.
-        try {
-            if (GAME_PATH != null) nativeDropPageCache(GAME_PATH);
-            nativeDropPageCache(context.getPackageResourcePath());
-            logDiag("prepareAssets: page cache dropped");
-        } catch (Throwable t) {
-            logDiag("prepareAssets: nativeDropPageCache failed: " + t);
-        }
-
-        logDiag("prepareAssets: writing vfy");
-        AssetExtractor.note("prepareAssets: writing vfy");
-        try {
-            File recordFile = new File(GAME_PATH, MD5_VFY_FILE);
-            FileWriter writer = new FileWriter(recordFile);
-            writer.write(currentMD5);
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
         // Extraction finished for this APK, so drop the in-progress marker.
         new File(GAME_PATH, MD5_PARTIAL_FILE).delete();
         logDiag("prepareAssets: done");

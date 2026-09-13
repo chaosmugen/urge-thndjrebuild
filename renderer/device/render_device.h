@@ -92,7 +92,15 @@ class RenderDevice {
   // owned by the render thread.
   static void NotifySurfaceLosing();
 
- private:
+  // Called from the Java UI thread (Activity.onResume). Re-arms the deferred
+  // rebuild for the resume path that never destroyed the surface: a screenshot
+  // preview or translucent overlay pauses the activity (onPause) without
+  // surfaceDestroyed(), so SDL dispatches no DID_ENTER_FOREGROUND event and
+  // ResumeContext() never runs. Without this the surface stays flagged invalid
+  // after onPause and every frame is skipped forever (frozen picture).
+  static void NotifySurfaceResuming();
+
+private:
   RenderDevice(int32_t max_texture_size,
                base::WeakPtr<ui::Widget> window,
                const Diligent::SwapChainDesc& swapchain_desc,
