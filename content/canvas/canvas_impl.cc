@@ -1079,6 +1079,7 @@ void CanvasImpl::GPUApproximateBlitTextureInternal(const base::Rect& dst_region,
   copy_attribs.DstX = -std::min(0, dst_region.x);
   copy_attribs.DstY = -std::min(0, dst_region.y);
   render_context->CopyTexture(copy_attribs);
+  renderer::ConsiderLoadDrain();
 
   // Custom blend blit pipeline
   auto* pipeline = context()->render.pipeline_states->bitmap.bitmapblt.RawPtr();
@@ -1172,6 +1173,7 @@ void CanvasImpl::GPUClipTextureInternal(const base::Rect& dst_region,
   copy_attribs.DstX = -std::min(0, dst_region.x);
   copy_attribs.DstY = -std::min(0, dst_region.y);
   render_context->CopyTexture(copy_attribs);
+  renderer::ConsiderLoadDrain();
 
   // Custom blend blit pipeline
   auto* pipeline =
@@ -1420,6 +1422,7 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
   copy_attribs.DstX = -std::min(0, compose_position.x);
   copy_attribs.DstY = -std::min(0, compose_position.y);
   render_context->CopyTexture(copy_attribs);
+  renderer::ConsiderLoadDrain();
 
   // Custom blend blit pipeline
   auto* pipeline = context()->render.pipeline_states->bitmap.bitmapblt.RawPtr();

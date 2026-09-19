@@ -4,9 +4,47 @@
 
 #include "renderer/utils/texture_utils.h"
 
+#include "SDL3/SDL_timer.h"
+
 #include "Graphics/GraphicsAccessories/interface/GraphicsAccessories.hpp"
 
 namespace renderer {
+
+namespace {
+
+// See SetLoadDrainContext()/SetVulkanBackend()/ConsiderLoadDrain().
+Diligent::IDeviceContext* g_drain_context = nullptr;
+bool g_vulkan_backend = false;
+int64_t g_burst_ops = 0;
+
+}  // namespace
+
+void SetLoadDrainContext(Diligent::IDeviceContext* context) {
+  g_drain_context = context;
+}
+
+void SetVulkanBackend(bool vulkan) {
+  g_vulkan_backend = vulkan;
+}
+
+void NotifyFramePresented() {
+  // A frame reached the screen: whatever burst was in flight is over, so normal
+  // play can never accumulate enough operations to drain.
+  g_burst_ops = 0;
+}
+
+void ConsiderLoadDrain() {
+  if (!g_drain_context || !g_vulkan_backend)
+    return;
+
+  // Several texture operations without a single presented frame in between means
+  // a load is streaming through them (a load is one very long script frame).
+  if (++g_burst_ops < 3)
+    return;
+
+  g_drain_context->Flush();
+  g_drain_context->WaitForIdle();
+}
 
 void CreateTexture2D(Diligent::IRenderDevice* device,
                      Diligent::ITexture** texture,
@@ -68,6 +106,7 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   texture_data.NumSubresources = 1;
 
   device->CreateTexture(texture_desc, &texture_data, texture);
+  ConsiderLoadDrain();
 }
 
 void CreateTexture2D(Diligent::IRenderDevice* device,
@@ -100,6 +139,7 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   texture_data.NumSubresources = 1;
 
   device->CreateTexture(texture_desc, &texture_data, texture);
+  ConsiderLoadDrain();
 }
 
 }  // namespace renderer

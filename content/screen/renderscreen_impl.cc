@@ -23,6 +23,7 @@
 
 #include "base/debug/logging.h"
 #include "content/canvas/canvas_scheduler.h"
+#include "renderer/utils/texture_utils.h"
 #include "content/common/rect_impl.h"
 #include "content/context/execution_context.h"
 #include "content/gpu/buffer_impl.h"
@@ -46,6 +47,13 @@ RenderScreenImpl::RenderScreenImpl(ExecutionContext* execution_context,
       frame_rate_(frame_rate) {
   // Setup render device on render thread if possible
   GPUCreateGraphicsHostInternal();
+
+  // Hand the texture factory what the load drain needs: the context it submits
+  // through, and whether the backend is the Vulkan one the drain works around.
+  renderer::SetLoadDrainContext(context()->primary_render_context);
+  renderer::SetVulkanBackend(
+      (*context()->render_device)->GetDeviceInfo().Type ==
+      Diligent::RENDER_DEVICE_TYPE_VULKAN);
 
   // Initialize fps limiter
   limiter_.Reset();
@@ -519,6 +527,10 @@ void RenderScreenImpl::FrameProcessInternal(
 
   // Tick callback
   frame_tick_handler_.Run(present_target);
+
+  // A frame is on screen: see ConsiderLoadDrain(), which keeps its GPU drain out
+  // of normal play by relying on exactly this boundary.
+  renderer::NotifyFramePresented();
 }
 
 void RenderScreenImpl::RenderFrameInternal(Diligent::ITexture* render_target,
