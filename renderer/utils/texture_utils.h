@@ -26,9 +26,10 @@ void SetVulkanBackend(bool vulkan);
 // script frame and never retires them; once enough of that work is left pending,
 // this Adreno Vulkan driver parks the render thread forever in
 // adreno_drawctxt_wait (no error, no recovery - the process has to be killed).
-// Operations arriving back to back are treated as a load: from the third one on,
-// each does Flush + WaitForIdle, keeping the pending set at a couple of
-// operations. Normal play issues its blits far apart, so it never engages.
+// A load is one enormous script frame, so nothing is presented for its whole
+// duration: the drain only engages once the current frame has been running for a
+// while, which keeps it out of play entirely - including battle animations,
+// which blit heavily but still present every frame.
 void ConsiderLoadDrain();
 
 // Called after a frame reaches the screen. A load is a single very long script

@@ -15,7 +15,7 @@ namespace {
 // See SetLoadDrainContext()/SetVulkanBackend()/ConsiderLoadDrain().
 Diligent::IDeviceContext* g_drain_context = nullptr;
 bool g_vulkan_backend = false;
-int64_t g_burst_ops = 0;
+uint64_t g_last_present_ms = 0;
 
 }  // namespace
 
@@ -28,18 +28,20 @@ void SetVulkanBackend(bool vulkan) {
 }
 
 void NotifyFramePresented() {
-  // A frame reached the screen: whatever burst was in flight is over, so normal
-  // play can never accumulate enough operations to drain.
-  g_burst_ops = 0;
+  // A frame reached the screen: it re-arms the quiet period below. Play presents
+  // constantly (battle animations included), so the drain never engages there.
+  g_last_present_ms = SDL_GetTicks();
 }
 
 void ConsiderLoadDrain() {
   if (!g_drain_context || !g_vulkan_backend)
     return;
 
-  // Several texture operations without a single presented frame in between means
-  // a load is streaming through them (a load is one very long script frame).
-  if (++g_burst_ops < 3)
+  // Only once the current script frame has been running for a while without
+  // presenting anything. That is what a load looks like - one enormous frame
+  // submitting thousands of texture operations - while every gameplay frame,
+  // however heavy on blits, presents long before this elapses.
+  if (SDL_GetTicks() - g_last_present_ms < 200)
     return;
 
   g_drain_context->Flush();

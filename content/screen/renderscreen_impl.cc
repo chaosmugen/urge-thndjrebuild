@@ -23,7 +23,6 @@
 
 #include "base/debug/logging.h"
 #include "content/canvas/canvas_scheduler.h"
-#include "renderer/utils/texture_utils.h"
 #include "content/common/rect_impl.h"
 #include "content/context/execution_context.h"
 #include "content/gpu/buffer_impl.h"
