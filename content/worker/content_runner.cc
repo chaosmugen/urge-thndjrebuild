@@ -66,7 +66,7 @@ ContentRunner::ContentRunner(ContentProfile* profile,
 ContentRunner::~ContentRunner() {
   // Close gamepad before other teardown
   if (keyboard_impl_)
-    keyboard_impl_->CloseGamepad();
+    keyboard_impl_->CloseAllGamepads();
 
   // Remove watch
   SDL_RemoveEventWatch(&ContentRunner::EventWatchHandlerInternal, this);

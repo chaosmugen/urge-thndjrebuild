@@ -12,6 +12,8 @@
 #include "SDL3/SDL_gamepad.h"
 #include "ui/widget/widget.h"
 
+#include <map>
+
 namespace content {
 
 class KeyboardControllerImpl : public Input, public EngineObject {
@@ -84,8 +86,13 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   void UnbindGamepad(int32_t button,
                      ExceptionState& exception_state) override;
 
-  void OpenGamepad();
-  void CloseGamepad();
+  /* Open the gamepad device identified by |instance_id|. Button-only devices
+     (TV-remote input framework nodes with no axes/hats) are opened and
+     immediately closed again so they keep using SDL's Android keyboard
+     fallback instead of routing their keys through gamepad bindings. */
+  void OpenGamepad(SDL_JoystickID instance_id);
+  void CloseGamepad(SDL_JoystickID instance_id);
+  void CloseAllGamepads();
   void FeedGamepadButton(SDL_GamepadButton button, bool down);
   void FeedGamepadAxis(SDL_GamepadAxis axis, int16_t value);
 
@@ -100,7 +107,7 @@ class KeyboardControllerImpl : public Input, public EngineObject {
   // merged into the keyboard state on Update(). D-pad and left stick always map
   // to the arrow keys regardless of configuration.
   static constexpr int16_t kGamepadDeadzone = 9830;
-  static constexpr int16_t kGamepadTriggerThreshold = 8192;
+  static constexpr int16_t kGamepadTriggerThreshold = 1024;
 
   // SDL3 exposes the triggers (LT/RT) only as axes, never as buttons, so they
   // get two "virtual" slots above the physical SDL_GamepadButton range. Scripts
@@ -132,7 +139,10 @@ class KeyboardControllerImpl : public Input, public EngineObject {
     int32_t active = 0;
   } dir8_state_;
 
-  SDL_Gamepad* gamepad_ = nullptr;
+  /* Opened gamepad handles keyed by joystick instance id. TV firmware exposes
+     several button-only "gamepads" (IR remote, touchpad node, voice remote),
+     so more than one handle can be open at once. */
+  std::map<SDL_JoystickID, SDL_Gamepad*> gamepads_;
   // Holds physical button state (slots 0..SDL_GAMEPAD_BUTTON_COUNT-1); the two
   // virtual trigger slots are driven from gamepad_trigger_state_ instead.
   std::array<bool, kGamepadSlotCount> gamepad_button_state_{};

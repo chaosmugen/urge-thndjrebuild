@@ -2,29 +2,65 @@ plugins {
   id 'com.android.application'
 }
 
+// Native (CMake) build type: Release by default - it is what ships and what the
+// test TV runs, so the optimized build is no longer something you have to ask
+// for.
+//
+// Diagnostics need the Debug configuration: DiligentCore defines
+// DILIGENT_DEVELOPMENT / DILIGENT_DEBUG only there, which switches its internal
+// validation on (resource states, descriptors, arguments, pipeline consistency)
+// and reports through DebugMessageOutputFunc into the engine log. The Khronos
+// validation layer is not an option here - NDK 28 no longer ships it and the APK
+// does not bundle it. Trade-off of that build: no -O3, so the game runs
+// noticeably slower.
+//
+// Diagnostics build when needed:
+//   ./gradlew assembleRelease -PurgeNativeDebug
+def urgeNativeBuildType = project.hasProperty('urgeNativeDebug') ? 'Debug' : 'Release'
+
 android {
   namespace = "com.admenri.urge"
   compileSdkVersion 35
   defaultConfig {
     minSdkVersion 21
     targetSdkVersion 35
-    versionCode 23
-    versionName "20260912"
+    versionCode 25
+    versionName "20261002"
     externalNativeBuild {
       ndkBuild {
         arguments "APP_PLATFORM=android-21"
-        // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-        abiFilters 'armeabi-v7a','arm64-v8a'
+        // Both phone ABIs for every build. Dropping the arm64 slice was a
+        // temporary measure for the 32-bit test TV.
+        abiFilters 'armeabi-v7a', 'arm64-v8a'
       }
       cmake {
-        arguments "-DANDROID_PLATFORM=android-21", "-DANDROID_STL=c++_static", "-DCMAKE_BUILD_TYPE=Release"
-        // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-        abiFilters 'armeabi-v7a','arm64-v8a'
+        // Single source for the native configuration: see urgeNativeBuildType
+        // above. It used to be hardcoded to Release for every variant, which is
+        // why a debug build carried no renderer diagnostics at all.
+        arguments "-DANDROID_PLATFORM=android-21", "-DANDROID_STL=c++_static",
+                  "-DCMAKE_BUILD_TYPE=" + urgeNativeBuildType
+        // Both phone ABIs - see the ndkBuild block above.
+        abiFilters 'armeabi-v7a', 'arm64-v8a'
       }
+    }
+  }
+  signingConfigs {
+    // Keeps an automated release build producing the same artifact as the previous
+    // releases: one that installs on the device with `adb install -r`. Without a
+    // signingConfig the release variant emits app-release-unsigned.apk, which cannot be
+    // installed at all. The key is the local debug keystore on purpose - the TV already
+    // carries an install signed with it (that is why `-r` works over it, and why every
+    // build so far matched it). Swap in a real keystore before publishing widely.
+    debugKey {
+      storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+      storePassword "android"
+      keyAlias "androiddebugkey"
+      keyPassword "android"
     }
   }
   buildTypes {
     release {
+      signingConfig signingConfigs.debugKey
       minifyEnabled false
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
     }

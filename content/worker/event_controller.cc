@@ -145,11 +145,11 @@ void EventController::DispatchEvent(SDL_Event* event) {
       break;
     case SDL_EVENT_GAMEPAD_ADDED:
       if (keyboard_controller_)
-        keyboard_controller_->OpenGamepad();
+        keyboard_controller_->OpenGamepad(event->gdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_REMOVED:
       if (keyboard_controller_)
-        keyboard_controller_->CloseGamepad();
+        keyboard_controller_->CloseGamepad(event->gdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
     case SDL_EVENT_GAMEPAD_BUTTON_UP:

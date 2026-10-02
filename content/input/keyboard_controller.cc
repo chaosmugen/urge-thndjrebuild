@@ -4,6 +4,8 @@
 
 #include "content/input/keyboard_controller.h"
 
+#include <cstdio>
+
 #include "components/filesystem/io_service.h"
 
 #include "SDL3/SDL_events.h"
@@ -127,7 +129,19 @@ KeyboardControllerImpl::KeyboardControllerImpl(
   TryReadBindingsInternal();
   setting_bindings_ = key_bindings_;
 
-  OpenGamepad();
+  /* GAMEPAD_ADDED only fires for devices connected after we start listening, so
+     open the ones already plugged in when the engine boots. The subsystem is
+     initialised first for the same reason OpenGamepad() does it: without it the
+     enumeration comes back empty. */
+  if (SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    int32_t gamepad_count = 0;
+    SDL_JoystickID* gamepad_ids = SDL_GetJoysticks(&gamepad_count);
+    if (gamepad_ids) {
+      for (int32_t i = 0; i < gamepad_count; ++i)
+        OpenGamepad(gamepad_ids[i]);
+      SDL_free(gamepad_ids);
+    }
+  }
 }
 
 KeyboardControllerImpl::~KeyboardControllerImpl() = default;
@@ -583,11 +597,10 @@ bool KeyboardControllerImpl::Emulate(int32_t scancode,
   return SDL_PushEvent(&emulate_event);
 }
 
-void KeyboardControllerImpl::OpenGamepad() {
-  /* Single-gamepad support: keep the controller already in use. A second
-     GAMEPAD_ADDED (an extra controller, or a duplicate startup event for the
-     same one) must not steal the handle. */
-  if (gamepad_)
+void KeyboardControllerImpl::OpenGamepad(SDL_JoystickID instance_id) {
+  /* One handle per device: repeated GAMEPAD_ADDED for the same instance must
+     not stack references or steal an existing handle. */
+  if (gamepads_.count(instance_id))
     return;
 
   /* Init once for the process lifetime. SDL_InitSubSystem ref-counts, so
@@ -600,21 +613,52 @@ void KeyboardControllerImpl::OpenGamepad() {
     return;
   }
 
-  int count = 0;
-  SDL_JoystickID* games = SDL_GetGamepads(&count);
-  if (!games)
+  SDL_Gamepad* gamepad = SDL_OpenGamepad(instance_id);
+  if (!gamepad) {
+    LOG(ERROR) << "[Keyboard] Failed to open gamepad " << instance_id << ": "
+               << SDL_GetError();
     return;
+  }
 
-  if (count > 0)
-    gamepad_ = SDL_OpenGamepad(games[0]);
-  SDL_free(games);
+  /* TV firmware (e.g. MTK) registers its remote/touchpad input framework
+     nodes as gamepads with a mapping but without any axes or hats. Keeping
+     such a device open would reroute its OK/BACK/DPAD keys from SDL's
+     Android keyboard fallback into gamepad button events, changing what the
+     remote's keys do. Button-only devices are therefore closed right away;
+     real controllers report sticks/triggers and stay open. */
+  SDL_Joystick* joystick = SDL_GetGamepadJoystick(gamepad);
+  bool button_only =
+      !joystick || (SDL_GetNumJoystickAxes(joystick) == 0 &&
+                    SDL_GetNumJoystickHats(joystick) == 0);
+  if (button_only) {
+    SDL_CloseGamepad(gamepad);
+    LOG(INFO) << "[Keyboard] Closed button-only gamepad " << instance_id
+              << " (keeps keyboard fallback)";
+    return;
+  }
+
+  gamepads_[instance_id] = gamepad;
 }
 
-void KeyboardControllerImpl::CloseGamepad() {
-  if (gamepad_) {
-    SDL_CloseGamepad(gamepad_);
-    gamepad_ = nullptr;
-  }
+void KeyboardControllerImpl::CloseGamepad(SDL_JoystickID instance_id) {
+  auto it = gamepads_.find(instance_id);
+  if (it == gamepads_.end())
+    return;
+
+  SDL_CloseGamepad(it->second);
+  gamepads_.erase(it);
+
+  /* Last device gone: release any latched button state so a controller
+     unplugged mid-press does not leave a key stuck down. */
+  if (gamepads_.empty())
+    CloseAllGamepads();
+}
+
+void KeyboardControllerImpl::CloseAllGamepads() {
+  for (auto& entry : gamepads_)
+    SDL_CloseGamepad(entry.second);
+  gamepads_.clear();
+
   std::memset(gamepad_button_state_.data(), 0,
               gamepad_button_state_.size() * sizeof(bool));
   std::memset(gamepad_axis_, 0, sizeof(gamepad_axis_));

@@ -228,10 +228,12 @@ target_compile_options(mri_ruby PRIVATE
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   target_compile_definitions(mri_ruby PUBLIC ARCH_32BIT)
-  # 【32 位构建绕行】vm_exec_core 确定性崩溃（switch/computed-goto 均复现），
-  # 临时整体降级优化并关闭严格别名，排除编译器代码生成问题。
-  target_compile_options(mri_ruby PRIVATE -O1 -fno-strict-aliasing)
-  message("${ANDROID_ABI} ruby 40 32 bit build (O1 debug override)")
+  # 【32 位构建绕行】vm_exec_core 确定性崩溃（switch/computed-goto 均复现）。
+  # 先退回 -O1 时一切正常，但也把整个游戏逻辑拖慢了一档（Ruby 是热路径）。
+  # 现在按阶梯回收性能：先试 -O3，仍带上 -fno-strict-aliasing（MRI 自身也建议开启）。
+  # 若 vm_exec_core 再次确定性崩溃，就退到 -O2，再不行回 -O1。
+  target_compile_options(mri_ruby PRIVATE -O3 -fno-strict-aliasing)
+  message("${ANDROID_ABI} ruby 40 32 bit build (32-bit workaround: -O3 -fno-strict-aliasing)")
 else()
   target_compile_definitions(mri_ruby PUBLIC ARCH_64BIT)
   message("${ANDROID_ABI} ruby 40 64 bit build")

@@ -112,19 +112,6 @@ VALUE EvalString(VALUE string, VALUE filename, int32_t* state) {
   return rb_protect(evaluate, reinterpret_cast<VALUE>(&context), state);
 }
 
-std::string InsertNewLines(const std::string& input, size_t interval) {
-  std::string result;
-  size_t length = input.length();
-
-  for (size_t i = 0; i < length; i += interval) {
-    result += input.substr(i, interval);
-    if (i + interval < length)
-      result += '\n';
-  }
-
-  return result;
-}
-
 std::string ParseExeceptionInfo(VALUE exception) {
   VALUE exeception_name = rb_class_path(rb_obj_class(exception));
   VALUE exception_message = rb_obj_as_string(exception);
@@ -137,8 +124,11 @@ std::string ParseExeceptionInfo(VALUE exception) {
       rb_sprintf("%" PRIsVALUE " (%" PRIsVALUE ") :\n%" PRIsVALUE,
                  backtrace_front, exeception_name, exception_message);
 
-  std::string error_info = StringValueCStr(format_errors);
-  return InsertNewLines(error_info, 128);
+  // No fixed-width wrapping: the removed InsertNewLines() cut the text every
+  // 128 bytes, which split words in the middle and could split a multi-byte
+  // UTF-8 character as well. The only line break left is the one the format
+  // string writes between the backtrace frame and the exception message.
+  return StringValueCStr(format_errors);
 }
 
 void MriProcessReset() {

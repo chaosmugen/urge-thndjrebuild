@@ -614,8 +614,11 @@ class LogMessage {
   std::ostringstream stream_;
 
   // The file and line information passed in to the constructor.
-  const char* file_;
-  const int line_;
+  // Kept only so the LOG() macros keep passing them (the constructor signature
+  // is used by every call site); they are deliberately not written into the log
+  // output any more, hence the unused markers.
+  [[maybe_unused]] const char* file_;
+  [[maybe_unused]] const int line_;
 
 #if defined(OS_WIN)
   // Stores the current value of GetLastError in the constructor and restores
