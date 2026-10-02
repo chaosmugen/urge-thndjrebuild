@@ -560,12 +560,6 @@ void BindingEngineMri::LoadPackedScripts(
         SDL_PumpEvents();
 #endif  //! OS_ANDROID
 
-      // Logged before every eval, so the last "Evaluating script" line in the log
-      // identifies the exact script that dies inside the Ruby VM (a native crash
-      // carries no Ruby backtrace of its own).
-      LOG(INFO) << "[Binding] Evaluating script #" << (i + 1) << ": "
-                << StringValueCStr(script_name);
-
       std::stringstream format_filename;
       format_filename << std::to_string(i + 1) << " - "
                       << StringValueCStr(script_name);
