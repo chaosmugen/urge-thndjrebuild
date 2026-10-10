@@ -24,6 +24,8 @@ class RectImpl : public Rect, public ValueNotification {
   bool CompareWithOther(scoped_refptr<Rect> other,
                         ExceptionState& exception_state) override;
 
+  uint64_t GetHashCode() override;
+
   void Set(int32_t x,
            int32_t y,
            int32_t width,

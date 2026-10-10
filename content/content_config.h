@@ -31,8 +31,10 @@ struct ExecutionContext;
                                          const std::string&, ExceptionState&); \
   static std::string Serialize(ExecutionContext*, scoped_refptr<type>,         \
                                ExceptionState&)
-#define URGE_EXPORT_COMPARABLE(type) \
-  virtual bool CompareWithOther(scoped_refptr<type>, ExceptionState&) = 0;
+#define URGE_EXPORT_COMPARABLE(type)                  \
+  virtual bool CompareWithOther(scoped_refptr<type>,  \
+                                ExceptionState&) = 0; \
+  virtual uint64_t GetHashCode() = 0;
 
 #define URGE_EXPORT_DISPOSABLE                               \
   virtual void Dispose(ExceptionState& exception_state) = 0; \

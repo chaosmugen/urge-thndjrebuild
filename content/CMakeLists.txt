@@ -29,6 +29,7 @@ set(ENGINE_CONTENT_SRC
   common/table_impl.h
   common/tone_impl.cc
   common/tone_impl.h
+  common/value_hash.h
   common/value_observer.h
   context/disposable.cc
   context/disposable.h

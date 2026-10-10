@@ -28,6 +28,8 @@ class ColorImpl : public Color, public ValueNotification {
   bool CompareWithOther(scoped_refptr<Color> other,
                         ExceptionState& exception_state) override;
 
+  uint64_t GetHashCode() override;
+
   void Set(float red,
            float green,
            float blue,

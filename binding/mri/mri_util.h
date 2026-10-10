@@ -144,6 +144,24 @@ Ty* MriCheckStructData(VALUE obj, const rb_data_type_t& type) {
   return static_cast<Ty*>(Check_TypedStruct(obj, &type));
 }
 
+// Same as MriCheckStructData, but a foreign type yields nullptr instead of a
+// TypeError. Ruby's comparison contract is "false for an unrelated object", not
+// an exception, and == / === / eql? are reachable with arbitrary values:
+// `bitmap == 1`, `bitmap === 1`, `[bitmap].include?(1)`. The old
+// Check_TypedStruct raised a TypeError there.
+template <typename Ty>
+Ty* MriCheckStructDataOptional(VALUE obj, const rb_data_type_t& type) {
+  if (obj == Qnil)
+    return nullptr;
+  // rb_typeddata_is_kind_of() checks T_DATA first. Testing RTYPEDDATA_P by hand
+  // is not enough: it only tests a flag in the object header, so an immediate
+  // (Integer / Symbol / true / false) sends it reading an invalid address -
+  // `bitmap == 1` died with a segmentation fault.
+  if (!rb_typeddata_is_kind_of(obj, &type))
+    return nullptr;
+  return static_cast<Ty*>(RTYPEDDATA_DATA(obj));
+}
+
 using RubyMethod = VALUE (*)(int argc, VALUE* argv, VALUE self);
 inline void MriDefineMethod(VALUE klass, const char* name, RubyMethod func) {
   rb_define_method(klass, name, RUBY_METHOD_FUNC(func), -1);
@@ -200,7 +218,19 @@ VALUE MriWrapObject(scoped_refptr<Ty> ptr,
   if (!ptr)
     return Qnil;
 
-  VALUE klass = rb_const_get(super, rb_intern(type.wrap_struct_name));
+  // The wrapper class is fixed after Init, but resolving it costs an rb_intern
+  // (symbol table lookup) plus an rb_const_get (constant lookup) on every wrap -
+  // and wrapping runs for every engine object handed to Ruby: attribute reads,
+  // return values, array elements. Cache it per type; the class cannot be
+  // collected because the constant it was read from references it.
+  static VALUE klass_cache = Qnil;
+  VALUE klass = (super == rb_cObject) ? klass_cache : Qnil;
+  if (klass == Qnil) {
+    klass = rb_const_get(super, rb_intern(type.wrap_struct_name));
+    if (super == rb_cObject)
+      klass_cache = klass;
+  }
+
   VALUE obj = rb_obj_alloc(klass);
 
   ptr->AddRef();
@@ -351,32 +381,58 @@ void MriInitDisposableBinding(VALUE klass) {
 /// Object compare template
 ///
 
-#define MRI_OBJECT_ID_COMPARE(klass)                                     \
-  MRI_METHOD(klass##_equal_to) {                                         \
-    scoped_refptr obj = MriGetStructData<content::klass>(self);          \
-    MriCheckArgc(argc, 1);                                               \
-    scoped_refptr value_obj =                                            \
-        MriCheckStructData<content::klass>(argv[0], k##klass##DataType); \
-    return obj == value_obj ? Qtrue : Qfalse;                            \
+// Engine objects carry no Ruby-side identity of their own: the same native
+// object is wrapped by a fresh VALUE on every read, so equal? / object_id differ
+// while `==` / eql? compare the engine pointer (exposed as engine_id). `hash`
+// must agree with eql?, otherwise Hash / Set / Array#uniq never find the object
+// again - which is exactly the failure the default Object#hash produced.
+#define MRI_OBJECT_ID_HASH(klass)                                      \
+  MRI_METHOD(klass##_hash) {                                           \
+    return ULL2NUM(reinterpret_cast<uint64_t>(RTYPEDDATA_DATA(self))); \
   }
+
+// Comparable objects (Color / Rect / Tone) compare by value, so their hash has
+// to be value based as well, or equal values land in different buckets.
+#define MRI_OBJECT_VALUE_HASH(klass)                         \
+  MRI_METHOD(klass##_hash) {                                 \
+    content::klass* obj =                                    \
+        static_cast<content::klass*>(RTYPEDDATA_DATA(self)); \
+    if (!obj)                                                \
+      return ULL2NUM(0);                                     \
+    return ULL2NUM(obj->GetHashCode());                      \
+  }
+
+#define MRI_OBJECT_ID_COMPARE(klass)                        \
+  MRI_METHOD(klass##_equal_to) {                            \
+    scoped_refptr obj = MriGetStructData<content::klass>(self); \
+    MriCheckArgc(argc, 1);                                  \
+    scoped_refptr value_obj =                               \
+        MriCheckStructDataOptional<content::klass>(         \
+            argv[0], k##klass##DataType);                   \
+    return obj == value_obj ? Qtrue : Qfalse;               \
+  }                                                         \
+  MRI_OBJECT_ID_HASH(klass)
 
 #define MRI_OBJECT_ID_COMPARE_CUSTOM(klass)                                 \
   MRI_METHOD(klass##_equal_to) {                                            \
     scoped_refptr obj = MriGetStructData<content::klass>(self);             \
     MriCheckArgc(argc, 1);                                                  \
     scoped_refptr value_obj =                                               \
-        MriCheckStructData<content::klass>(argv[0], k##klass##DataType);    \
+        MriCheckStructDataOptional<content::klass>(                         \
+            argv[0], k##klass##DataType);                                   \
     content::ExceptionState exception_state;                                \
     VALUE result =                                                          \
         obj->CompareWithOther(value_obj, exception_state) ? Qtrue : Qfalse; \
     MriProcessException(exception_state);                                   \
     return result;                                                          \
-  }
+  }                                                                         \
+  MRI_OBJECT_VALUE_HASH(klass)
 
-#define MRI_DECLARE_OBJECT_COMPARE(klass, ty)   \
-  MriDefineMethod(klass, "==", ty##_equal_to);  \
-  MriDefineMethod(klass, "===", ty##_equal_to); \
-  MriDefineMethod(klass, "eql?", ty##_equal_to);
+#define MRI_DECLARE_OBJECT_COMPARE(klass, ty)    \
+  MriDefineMethod(klass, "==", ty##_equal_to);   \
+  MriDefineMethod(klass, "===", ty##_equal_to);  \
+  MriDefineMethod(klass, "eql?", ty##_equal_to); \
+  MriDefineMethod(klass, "hash", ty##_hash);
 
 ///
 /// Array object to CXX data

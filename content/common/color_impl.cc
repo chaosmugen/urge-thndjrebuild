@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+#include "content/common/value_hash.h"
+
 namespace content {
 
 // static
@@ -113,6 +115,15 @@ bool ColorImpl::CompareWithOther(scoped_refptr<Color> other,
     return false;
 
   return static_cast<ColorImpl*>(other.get())->value_ == value_;
+}
+
+uint64_t ColorImpl::GetHashCode() {
+  uint64_t hash = kValueHashSeed;
+  hash = CombineValueHash(hash, HashValuePart(value_.x));
+  hash = CombineValueHash(hash, HashValuePart(value_.y));
+  hash = CombineValueHash(hash, HashValuePart(value_.z));
+  hash = CombineValueHash(hash, HashValuePart(value_.w));
+  return hash;
 }
 
 void ColorImpl::Set(float red,

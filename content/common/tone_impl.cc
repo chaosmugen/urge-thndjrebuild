@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+#include "content/common/value_hash.h"
+
 namespace content {
 
 // static
@@ -104,6 +106,15 @@ bool ToneImpl::CompareWithOther(scoped_refptr<Tone> other,
     return false;
 
   return static_cast<ToneImpl*>(other.get())->value_ == value_;
+}
+
+uint64_t ToneImpl::GetHashCode() {
+  uint64_t hash = kValueHashSeed;
+  hash = CombineValueHash(hash, HashValuePart(value_.x));
+  hash = CombineValueHash(hash, HashValuePart(value_.y));
+  hash = CombineValueHash(hash, HashValuePart(value_.z));
+  hash = CombineValueHash(hash, HashValuePart(value_.w));
+  return hash;
 }
 
 void ToneImpl::Set(float red,

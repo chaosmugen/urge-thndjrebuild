@@ -4,6 +4,8 @@
 
 #include "content/common/rect_impl.h"
 
+#include "content/common/value_hash.h"
+
 namespace content {
 
 // static
@@ -77,6 +79,15 @@ bool RectImpl::CompareWithOther(scoped_refptr<Rect> other,
     return false;
 
   return static_cast<RectImpl*>(other.get())->rect_ == rect_;
+}
+
+uint64_t RectImpl::GetHashCode() {
+  uint64_t hash = kValueHashSeed;
+  hash = CombineValueHash(hash, HashValuePart(rect_.x));
+  hash = CombineValueHash(hash, HashValuePart(rect_.y));
+  hash = CombineValueHash(hash, HashValuePart(rect_.width));
+  hash = CombineValueHash(hash, HashValuePart(rect_.height));
+  return hash;
 }
 
 void RectImpl::Set(int32_t x,
