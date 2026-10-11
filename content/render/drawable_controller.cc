@@ -52,6 +52,14 @@ bool ScissorStack::Push(const base::Rect& scissor) {
 }
 
 void ScissorStack::Pop() {
+  // The bottom entry is the viewport scissor and is never popped; an unbalanced Push/Pop
+  // would otherwise pop it, read an empty stack in Reset() (undefined) and leave the scissor
+  // state wrong for the rest of the frame.
+  if (stack_.size() <= 1) {
+    Reset();
+    return;
+  }
+
   stack_.pop();
   Reset();
 }

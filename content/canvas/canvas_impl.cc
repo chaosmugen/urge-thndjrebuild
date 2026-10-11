@@ -1188,10 +1188,14 @@ void CanvasImpl::GPUClipTextureInternal(const base::Rect& dst_region,
   // Set dst texture uv
   const base::Vec2 dst_uv(dst_region.width / intermediate_size.x,
                           dst_region.height / intermediate_size.y);
-  transient_quad.vertices[0].color = base::Vec4(0, 0, 0, 0);
-  transient_quad.vertices[1].color = base::Vec4(dst_uv.x, 0, 0, 0);
-  transient_quad.vertices[2].color = base::Vec4(dst_uv.x, dst_uv.y, 0, 0);
-  transient_quad.vertices[3].color = base::Vec4(0, dst_uv.y, 0, 0);
+  // Set dst texture uv, and stamp the quad corner into the otherwise unused colour .z.
+  // The clip shader must not take the corner from SV_VertexID: the Mali driver on the
+  // target TV hands the same index to every draw of a frame, so all four corners would
+  // sample one corner's clip alpha and the element would vanish for a frame.
+  transient_quad.vertices[0].color = base::Vec4(0, 0, 0.0f, 0);
+  transient_quad.vertices[1].color = base::Vec4(dst_uv.x, 0, 1.0f, 0);
+  transient_quad.vertices[2].color = base::Vec4(dst_uv.x, dst_uv.y, 2.0f, 0);
+  transient_quad.vertices[3].color = base::Vec4(0, dst_uv.y, 3.0f, 0);
 
   // Update vertices
   scheduler->quad_batch().QueueWrite(render_context, &transient_quad);

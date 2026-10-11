@@ -83,7 +83,14 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   // showed up on Vulkan.
   const bool is_depth_stencil =
       (bind_flags & Diligent::BIND_DEPTH_STENCIL) != 0;
-  if (is_depth_stencil) {
+  // Readback destinations must not be created with initial content either: passing a zero
+  // fill makes the driver allocate and copy it, which on this path aborts the process on the
+  // first presented frame. The fill below is for render targets and for textures that are
+  // sampled - not for a texture that only ever receives copies.
+  const bool is_readback =
+      (access & Diligent::CPU_ACCESS_READ) != 0 ||
+      usage == Diligent::USAGE_STAGING;
+  if (is_depth_stencil || is_readback) {
     device->CreateTexture(texture_desc, nullptr, texture);
     return;
   }

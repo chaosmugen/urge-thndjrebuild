@@ -27,7 +27,15 @@ void SpriteBatch::BeginBatch(TextureID texture) {
 
 void SpriteBatch::PushSprite(const renderer::Quad& quad,
                              const renderer::Binding_Sprite::Params& uniform) {
-  quad_cache_.push_back(quad);
+  // The element index this quad's parameters are read back by is stamped into the vertex
+  // colour's .x. The shader must not derive it from SV_VertexID: the Mali driver on the
+  // target TV hands the same index to every draw of a frame, so sprites read each other's
+  // parameters and are drawn with somebody else's position, origin and scale.
+  renderer::Quad stamped = quad;
+  renderer::Quad::SetColor(
+      &stamped,
+      base::Vec4(static_cast<float>(uniform_cache_.size()), 0.0f, 0.0f, 1.0f));
+  quad_cache_.push_back(stamped);
   uniform_cache_.push_back(uniform);
 }
 

@@ -210,8 +210,16 @@ void VSMain(in VSInput VSIn, out PSInput PSIn) {
   posUV[2] = float2(1.0, 1.0); // RB
   posUV[3] = float2(0.0, 1.0); // LB
 
+  // The corner of the quad has to reach the clip mask lookup, but it cannot come from
+  // SV_VertexID: the Mali driver on the target TV hands the same index to every draw of
+  // a frame, so posUV[VSIn.VertexIdx] resolved to a single corner for the whole quad and
+  // - when that corner's clip alpha happened to be 0 - the element was dropped entirely
+  // for one frame while every CPU-side counter stayed correct. The corner is stamped
+  // into the vertex colour by CanvasImpl::GPUClipTextureInternal (its .z is otherwise
+  // unused; the pixel shader reads only .xy, as the destination texture uv).
+  uint corner = uint(VSIn.Color.z + 0.5);
   PSIn.UV = VSIn.UV;
-  PSIn.ClipUV = posUV[VSIn.VertexIdx];
+  PSIn.ClipUV = posUV[corner];
   PSIn.Color = VSIn.Color;
 }
 )";
@@ -473,12 +481,13 @@ struct PSInput {
 
 void VSMain(in VSInput VSIn, out PSInput PSIn) {
 #if STORAGE_BUFFER_SUPPORT
-#if defined(GLSL)
-  int vertex_id = int(VSIn.VertexIdx);
-#else
-  uint vertex_id = VSIn.VertexIdx;
-#endif // GLSL
-  SpriteParam effect = u_Params[vertex_id / 4];
+  // Which parameter element this quad uses is stamped into the vertex colour by
+  // SpriteBatch::PushSprite. gl_VertexIndex is deliberately NOT used: the Mali
+  // driver on the target TV hands the same index to every draw of a frame, which
+  // made sprites read each other's parameters (attrib0..2 keep carrying the
+  // geometry; ATTRIB2 is free here because the sprite colour comes from u_Params).
+  uint param_index = uint(VSIn.Color.x + 0.5);
+  SpriteParam effect = u_Params[param_index];
 #else
   SpriteParam effect = u_Effect;
 #endif // STORAGE_BUFFER_SUPPORT
