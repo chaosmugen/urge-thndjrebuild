@@ -409,6 +409,8 @@ void MriInitDisposableBinding(VALUE klass) {
     scoped_refptr value_obj =                               \
         MriCheckStructDataOptional<content::klass>(         \
             argv[0], k##klass##DataType);                   \
+    if (obj.get() == nullptr || value_obj.get() == nullptr) \
+      return Qfalse;                                        \
     return obj == value_obj ? Qtrue : Qfalse;               \
   }                                                         \
   MRI_OBJECT_ID_HASH(klass)
@@ -420,6 +422,8 @@ void MriInitDisposableBinding(VALUE klass) {
     scoped_refptr value_obj =                                               \
         MriCheckStructDataOptional<content::klass>(                         \
             argv[0], k##klass##DataType);                                   \
+    if (obj.get() == nullptr || value_obj.get() == nullptr)                 \
+      return Qfalse;                                                        \
     content::ExceptionState exception_state;                                \
     VALUE result =                                                          \
         obj->CompareWithOther(value_obj, exception_state) ? Qtrue : Qfalse; \
