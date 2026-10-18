@@ -7246,3 +7246,6 @@ doc/bench/bench_yjit.rb
 # Gem 编译产物（误提交的中间文件，勿入库）
 ruby40/lib/ruby/gems/**/ext/**/*.o
 **/mkmf.log
+
+# IDE 配置（勿入库）
+.vscode/
