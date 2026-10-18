@@ -7249,3 +7249,8 @@ ruby40/lib/ruby/gems/**/ext/**/*.o
 
 # IDE 配置（勿入库）
 .vscode/
+
+# IDE / 备份 / gem 缓存（勿入库）
+.idea/
+*.orig
+ruby40/lib/ruby/gems/**/cache/**/*.gem
