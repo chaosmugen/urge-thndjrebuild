@@ -7242,3 +7242,7 @@ doc/bench/analyze_bench.rb
 doc/bench/analyze_dump.py
 doc/bench/analyze_series.rb
 doc/bench/bench_yjit.rb
+
+# Gem 编译产物（误提交的中间文件，勿入库）
+ruby40/lib/ruby/gems/**/ext/**/*.o
+**/mkmf.log
