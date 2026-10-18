@@ -626,6 +626,18 @@ void ViewportImpl::GPUFrameBeginRenderPassInternal(
     render_context->ClearRenderTarget(
         render_target_view, clear_color,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  }
+
+  // Depth is cleared UNCONDITIONALLY, even when clear_target is false.
+  // The sprite pipeline runs with depth test enabled and every 2D quad carries
+  // a constant depth, so the test only passes while the buffer holds the clear
+  // value 1.0. Gating this on clear_target left stale depth behind for
+  // Viewport#render(target, false), and on Vulkan a freshly allocated D24
+  // texture holds undefined content (c46dc215 creates depth-stencil textures
+  // without initial data) - together these silently dropped whole batches of
+  // sprites, reported as intermittently missing battlers. Clearing depth does
+  // not touch the color buffer, so the clear_target=false contract is intact.
+  if (depth_stencil_view) {
     render_context->ClearDepthStencil(
         depth_stencil_view, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

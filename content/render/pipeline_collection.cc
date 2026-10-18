@@ -167,12 +167,26 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
     Diligent::BlendStateDesc blend_state;
     blend_state.RenderTargets[0] = GetBlendState(static_cast<BlendType>(i));
 
-    // Depth test ENABLED for sprites.
-    // af2e282d turned it off on the assumption that every 2D quad is emitted
-    // with z = 0 and the test therefore orders nothing. On this device that is
-    // not true: the per-sprite sort key is carried in the vertex z, so the
-    // test does resolve overlap, and disabling it made the title -> menu
-    // transition (mirror animation) flash for one frame. Keep it enabled.
+    // Depth test ENABLED for sprites (2fdc2d0d), and it stays enabled: some
+    // overlap (title -> menu mirror animation) does rely on it resolving two
+    // sprites that carry different depths, and disabling it made that flash for
+    // one frame.
+    //
+    // It is only safe because the depth buffer is now cleared UNCONDITIONALLY
+    // at the start of every render pass (ViewportImpl::GPUFrameBeginRenderPassInternal
+    // and CanvasScheduler::SetupRenderTarget clear depth even when
+    // clear_target is false). Without that, the test carries a hidden
+    // precondition - the buffer must be >= the constant depth every 2D quad is
+    // emitted with (Quad::SetPositionRect writes z = 0, the sprite shader keeps
+    // VSIn.Pos.z, ProjMat only maps it to a fixed constant):
+    //   * Viewport#render(target, false) clears the color but used to leave the
+    //     depth stale;
+    //   * on Vulkan a freshly allocated D24 texture holds undefined content
+    //     (c46dc215 deliberately creates depth-stencil textures without initial
+    //     data), which measured as 0 during the load burst;
+    //   * depth < that constant then makes the whole batch of sprites fail the
+    //     test and vanish silently - the intermittent "battlers disappear" report.
+    // Do not re-gate the depth clear on clear_target again.
     Diligent::DepthStencilStateDesc depth_stencil_state =
         GetDefaultDepthStencilState(true);
 

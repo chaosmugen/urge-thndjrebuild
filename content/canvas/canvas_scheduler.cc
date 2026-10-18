@@ -43,13 +43,16 @@ void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
       context_->ClearRenderTarget(
           render_target, clear_color,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
 
-      if (depth_stencil) {
-        // Clear depth buffer if need
-        context_->ClearDepthStencil(
-            depth_stencil, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-      }
+    // Depth is cleared unconditionally - see the note in
+    // ViewportImpl::GPUFrameBeginRenderPassInternal: the sprite pipeline has
+    // depth test enabled with a constant quad depth, so any stale/undefined
+    // depth content silently drops whole batches of sprites.
+    if (depth_stencil) {
+      context_->ClearDepthStencil(
+          depth_stencil, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
+          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     }
 
     return;
