@@ -6,6 +6,8 @@
 
 #include "content/context/execution_context.h"
 #include "renderer/utils/texture_utils.h"
+// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -619,9 +621,21 @@ void Tilemap2Impl::OnObjectDisposed() {
   ground_node_.DisposeNode();
   above_node_.DisposeNode();
 
+  // Same handling as CanvasImpl's disposal: the atlas and the view bound to it may still be
+  // read by a draw this frame recorded and the GPU has not finished. See
+  // renderer::DeferredTextureRelease.
+  renderer::DeferredTextureRelease(gpu_.atlas_texture);
+  renderer::DeferredTextureRelease(gpu_.atlas_binding);
+
   GPUData empty_data;
   std::swap(gpu_, empty_data);
 }
+
+static int64_t g_tm_ground_drawn = 0;
+static int64_t g_tm_ground_ready = 0;
+static int64_t g_tm_above_drawn = 0;
+static int64_t g_tm_ground_noatlas = 0;
+static int64_t g_tm_ground_empty = 0;
 
 void Tilemap2Impl::GroundNodeHandlerInternal(
     DrawableNode::RenderStage stage,
@@ -648,13 +662,34 @@ void Tilemap2Impl::GroundNodeHandlerInternal(
       GPUUpdateQuadBatchInternal(params->context, std::move(ground_cache),
                                  std::move(above_cache));
       map_buffer_dirty_ = false;
+
+      // A rebuild that produces no ground quad blanks the whole ground layer for that
+      // frame while the above layer keeps drawing - the one-frame flicker seen on the
+      // TV. Report the state that produced it.
+      if (!gpu_.ground_draw_count)
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[LayerAudit] ground empty after rebuild: above="
+                  << gpu_.above_draw_count << " tile_viewport="
+                  << render_viewport_.x << "," << render_viewport_.y << " "
+                  << render_viewport_.width << "x" << render_viewport_.height
+                  << " origin=" << origin_.x << "," << origin_.y
+                  << " tilesize=" << tilesize_;
     }
 
     GPUUpdateTilemapUniformInternal(params->context,
                                     render_offset_.Recast<float>(),
                                     animation_offset_, tilesize_);
+    ++g_tm_ground_ready;
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    ++g_tm_ground_drawn;
     GPURenderGroundLayerInternal(params->context, params->world_binding);
+    if (g_tm_ground_drawn % 300 == 0)
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[LayerAudit] ground ready=" << g_tm_ground_ready
+                << " drawn=" << g_tm_ground_drawn
+                << " above=" << g_tm_above_drawn
+                << " noatlas=" << g_tm_ground_noatlas
+                << " empty=" << g_tm_ground_empty;
   }
 }
 
@@ -662,6 +697,7 @@ void Tilemap2Impl::AboveNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
   if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    ++g_tm_above_drawn;
     GPURenderAboveLayerInternal(params->context, params->world_binding);
   }
 }
@@ -1188,7 +1224,7 @@ void Tilemap2Impl::GPUMakeAtlasInternal(
     int32_t tilesize,
     const base::Vec2i& atlas_size,
     std::vector<Tilemap2Impl::AtlasCompositeCommand> make_commands) {
-  gpu_.atlas_texture.Release();
+  renderer::DeferredTextureRelease(gpu_.atlas_texture);
   renderer::CreateTexture2D(**context()->render_device, &gpu_.atlas_texture,
                             "tilemap2.atlas", atlas_size);
 
@@ -1291,8 +1327,13 @@ void Tilemap2Impl::GPUUpdateTilemapUniformInternal(
 void Tilemap2Impl::GPURenderGroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding) {
-  if (!gpu_.atlas_texture)
+  if (!gpu_.atlas_texture) {
+    ++g_tm_ground_noatlas;
     return;
+  }
+
+  if (gpu_.ground_draw_count == 0)
+    ++g_tm_ground_empty;
 
   if (gpu_.ground_draw_count) {
     auto* pipeline = context()->render.pipeline_states->tilemap2.RawPtr();

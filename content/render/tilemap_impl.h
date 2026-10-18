@@ -60,12 +60,41 @@ class TilemapImpl : public Tilemap, public EngineObject, public Disposable {
     renderer::QuadBatch batch;
     renderer::Binding_Tilemap shader_binding;
 
+    // Fix for the one-frame ground loss, and the reason it was a binding problem and not a
+    // resource one: the ground and the above layers used to write into this one
+    // Binding_Tilemap, two draws per frame touching the same binding, and one frame in a while
+    // the commit served a descriptor set whose params slot held the world matrix buffer
+    // instead. The shader then reads a 4x4 matrix as its parameters - the texel size lands in
+    // the 0 of a projection matrix, so the UV collapses and the floor samples one texel while
+    // the flash lands on 0 - which is the recorded image exactly: byte-identical in every
+    // session, one frame, every other pipeline untouched. The above layers now own their own
+    // binding, so the two draws can no longer write into each other's.
+    // urge_debug/tmsrbsplit.txt = 0 puts the shared binding back for A/B.
+    renderer::Binding_Tilemap above_binding;
+
     int32_t ground_draw_count;
     std::vector<int32_t> above_draw_count;
 
     RRefPtr<Diligent::ITexture> atlas_texture;
     RRefPtr<Diligent::ITextureView> atlas_binding;
     RRefPtr<Diligent::IBuffer> uniform_buffer;
+
+    // Candidate fix for the one-frame region loss, and the only drawable the engine's
+    // per-frame-set rotation was never applied to. The ground layer's quads and parameters
+    // are re-uploaded every frame through a single batch and a single uniform buffer, and the
+    // tile animation bakes per-frame values into both (the params carry anim/flash, the quads
+    // carry the animated tiles' UVs). On the target Mali driver that is the hazard class that
+    // forced the sprite batch, the window layers and the plane onto per-frame sets: a frame
+    // that reads the buffer after the next frame's upload landed gets another frame's
+    // parameters and samples unrelated atlas regions - exactly the bright instead-of-dark
+    // ground seen for one frame, with the UI panels on other pipelines untouched. One batch
+    // and one params buffer per frame set, picked by SpriteBatch::FrameSetIndex(), keeps one
+    // frame's upload away from another frame's reads. Gated on urge_debug/tmuniring.txt
+    // (nonzero for on) so it can be A/B tested against the single-buffered path above.
+    static constexpr int32_t kFrameSets = 8;
+    renderer::QuadBatch batch_sets[kFrameSets];
+    RRefPtr<Diligent::IBuffer> uniform_buffer_sets[kFrameSets];
+    RRefPtr<Diligent::IBuffer> uniform_in_use;
   };
 
   struct AtlasCompositeCommand {

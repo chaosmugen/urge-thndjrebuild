@@ -6,7 +6,11 @@
 
 #include <vector>
 
+#include "base/debug/logging.h"
+
 #include "Graphics/GraphicsEngine/interface/DeviceContext.h"
+// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -52,14 +56,26 @@ bool ScissorStack::Push(const base::Rect& scissor) {
 }
 
 void ScissorStack::Pop() {
-  // The bottom entry is the viewport scissor and is never popped; an unbalanced Push/Pop
-  // would otherwise pop it, read an empty stack in Reset() (undefined) and leave the scissor
-  // state wrong for the rest of the frame.
-  if (stack_.size() <= 1) {
+  // TEMPORARY audit and guard. Marker: URGE_SCISSOR_AUDIT
+  //
+  // The probe has narrowed the defect to "in one frame the tilemap's draw does not cover part of
+  // the map": those pixels never reach the tilemap's pixel shader at all, the layer below shows
+  // through, and the draw calls, submitted ranges, bindings and vertex data are all unchanged. A
+  // scissor stack that is one Pop out of balance does exactly that - the base entry is popped,
+  // Reset() then reads an empty stack, and from there every draw is clipped to whatever rectangle
+  // that produces. Pop() had no size guard, so this could not be observed before.
+  const size_t depth = stack_.size();
+  if (depth <= 1) {
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[ScissorAudit] UNDERFLOW: Pop with depth=" << depth
+              << " top=(" << stack_.top().x << "," << stack_.top().y << ","
+              << stack_.top().width << "x" << stack_.top().height << ")";
+    // The bottom entry is the viewport scissor and is never popped; leaving it unbalanced would
+    // read an empty stack in Reset() (undefined) and leave the scissor state wrong for the rest
+    // of the frame, so restore it before returning.
     Reset();
     return;
   }
-
   stack_.pop();
   Reset();
 }
@@ -68,7 +84,21 @@ void ScissorStack::Reset() {
   SetScissor(stack_.top());
 }
 
+// TEMPORARY scissor-rect audit. Marker: URGE_SCISSOR_AUDIT
+//
+// Auditing the stack's depth was not enough: Pop() can be balanced while the rectangle itself is
+// the wrong one (a stale entry from another node), and a stale rectangle clips exactly one region
+// for one frame - surviving a duplicate draw of the same geometry, with every count, binding,
+// matrix and node order unchanged. This folds each rectangle that is actually programmed, together
+// with the stack depth at the time, into a digest; BroadCastNotification compares that digest once
+// per frame and prints only when the frame's sequence of rectangles changes.
+int32_t g_scissor_current[4] = {0, 0, 0, 0};
+
 void ScissorStack::SetScissor(const base::Rect& bound) {
+  g_scissor_current[0] = bound.x;
+  g_scissor_current[1] = bound.y;
+  g_scissor_current[2] = bound.width;
+  g_scissor_current[3] = bound.height;
   Diligent::Rect render_scissor(bound.x, bound.y, bound.x + bound.width,
                                 bound.y + bound.height);
   context_->SetScissorRects(1, &render_scissor, UINT32_MAX, UINT32_MAX);
@@ -98,6 +128,28 @@ void DrawableNode::RegisterEventHandler(const NotificationHandler& handler) {
   handler_ = handler;
 }
 
+// TEMPORARY. Marker: URGE_LINKAGE
+// A frame counter the linkage traces can share with the snapshot listing: the controller cannot
+// reach the sprite batch, and the enqueue stage is the once-per-frame event.
+static int32_t g_urge_probe_frame = 0;
+
+// TEMPORARY. Marker: URGE_TONE
+// How many nodes each tone pass actually drew. The compass in the corner changes colour for one
+// frame now and then (110,70,3 <-> 181,133,48) with every submitted batch identical, which is what
+// a tone pass applied a different number of times looks like; these counters make that visible.
+int32_t g_urge_pass0_drawn = 0;
+int32_t g_urge_pass1_drawn = 0;
+
+// True for the nodes this investigation follows: the two stacked panels' background (150) and
+// contents (152) nodes. Their contents node is missing from the list on a good share of frames,
+// which is why the panel is not drawn at all on those frames.
+static bool UrgeProbeNode(DrawableNode* node) {
+  if (!node)
+    return false;
+  const int64_t z = node->GetSortKeys()->weight[0];
+  return z == 150 || z == 152;
+}
+
 void DrawableNode::SetToneExempt(bool value) {
   tone_exempt_ = value;
 }
@@ -112,6 +164,9 @@ void DrawableNode::RebindController(DrawNodeController* controller) {
 
   // Setup new parent controller
   controller_ = controller;
+  if (UrgeProbeNode(this))
+    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " rebind n=" << static_cast<const void*>(this)
+              << " z0=" << GetSortKeys()->weight[0] << " to=" << static_cast<const void*>(controller);
 
   // Rebind orderly node link
   base::LinkNode<DrawableNode>::RemoveFromList();
@@ -119,6 +174,9 @@ void DrawableNode::RebindController(DrawNodeController* controller) {
 }
 
 void DrawableNode::DisposeNode() {
+  if (UrgeProbeNode(this))
+    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " dispose n=" << static_cast<const void*>(this)
+              << " z0=" << GetSortKeys()->weight[0];
   base::LinkNode<DrawableNode>::RemoveFromList();
   controller_ = nullptr;
 }
@@ -202,6 +260,9 @@ ViewportInfo* DrawableNode::GetParentViewport() {
 
 void DrawableNode::ReorderDrawableNodeInternal() {
   DCHECK(controller_);
+  if (UrgeProbeNode(this))
+    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " reorder n=" << static_cast<const void*>(this)
+              << " z0=" << GetSortKeys()->weight[0];
 
   // Fetch associate nodes
   auto* previous_node = GetPreviousNode();
@@ -218,6 +279,9 @@ void DrawableNode::ReorderDrawableNodeInternal() {
     // Ambiguous neighbors: both a forward and a backward walk look valid, so
     // fall back to a full remove + sorted re-insert instead of a local bubble
     // walk that can append the node to the wrong end of the list.
+    if (UrgeProbeNode(this))
+      LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " reorder_full n="
+                << static_cast<const void*>(this);
     base::LinkNode<DrawableNode>::RemoveFromList();
     controller_->InsertChildNodeInternal(this);
     return;
@@ -310,17 +374,130 @@ void DrawNodeController::BroadCastNotification(
        it = it->next())
     snapshot.push_back(it->value());
 
+  // Temporary probe. The stages walk this snapshot; a node that is missing from it for a
+  // frame never enqueues and never draws, so its part of the picture is lost while every
+  // counter that measures what *was* enqueued stays correct. A snapshot smaller than the
+  // live list is that exact situation, so it is logged immediately (with a heartbeat).
+  {
+    static int64_t s_probe_calls = 0;
+    ++s_probe_calls;
+    int32_t live = 0;
+    for (auto* it = children_list_.head(); it != children_list_.end();
+         it = it->next())
+      ++live;
+    const int32_t count = static_cast<int32_t>(snapshot.size());
+    if (count != live || s_probe_calls % 5000 == 0)
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[NodeAudit] call=" << s_probe_calls << " stage="
+                << static_cast<int32_t>(nid) << " snapshot=" << count
+                << " live=" << live
+                << (count != live ? "  <== MISMATCH" : "");
+  }
+
+  // TEMPORARY per-frame listing of the snapshot. Marker: URGE_SNAPSHOT
+  //
+  // A window that is missing from this list for a frame is never walked, so it neither composes nor
+  // draws, and its part of the picture is missing while everything that *was* submitted stays
+  // correct. Listed by pointer so it can be joined with [WinKind], which maps a window to its
+  // nodes; the position in the list matters as much as the presence, since the walk can also drop
+  // a node after this point.
+  if (static_cast<int32_t>(nid) == 0)
+    ++g_urge_probe_frame;
+  if (UrgeDiagEnabled()) {  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    for (size_t i = 0; i < snapshot.size(); ++i)
+      LOG(INFO) << "[Snap] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
+                << " i=" << i
+                << " n=" << static_cast<const void*>(snapshot[i])
+                << " z0=" << snapshot[i]->GetSortKeys()->weight[0]
+                << " z1=" << snapshot[i]->GetSortKeys()->weight[1]
+                << " vis=" << (snapshot[i]->visible_ ? 1 : 0);
+  }
+
+  // TEMPORARY order audit over tagged nodes. Marker: URGE_ORDER_AUDIT
+  //
+  // Every counter has been ruled out for the one-frame region loss - parameters, atlas, tint
+  // branch, draw counts, submitted ranges, bindings, vertex buffer ownership, scissor stack,
+  // matrices, snapshot integrity - yet in a defect frame the tilemap's pixels are not there and
+  // the layer below shows through. A paint order that swaps for a single frame would do that with
+  // every counter unchanged. A digest of the whole snapshot is useless (the tilemap recreates its
+  // above layers every frame and re-sets their keys, so the list churns); this folds in only the
+  // nodes that carry a stable tag, together with the position each was visited at, and is printed
+  // only when that sequence changes - which leaves the log volume and the timing untouched.
+  {
+    const int32_t order_slot = static_cast<int32_t>(nid) & 3;
+    static uint64_t s_order_digest[4] = {};
+    uint64_t order_digest = 1469598103934665603ull;
+    int32_t order_tagged = 0;
+    int32_t order_position = 0;
+    for (auto* node : snapshot) {
+      const int32_t node_tag = node->GetDebugTag();
+      if (node_tag != 0) {
+        order_digest ^= static_cast<uint64_t>(node_tag) + 0x9e3779b97f4a7c15ull;
+        order_digest *= 1099511628211ull;
+        order_digest ^= static_cast<uint64_t>(order_position);
+        order_digest *= 1099511628211ull;
+        ++order_tagged;
+      }
+      ++order_position;
+    }
+    if (order_tagged != 0 && s_order_digest[order_slot] != 0 &&
+        s_order_digest[order_slot] != order_digest)
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[OrderAudit] stage=" << static_cast<int32_t>(nid)
+                << " tagged=" << order_tagged << " digest "
+                << s_order_digest[order_slot] << "->" << order_digest;
+    if (order_tagged != 0)
+      s_order_digest[order_slot] = order_digest;
+  }
+
+  // TEMPORARY. Marker: URGE_DISPATCH
+  // The two stacked panels (sort weight 150 for their background nodes, 152 for their contents)
+  // are present and visible in every snapshot this walk takes, yet one of them does not draw on a
+  // good share of the frames. This records what happens to them at the point of dispatch, so the
+  // remaining question - is the handler called at all - has an answer.
   for (auto* node : snapshot) {
-    if (blend_filter >= 0 &&
-        node->IsToneExempt() != (blend_filter == 1))
+    const int64_t z0 = node->GetSortKeys()->weight[0];
+    const bool tracked = (z0 == 150 || z0 == 152);
+    const bool tone_skipped =
+        blend_filter >= 0 && node->IsToneExempt() != (blend_filter == 1);
+    if (tracked && tone_skipped)
+      LOG(INFO) << "[Dispatch] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
+                << " n=" << static_cast<const void*>(node) << " z0=" << z0
+                << " skipped=tone_filter";
+    if (tone_skipped)
       continue;
     // Broadcast render job notification
-    if (node->visible_)
+    //
+    // A drawable is drawn only when its viewport is visible as well. A viewport's visibility lives
+    // on its own node and never reached the nodes inside it, so hiding a viewport left its whole
+    // content being drawn - which is how the map's interface kept rendering during a battle, its
+    // gold panel sitting on the same rectangle as the battle's turn panel and blending with it.
+    bool visible = node->visible_;
+    if (visible) {
+      ViewportInfo* parent_viewport = node->GetParentViewport();
+      if (parent_viewport)
+        visible = parent_viewport->visible;
+    }
+    if (tracked)
+      LOG(INFO) << "[Dispatch] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
+                << " n=" << static_cast<const void*>(node) << " z0=" << z0
+                << " skipped=none vis=" << (visible ? 1 : 0)
+                << " calling=" << (visible ? 1 : 0);
+    if (visible) {
       node->handler_.Run(nid, params);
+      if (blend_filter == 0)
+        ++g_urge_pass0_drawn;
+      else if (blend_filter == 1)
+        ++g_urge_pass1_drawn;
+    }
   }
 }
 
 void DrawNodeController::InsertChildNodeInternal(DrawableNode* node) {
+  if (UrgeProbeNode(node))
+    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " insert n=" << static_cast<const void*>(node)
+              << " z0=" << node->GetSortKeys()->weight[0]
+              << " into=" << static_cast<const void*>(this);
   // Defensive: make sure the node is not still linked into any list before
   // inserting (no-op when the node is already unlinked).
   node->RemoveFromList();

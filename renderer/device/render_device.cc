@@ -4,7 +4,10 @@
 
 #include "renderer/device/render_device.h"
 
+#include <cstring>
 #include <exception>
+
+#include "renderer/device/gpu_driver.h"
 
 #include "SDL3/SDL_hints.h"
 #include "SDL3/SDL_loadso.h"
@@ -218,6 +221,32 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   swap_chain_desc.PreTransform = Diligent::SURFACE_TRANSFORM_OPTIMAL;
   swap_chain_desc.IsPrimary = Diligent::True;
 
+  // TEMPORARY A/B for the one-frame region loss. Marker: URGE_SWAPCOUNT
+  //
+  // The swap chain carries no explicit buffer count today - Diligent's default is used - and an
+  // earlier experiment put three buffers in on a premise that later turned out to be false (the
+  // loss is inside the frame the application hands over, not in what happens to it afterwards),
+  // without ever being A/B'd. This reads urge_debug/tmswapcount.txt once at startup and sets 2, 3
+  // or 4 when it holds such a value, so two arms can be compared. It is read at startup rather
+  // than while running because changing the count means rebuilding the swap chain, and this
+  // platform has crashed in that path before. The file is left in place when read, so the chosen
+  // arm survives a restart.
+  {
+    FILE* swap_file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "tmswapcount.txt",
+        "r");
+    int32_t requested_count = 0;
+    if (swap_file) {
+      if (fscanf(swap_file, "%d", &requested_count) == 1 &&
+          requested_count >= 2 && requested_count <= 4)
+        swap_chain_desc.BufferCount = static_cast<Diligent::Uint32>(requested_count);
+      fclose(swap_file);
+    }
+    LOG(INFO) << "[Renderer] SwapChain BufferCount=" << swap_chain_desc.BufferCount
+              << " (requested=" << requested_count << ")";
+  }
+
   // Create device and fallback when error
   size_t creating_retry_count = 0;
   do {
@@ -345,6 +374,20 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
             << device_info.APIVersion.Minor << ")";
   LOG(INFO) << "[Renderer] Adapter: " << adapter_info.Description;
   LOG(INFO) << "[Renderer] MaxTexture Size: " << max_texture_size;
+
+  // See renderer/device/gpu_driver.h. The workarounds for the one-frame region loss are gated on the
+  // GPU family, not on the device class: the defect follows the Mali driver branch, so a gate on
+  // "is this a TV" would neither cover the other Mali devices nor be right on a non-Mali TV. The
+  // description text is driver-supplied, so the vendor enum and ARM's PCI id are checked as well.
+  {
+    const bool is_mali =
+        std::strstr(adapter_info.Description, "Mali") != nullptr ||
+        adapter_info.Vendor == Diligent::ADAPTER_VENDOR_ARM ||
+        adapter_info.VendorId == 0x13B5;
+    renderer::SetMaliGpu(is_mali);
+    LOG(INFO) << "[Renderer] Driver gate: mali=" << is_mali << " adapter='"
+              << adapter_info.Description << "' vendorId=" << adapter_info.VendorId;
+  }
 
   // Global render device
   std::unique_ptr<RenderDevice> render_device(

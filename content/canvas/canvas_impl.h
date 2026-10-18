@@ -86,10 +86,30 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
   // Synchronize pending commands and fetch texture to buffer.
   // Read buffer for surface pixels data.
   SDL_Surface* RequireMemorySurface();
+
+  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
+  // Hash of the first |rows| rows of this bitmap's pixels, downloaded from the GPU. Two windows
+  // whose submitted vertices are identical but whose rendered seam differs must differ here.
+  uint64_t PixelHashInternal(int32_t rows);
+
+  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
+  // Same, for the last |rows| rows: the band between the two panels is the upper panel's bottom
+  // rows overlapping the lower panel's top rows.
+  uint64_t PixelHashBottomInternal(int32_t rows);
+
+  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
+  // Hash of an arbitrary row range. The seam falls on the lower panel's rows 7..16, which the
+  // top-10 and bottom-12 hashes do not cover.
+  uint64_t PixelHashRowsInternal(int32_t first_row, int32_t rows);
   void InvalidateSurfaceCache();
 
   // Process queued pending commands.
-  void SubmitQueuedCommands();
+  // Applies the queued paint commands. When |at_frame_boundary| is set the call comes from
+  // the renderer about to sample this canvas, which is a different situation from the
+  // drains done by blt: at a frame boundary a batch holding only a clear means the game is
+  // between "clear" and "redraw" (it yields to the renderer there) and applying it would
+  // show the cleared surface for a frame. Such a batch is then held for a few frames.
+  void SubmitQueuedCommands(bool at_frame_boundary = false);
 
   // Require render texture (maybe null after disposed)
   GPUData* operator->() { return Disposable::IsDisposed() ? nullptr : &gpu_; }
@@ -221,6 +241,22 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
  private:
   void OnObjectDisposed() override;
   std::string DisposedObjectName() override { return "Bitmap"; }
+
+  // TEMPORARY diagnostic. Marker: URGE_CANVASOPS
+  // Paint commands applied to this bitmap since a window last sampled the counters. A seam whose
+  // darkness equals a second blend of the same gold edge should show up as more than one blit.
+  int32_t pending_clears_ = 0;
+  int32_t pending_blits_ = 0;
+
+ public:
+  void ConsumePaintOps(int32_t& clears, int32_t& blits) {
+    clears = pending_clears_;
+    blits = pending_blits_;
+    pending_clears_ = 0;
+    pending_blits_ = 0;
+  }
+
+ private:
 
   void BlitTextureInternal(const base::Rect& dst_rect,
                            CanvasImpl* src_texture,
@@ -364,6 +400,10 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
 
   // Command list storage chain
   Command* commands_ = nullptr;
+
+  // Frames spent holding a batch that only clears, waiting for the redraw commands the
+  // game queues right after. See SubmitQueuedCommands.
+  int32_t pending_clear_frames_ = 0;
   Command* last_command_ = nullptr;
   std::vector<CommandBlock> blocks_;
   uint32_t current_block_ = 0;

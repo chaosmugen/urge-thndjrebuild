@@ -289,6 +289,56 @@ bool KeyboardControllerImpl::CreateButtonGUISettings() {
 }
 
 void KeyboardControllerImpl::Update(ExceptionState& exception_state) {
+  /* TEMPORARY test hook, restored for the flicker investigation. Marker: UrgeTagKeyTap
+     Android-injected key events never reach the engine (the activity does not forward them),
+     so driving the TV from adb has to go through the engine's own emulation. Writing an SDL
+     scancode into urge_debug/key.txt taps that key once, released one engine frame later,
+     like a real press. A file may hold a whole list and one is tapped per frame, so a scripted
+     session can switch faster than a hand; a file with a single number behaves as before. */
+  {
+    static const char kKeyTapPath[] =
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/key.txt";
+    static int32_t release_in = 0;
+    static SDL_Scancode pending_release = SDL_SCANCODE_UNKNOWN;
+    static int32_t poll_in = 0;
+    static int32_t queue[512];
+    static int32_t queue_head = 0;
+    static int32_t queue_count = 0;
+
+    if (release_in > 0 && --release_in == 0) {
+      ExceptionState ignored;
+      Emulate(pending_release, false, 0, false, ignored);
+    } else {
+      if (queue_head >= queue_count) {
+        queue_head = queue_count = 0;
+        if (++poll_in >= 5) {
+          poll_in = 0;
+          if (FILE* fp = fopen(kKeyTapPath, "r")) {
+            int32_t value = 0;
+            while (queue_count < 512 && fscanf(fp, "%d", &value) == 1) {
+              if (value > 0 && value < SDL_SCANCODE_COUNT)
+                queue[queue_count++] = value;
+            }
+            fclose(fp);
+            remove(kKeyTapPath);
+          }
+        }
+      }
+      if (queue_head < queue_count) {
+        const int32_t scancode = queue[queue_head++];
+        ExceptionState ignored;
+        Emulate(scancode, true, 0, false, ignored);
+        pending_release = static_cast<SDL_Scancode>(scancode);
+        release_in = 1;
+        if (queue_head == 1)
+          LOG(INFO) << "[KeyTap] scancode=" << scancode
+                    << " frame=" << context()->sprite_batcher->FrameCount()
+                    << " burst=" << queue_count;
+      }
+    }
+  }
+  // End TEMPORARY test hook
+
   for (int32_t i = 0; i < SDL_SCANCODE_COUNT; ++i) {
     bool key_pressed =
         context()->window->GetKeyState(static_cast<SDL_Scancode>(i));

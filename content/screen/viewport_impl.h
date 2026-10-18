@@ -21,6 +21,8 @@ class ViewportImpl : public Viewport, public EngineObject, public Disposable {
  public:
   struct GPUData {
     RRefPtr<Diligent::IBuffer> world_uniform;
+    // The values uploaded into |world_uniform|, see RenderScreenImpl::GPUData.
+    renderer::WorldTransform world_uniform_cpu = {};
 
     struct {
       base::Vec2i layer_size;

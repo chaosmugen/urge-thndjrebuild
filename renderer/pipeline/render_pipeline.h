@@ -138,6 +138,16 @@ struct PipelineSet {
   Pipeline_AlphaTransition alphatrans;
   Pipeline_VagueTransition mappedtrans;
   Pipeline_Tilemap tilemap;
+  // Same tilemap pipeline with blending switched off.
+  //
+  // This is the most promising hypothesis so far for the one-frame region loss. The pipeline blends
+  // with src-alpha, so every tile is a read-modify-write: on a tile-based GPU the driver has to load
+  // the destination tile, blend, and write it back. If that write-back is what gets lost, what is
+  // left in the frame is exactly the destination content - which is the base layer, and the layer
+  // the probe sees through in a defect frame. Nothing else tried explains why it is the base layer
+  // that shows: a draw that simply did not happen, or a stale read, would leave the previous frame's
+  // tilemap there instead. Marker: URGE_NOBLEND
+  Pipeline_Tilemap tilemap_noblend;
   Pipeline_Tilemap2 tilemap2;
   Pipeline_BitmapHue bitmaphue;
   Pipeline_YUV yuv;
@@ -152,6 +162,7 @@ struct PipelineSet {
         alphatrans(init_params),
         mappedtrans(init_params),
         tilemap(init_params),
+        tilemap_noblend(init_params),
         tilemap2(init_params),
         bitmaphue(init_params),
         yuv(init_params) {}

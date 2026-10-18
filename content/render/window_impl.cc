@@ -2,11 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TEMPORARY, defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+extern "C" bool UrgeDiagEnabled();
 #include "content/render/window_impl.h"
+
+#include <unordered_set>  // TEMPORARY. Marker: URGE_WINKIND
 
 #include "content/context/execution_context.h"
 #include "content/render/tilequad.h"
+#include "renderer/device/gpu_driver.h"
 #include "renderer/utils/texture_utils.h"
+
+// Defined in content/screen/renderscreen_impl.cc, declared after the includes because it
+// names a Diligent type. Marker: URGE_WNDREDRAW
+extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
+extern "C" void* UrgeCurrentPassTarget();  // TEMPORARY diagnostic
+
+// The window path picks its per-frame vertex set with SpriteBatch::FrameSetIndex(), whose
+// range is the batch's own set count, and indexes background_batch/controls_batch with it.
+// Nothing else ties the two counts together, and a batch count larger than the window's
+// would index past those arrays. Keep them equal at compile time.
+static_assert(content::WindowImpl::GPUData::kFrameSets ==
+                  content::SpriteBatch::kFrameSets,
+              "window and sprite batch frame-set counts must match");
 
 namespace content {
 
@@ -48,6 +66,26 @@ DISPOSABLE_DEFINITION(WindowImpl);
 
 void WindowImpl::Update(ExceptionState& exception_state) {
   DISPOSE_CHECK;
+
+  // TEMPORARY. Marker: URGE_NODE
+  // The two panels are missing from about a quarter of the frames - not drawn, and not even
+  // composed - which means the controller did not walk their node that frame. The node's two
+  // switches are its visibility and its sort weight (z); this records them from the script's own
+  // per-frame update, so it also covers the frames where the node was skipped. If either flips in
+  // exactly the frames where the panel goes missing, that is the mechanism.
+  if (bound_.width == 191 && bound_.height == 98) {
+    static uint32_t s_node_frame = 0;
+    const uint32_t fc = context()->sprite_batcher->FrameCount();
+    if (fc != s_node_frame) {
+      s_node_frame = fc;
+      LOG(INFO) << "[Node] f=" << fc << " y=" << bound_.y
+                << " vis_bg=" << (background_node_.GetVisibility() ? 1 : 0)
+                << " vis_ctrl=" << (control_node_.GetVisibility() ? 1 : 0)
+                << " z_bg=" << background_node_.GetSortKeys()->weight[0]
+                << " z_ctrl=" << control_node_.GetSortKeys()->weight[0]
+                << " opacity=" << opacity_ << "/" << contents_opacity_;
+    }
+  }
 
   ++pause_index_;
   if (pause_index_ >= 32)
@@ -91,7 +129,18 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     { return windowskin_; },
     {
       DISPOSE_CHECK;
-      windowskin_ = CanvasImpl::FromBitmap(value);
+      // A bitmap that cannot be converted (already disposed, for instance) must not wipe
+      // the skin the window is drawing with: without a skin the border layer emits no
+      // quad at all, so the whole window goes missing while the background shows through.
+      scoped_refptr<CanvasImpl> converted = CanvasImpl::FromBitmap(value);
+      if (converted || !value)
+        windowskin_ = converted;
+      // Probe kept for verification: object=0 means the window now has no skin at all.
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WindowAudit] windowskin set window="
+                << static_cast<const void*>(this) << " object="
+                << static_cast<const void*>(windowskin_.get())
+                << " requested=" << static_cast<const void*>(converted.get());
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
@@ -101,7 +150,16 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     { return contents_; },
     {
       DISPOSE_CHECK;
-      contents_ = CanvasImpl::FromBitmap(value);
+      // Same reason as Windowskin: a contents bitmap that cannot be converted must not
+      // clear what the window is drawing with.
+      scoped_refptr<CanvasImpl> converted = CanvasImpl::FromBitmap(value);
+      if (converted || !value)
+        contents_ = converted;
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WindowAudit] contents set window="
+                << static_cast<const void*>(this) << " object="
+                << static_cast<const void*>(contents_.get())
+                << " requested=" << static_cast<const void*>(converted.get());
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
@@ -302,7 +360,17 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
       contents_opacity_ = std::clamp(value, 0, 255);
     });
 
+static void ForgetLayersInternal(WindowImpl* window);
+
 void WindowImpl::OnObjectDisposed() {
+  // Recorded so that "composed and then not drawn" can be told apart from "the window
+  // was torn down between the two stages".
+  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+  LOG(INFO) << "[WinDiag] disposed w=" << static_cast<const void*>(this);
+
+  // The fallback must never emit a window that is being torn down.
+  ForgetLayersInternal(this);
+
   background_node_.DisposeNode();
   control_node_.DisposeNode();
 
@@ -310,20 +378,230 @@ void WindowImpl::OnObjectDisposed() {
   std::swap(gpu_, empty_data);
 }
 
+static void RegisterLayerInternal(WindowImpl* window,
+                                  Diligent::IBuffer* world,
+                                  bool background);
+static void MarkLayerDrawnInternal(WindowImpl* window, bool background);
+static void ForgetLayersInternal(WindowImpl* window);
+
+// A window must keep drawing with its own skin. Borrowing another window's skin was
+// tried and reverted: the game uses several skins, so it put the wrong border on
+// windows that had none of their own. Only this window's own last usable skin is
+// reused.
+BitmapTexture* WindowImpl::ResolveWindowskinInternal() {
+  if (Disposable::IsValid(windowskin_.get())) {
+    BitmapTexture* texture = **windowskin_;
+    if (texture && texture->shader_resource_view) {
+      last_windowskin_ = windowskin_;
+      return texture;
+    }
+  }
+
+  // The skin is cleared or its texture is gone: keep drawing with the last usable one
+  // rather than emitting no border at all.
+  if (Disposable::IsValid(last_windowskin_.get())) {
+    BitmapTexture* texture = **last_windowskin_;
+    if (texture && texture->shader_resource_view)
+      return texture;
+  }
+
+  return nullptr;
+}
+
+BitmapTexture* WindowImpl::ResolveContentsInternal() {
+  if (Disposable::IsValid(contents_.get())) {
+    BitmapTexture* texture = **contents_;
+    if (texture && texture->shader_resource_view) {
+      last_contents_ = contents_;
+      return texture;
+    }
+  }
+
+  if (Disposable::IsValid(last_contents_.get())) {
+    BitmapTexture* texture = **last_contents_;
+    if (texture && texture->shader_resource_view)
+      return texture;
+  }
+
+  return nullptr;
+}
+
+// TEMPORARY class-skip switch. Marker: URGE_SKIPDRAW
+//
+// The one-frame loss was measured to be a large region getting *brighter*, and the pipeline tags put
+// that region on the basic/window-bitmap layer rather than on the tilemap - so the victim is some
+// drawable of one of these classes and not the map at all. Skipping a whole class one at a time and
+// looking at the screen says which class owns the room picture and which owns the dark overlay, far
+// more reliably than an opaque tag does (a tag shows coverage, a skip shows visibility).
+// 0 skips the class, 1 restores it.
+static bool SkipDrawEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_skipped = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/skip_window.txt",
+        "r");
+    if (file) {
+      int32_t value = 1;
+      if (fscanf(file, "%d", &value) == 1)
+        s_skipped = value == 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/skip_window.txt");
+    }
+  }
+  return s_skipped;
+}
+
+// TEMPORARY A/B. Marker: URGE_WNDREDRAW
+//
+// The victim of the one-frame loss has finally been named: skipping this class makes the whole room
+// picture disappear, which is exactly what a defect frame looks like - the map below shows through,
+// brighter, and the window's 5x5 skin frame goes with it. Everything measured for twelve days was
+// aimed at the tilemap, which was never the layer that goes missing.
+//
+// This redraws the background layer once more, in a render pass of its own: if what goes missing is
+// this layer's writes for a pass, a second, independent pass over the same quads puts them back.
+// The background is the room bitmap and is opaque over the area it covers, so drawing it twice
+// should be invisible - unlike repeating a translucent overlay, which is why the earlier attempt on
+// the tilemap had to be withdrawn. The switch exists so the two can be compared in one session.
+static bool WindowRedrawEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_enabled = renderer::IsMaliGpu();  // TEMPORARY A/B, default on for Mali. Marker: URGE_DEFAULTS
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "wndredraw.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_enabled = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/wndredraw.txt");
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WndRedraw] enabled=" << s_enabled;
+    }
+  }
+  return s_enabled;
+}
+
+// See WindowRedrawEnabledInternal: end the pass, reopen it on the frame's target, draw nothing else
+// in between. Marker: URGE_WNDREDRAW
+static bool WindowForcePassBoundaryInternal(
+    Diligent::IDeviceContext* render_context, Diligent::ITexture* screen_buffer,
+    Diligent::ITexture* screen_depth) {
+  if (!render_context || !screen_buffer || !screen_depth)
+    return false;
+  // End the current pass and reopen the target the interrupted pass published - not the frame's:
+  // a window can be drawn inside a viewport that is being rendered into a bitmap (the title's
+  // mirror does exactly that), and screen_buffer is the frame's screen, so using it here would
+  // put the redraw on the screen instead of back where the window's own draws are recorded.
+  // Marker: URGE_WNDREDRAW
+  UrgeForcePassBoundary(render_context);
+  return true;
+}
+
 void WindowImpl::BackgroundNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
-  if (bound_.width <= 4 || bound_.height <= 4)
+  if (bound_.width <= 4 || bound_.height <= 4) {
+    // Temporary probe: this guard drops the whole window - frame and contents - before
+    // any layer is composed, so the layer counters shown above cannot see it. A burst
+    // of these is an open/close animation; an isolated one is a window that vanished
+    // for a single frame.
+    static int64_t s_skips = 0;
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[WindowAudit] window skipped #" << ++s_skips
+              << " window=" << static_cast<const void*>(this) << " bound="
+              << bound_.width << "x" << bound_.height
+              << " stage=" << static_cast<int32_t>(stage);
     return;
+  }
 
-  BitmapTexture* windowskin_agent =
-      Disposable::IsValid(windowskin_.get()) ? **windowskin_ : nullptr;
+  // Temporary, and deliberately narrow: a window draws nothing when neither layer has
+  // anything to queue - no skin means the border layer builds zero quads, no contents
+  // means the control layer does. Rather than guessing which input flips, report every
+  // change of that whole state (skin / contents / opacity / bound) per window. A state
+  // change to "all empty" is exactly the frame that disappears and shows the background.
+  // The per-window state trace that used to be here is gone: it fired on every opacity
+  // step of every fade and cost real frame time on the TV. What it established is kept:
+  // skin, contents, opacity handling and bounds stay constant per window across a session.
+
+  BitmapTexture* windowskin_agent = ResolveWindowskinInternal();
 
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
+    // TEMPORARY draw-order probe. Marker: URGE_DRAWORDER
+    // Two windows share the same z (both panels are z=150) and overlap at the seam, where alpha
+    // blending is not commutative. If the order they are walked in changes from frame to frame,
+    // the seam's shade changes with it even though every input is identical. Record the position
+    // this window occupies in the frame's walk, so the two pointers can be compared per frame.
+    {
+      static uint32_t s_seq_frame = 0;
+      static int32_t s_seq = 0;
+      const uint32_t frame_count = context()->sprite_batcher->FrameCount();
+      if (frame_count != s_seq_frame) {
+        s_seq_frame = frame_count;
+        s_seq = 0;
+      }
+      ++s_seq;
+      if (bound_.width == 191 && bound_.height == 98) {
+        LOG(INFO) << "[DrawOrder] f=" << frame_count << " seq=" << s_seq
+                  << " win=" << static_cast<const void*>(this)
+                  << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
+      }
+    }
     GPUCompositeBackgroundLayerInternal(params->context, windowskin_agent);
+    RegisterLayerInternal(this, params->world_binding, /*background=*/true);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
+    // TEMPORARY. Marker: URGE_FRAMESET
+    // The write side resolved this index earlier in the frame. If it moved since, the layers
+    // below read a different rotating set - one holding an earlier round's vertices.
+    if (bound_.width == 191 && bound_.height == 98 &&
+        context()->sprite_batcher->FrameSetIndex() != gpu_.bg_write_set) {
+      LOG(INFO) << "[FrameSet] f=" << context()->sprite_batcher->FrameCount()
+                << " bg write=" << gpu_.bg_write_set
+                << " read=" << context()->sprite_batcher->FrameSetIndex() << " MISMATCH";
+    }
+    // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
+    {
+      const uint32_t fc = context()->sprite_batcher->FrameCount();
+      if (fc != gpu_.last_bg_frame) { gpu_.last_bg_frame = fc; gpu_.bg_draws = 0; }
+      if (++gpu_.bg_draws >= 2)
+        LOG(INFO) << "[WndDup] layer=bg frame=" << fc << " bound=" << bound_.width << "x"
+                  << bound_.height << " draws=" << gpu_.bg_draws;
+    }
     GPURenderBackgroundLayerInternal(params->context, params->world_binding,
                                      windowskin_agent);
+    // See WindowRedrawEnabledInternal. Marker: URGE_WNDREDRAW
+    // The layer is submitted a second time; the forced pass break that used to accompany it is
+    // gone. That break is what made the seam between the two stacked panels alternate: those two
+    // build no background geometry at all, so for them the break redrew nothing and its only
+    // effect was ending the render scope - which on a tile-based GPU stores and reloads every
+    // screen tile, including the ones holding the two overlapping translucent edges that form the
+    // seam. The second submission is what a layer that lost its draw stage actually needs, and
+    // keeping it is what the system menu's contents depend on.
+    // See WindowRedrawEnabledInternal. Marker: URGE_WNDREDRAW
+    if (WindowRedrawEnabledInternal() && params->screen_buffer &&
+        params->screen_depth_stencil &&
+        WindowForcePassBoundaryInternal(params->context, params->screen_buffer,
+                                        params->screen_depth_stencil))
+      GPURenderBackgroundLayerInternal(params->context, params->world_binding,
+                                       windowskin_agent);
+    MarkLayerDrawnInternal(this, /*background=*/true);
+
+    // Logged at the moment the border layer is sent to the GPU, with the values that
+    // draw actually uses. A visible window whose layer line is missing here is a layer
+    // that was skipped for that frame; a line with count=0 is a layer with nothing to
+    // draw. Hidden windows (opacity 0) are left out of the trace.
+    // The per-frame [WinDraw] trace that used to be here wrote two lines per window per
+    // frame straight to the log (24+ synchronous writes a frame with a dozen windows) and
+    // was itself a large part of the stutter on the TV. Its conclusions are recorded: the
+    // layers are drawn every frame with constant bound/opacity/texture/world/scissor.
   }
 }
 
@@ -331,35 +609,490 @@ void WindowImpl::ControlNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
   if (bound_.width <= 4 || bound_.height <= 4)
-    return;
+    return;  // logged by the background node's guard above
 
-  BitmapTexture* windowskin_agent =
-      Disposable::IsValid(windowskin_.get()) ? **windowskin_ : nullptr;
-  BitmapTexture* contents_agent =
-      Disposable::IsValid(contents_.get()) ? **contents_ : nullptr;
+  BitmapTexture* windowskin_agent = ResolveWindowskinInternal();
+  BitmapTexture* contents_agent = ResolveContentsInternal();
+  // TEMPORARY. Marker: URGE_CONTENTSRC
+  // The panels vanish for a frame now and then. The layer is drawn with contents_agent, which
+  // falls back to last_contents_ and then to nullptr - a frame that gets nullptr has no contents
+  // to draw at all. Record which of the three this frame used, and whether the live texture had
+  // a shader resource view yet.
+  if (bound_.width == 191 && bound_.height == 98) {
+    BitmapTexture* live = nullptr;
+    if (Disposable::IsValid(contents_.get())) live = **contents_;
+    const bool live_srv = live != nullptr && live->shader_resource_view != nullptr;
+    LOG(INFO) << "[ContentsSrc] f=" << context()->sprite_batcher->FrameCount()
+              << " win=" << static_cast<const void*>(this)
+              << " agent=" << static_cast<const void*>(contents_agent)
+              << " live=" << static_cast<const void*>(live)
+              << " live_srv=" << (live_srv ? 1 : 0)
+              << " agent_null=" << (contents_agent == nullptr ? 1 : 0);
+  }
+
+  // Temporary: with the window's own state (skin/contents/opacity/bound) proven constant,
+  // the textures it draws with are the only inputs left that can blank a whole window for
+  // a frame - the game redraws its content bitmap continuously, so it is replaced while
+  // the window keeps drawing. Tracked per window, so several windows cannot be confused
+  // with each other the way the earlier global probe was.
+  {
+    static std::vector<std::pair<const void*, std::pair<const void*, const void*>>>
+        s_window_textures;
+    std::pair<const void*, const void*>* slot = nullptr;
+    for (auto& it : s_window_textures) {
+      if (it.first == this) {
+        slot = &it.second;
+        break;
+      }
+    }
+    if (!slot) {
+      s_window_textures.push_back(
+          {this, {static_cast<const void*>(windowskin_agent),
+                  static_cast<const void*>(contents_agent)}});
+      slot = &s_window_textures.back().second;
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WindowAudit] textures first seen window="
+                << static_cast<const void*>(this) << " skin="
+                << static_cast<const void*>(windowskin_agent) << " contents="
+                << static_cast<const void*>(contents_agent);
+    } else if (slot->first != windowskin_agent ||
+               slot->second != contents_agent) {
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WindowAudit] textures changed window="
+                << static_cast<const void*>(this) << " skin "
+                << slot->first << " -> " << static_cast<const void*>(windowskin_agent)
+                << " contents " << slot->second << " -> "
+                << static_cast<const void*>(contents_agent);
+      slot->first = windowskin_agent;
+      slot->second = contents_agent;
+      }
+      }
+
+      // Temporary: the last input left. The window is drawn through params->world_binding;
+      // a frame that draws it with another level's transform puts it off screen, which looks
+      // exactly like the window vanishing while the background keeps rendering.
+      {
+      static std::vector<std::pair<const void*, const void*>> s_window_worlds;
+      const void* world = static_cast<const void*>(params->world_binding);
+      const void** slot = nullptr;
+      for (auto& it : s_window_worlds) {
+      if (it.first == this) {
+       slot = &it.second;
+       break;
+      }
+      }
+      if (!slot) {
+      s_window_worlds.push_back({this, world});
+      } else if (*slot != world) {
+      *slot = world;
+      }
+      }
 
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
+    // Candidate fix, switched automatically with the plane drain (urge_debug/autosync.txt
+    // rotates the arms; urge_debug/windowsync.txt overrides it by hand). A battle session
+    // that flickered was, by its own log, a session doing Window work: the game replaces a
+    // window's contents bitmap continuously while the window keeps drawing, and this
+    // composite is where that bitmap gets sampled. That is the same wait-then-sample shape
+    // as the plane draw, which is the one place a drain has ever removed the region loss -
+    // and the plane drain alone left the flicker in battles, so the window needs its own.
+    {
+      static int32_t s_window_sync_poll = 0;
+      static bool s_window_sync = false;
+      static uint32_t s_window_sync_frame = 0;
+      if (++s_window_sync_poll >= 30) {
+        s_window_sync_poll = 0;
+        FILE* file = fopen(
+            "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+            "windowsync.txt",
+            "r");
+        if (file) {
+          int32_t value = 0;
+          if (fscanf(file, "%d", &value) == 1)
+            s_window_sync = value != 0;
+          fclose(file);
+          remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+                 "urge_debug/windowsync.txt");
+        }
+      }
+      const uint32_t window_frame = context()->sprite_batcher->FrameCount();
+      // Off by default: in a real battle this drain measured 0.085% of frames losing a
+      // region against 0.100% without it, i.e. nothing. The rotating arm now drives the
+      // keep-alive ring in the sprite batch, which covers this path as well.
+      const bool want_drain = s_window_sync;
+      if (want_drain && window_frame != s_window_sync_frame && params->context) {
+        s_window_sync_frame = window_frame;
+        params->context->Flush();
+        params->context->WaitForIdle();
+      }
+    }
+
     GPUCompositeControlLayerInternal(params->context, windowskin_agent,
                                      contents_agent);
+    RegisterLayerInternal(this, params->world_binding, /*background=*/false);
+
+    // The one line that answers "why did the window vanish": everything that decides
+    // whether a window can be drawn at all. Both layers' quad counts are known here (the
+    // control composite just ran). A frame with zero quads in both layers is a frame the
+    // window draws no pixel in, which is what shows the background through. Written on
+    // any change, on every zero-quad frame, and periodically for a baseline.
+    {
+      struct WindowDiag {
+        const void* window = nullptr;
+        int64_t seq = 0;
+        int32_t bound_w = 0, bound_h = 0;
+        int32_t opacity = 0, back_opacity = 0, contents_opacity = 0;
+        const void* skin = nullptr;
+        const void* skin_srv = nullptr;
+        const void* contents = nullptr;
+        const void* contents_srv = nullptr;
+        const void* world = nullptr;
+        int32_t scissor_w = 0, scissor_h = 0;
+        int32_t bg_quads = 0, ctrl_quads = 0;
+      };
+      static std::vector<WindowDiag> s_diag;
+      static int64_t s_seq = 0;
+
+      WindowDiag state;
+      state.window = this;
+      state.seq = ++s_seq;
+      state.bound_w = bound_.width;
+      state.bound_h = bound_.height;
+      state.opacity = opacity_;
+      state.back_opacity = back_opacity_;
+      state.contents_opacity = contents_opacity_;
+      state.skin = windowskin_agent;
+      state.skin_srv = windowskin_agent
+                           ? static_cast<const void*>(
+                                 windowskin_agent->shader_resource_view)
+                           : nullptr;
+      state.contents = contents_agent;
+      state.contents_srv = contents_agent
+                               ? static_cast<const void*>(
+                                     contents_agent->shader_resource_view)
+                               : nullptr;
+      state.world = static_cast<const void*>(params->world_binding);
+      const base::Rect scissor_rect =
+          params->scissors ? params->scissors->Current() : base::Rect();
+      state.scissor_w = scissor_rect.width;
+      state.scissor_h = scissor_rect.height;
+      state.bg_quads = gpu_.background_draw_count;
+      state.ctrl_quads = gpu_.controls_draw_count;
+
+      WindowDiag* last = nullptr;
+      for (auto& it : s_diag) {
+        if (it.window == this) {
+          last = &it;
+          break;
+        }
+      }
+
+      const bool nothing_to_draw = !state.bg_quads && !state.ctrl_quads;
+      const bool changed =
+          !last || last->bound_w != state.bound_w ||
+          last->bound_h != state.bound_h || last->opacity != state.opacity ||
+          last->back_opacity != state.back_opacity ||
+          last->contents_opacity != state.contents_opacity ||
+          last->skin != state.skin || last->skin_srv != state.skin_srv ||
+          last->contents != state.contents ||
+          last->contents_srv != state.contents_srv ||
+          last->world != state.world ||
+          last->scissor_w != state.scissor_w ||
+          last->scissor_h != state.scissor_h ||
+          last->bg_quads != state.bg_quads ||
+          last->ctrl_quads != state.ctrl_quads;
+
+      // Only on change and periodically: the quad fields here are not the counts the
+      // draws use (see the [WinDraw] trace for those), so this is the state baseline.
+      if (changed || s_seq % 400 == 0) {
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[WinDiag] seq=" << state.seq
+                  << " w=" << state.window << " bound=" << state.bound_w << "x"
+                  << state.bound_h << " opacity=" << state.opacity << "/"
+                  << state.back_opacity << "/" << state.contents_opacity
+                  << " skin=" << state.skin << " skin_srv=" << state.skin_srv
+                  << " contents=" << state.contents
+                  << " contents_srv=" << state.contents_srv
+                  << " world=" << state.world << " scissor=" << state.scissor_w
+                  << "x" << state.scissor_h << " quads bg=" << state.bg_quads
+                  << " ctrl=" << state.ctrl_quads
+                  << (nothing_to_draw ? "  <== NOTHING TO DRAW" : "");
+      }
+
+      if (last)
+        *last = state;
+      else
+        s_diag.push_back(state);
+    }
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
+    // TEMPORARY. Marker: URGE_FRAMESET
+    // The write side resolved this index earlier in the frame. If it moved since, the layers
+    // below read a different rotating set - one holding an earlier round's vertices.
+    if (bound_.width == 191 && bound_.height == 98 &&
+        context()->sprite_batcher->FrameSetIndex() != gpu_.ctrl_write_set) {
+      LOG(INFO) << "[FrameSet] f=" << context()->sprite_batcher->FrameCount()
+                << " ctrl write=" << gpu_.ctrl_write_set
+                << " read=" << context()->sprite_batcher->FrameSetIndex() << " MISMATCH";
+    }
+    // TEMPORARY. Marker: URGE_TEXTWIN
+    // Per-frame record of every window that draws inside the pixel probe's area (internal
+    // 661..789, 219..251 - the right-hand text list), so the sampled pixels and the inputs that
+    // produced them sit in one log under the same frame number. Scoped to those windows on
+    // purpose: the flicker is a fraction of a pixel of rasterisation, and a measurement that has to
+    // share a clock with a screen capture cannot see it.
+    if (UrgeDiagEnabled() &&  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        bound_.x < 789 && bound_.x + bound_.width > 661 && bound_.y < 251 &&
+        bound_.y + bound_.height > 219) {
+      LOG(INFO) << "[TextWin] f=" << context()->sprite_batcher->FrameCount()
+                << " rect=" << bound_.x << "," << bound_.y << " " << bound_.width << "x"
+                << bound_.height << " skin=" << (windowskin_agent ? 1 : 0)
+                << " srv=" << static_cast<const void*>(
+                       contents_agent ? contents_agent->shader_resource_view : nullptr)
+                << " quads=" << gpu_.controls_cache.size()
+                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
+    }
+
+    // TEMPORARY. Marker: URGE_PANEL
+    // What the two stacked panels draw when they are walked. Joins with [CanvasCmd] by bitmap
+    // pointer: a frame where this line is missing and a clear for the same bitmap went unanswered
+    // by a blit is a frame where the panel was drawn with an empty bitmap - which is what
+    // "the panel disappears for a frame" looks like from the outside.
+    if (bound_.width == 191 && bound_.height == 98) {
+      // TEMPORARY, see above. The window pointer and its viewport are what identify the two
+      // instances that alternate at this position: two windows of the same size and place, each
+      // with its own contents bitmap, only one of them refilled by the script.
+      LOG(INFO) << "[Panel] f=" << context()->sprite_batcher->FrameCount()
+                << " y=" << bound_.y
+                << " win=" << static_cast<const void*>(this)
+                << " vp=" << static_cast<const void*>(viewport_.get())
+                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_
+                << " vis=" << (background_node_.GetVisibility() ? 1 : 0)
+                << (control_node_.GetVisibility() ? 1 : 0)
+                << " bmp=" << static_cast<const void*>(contents_.get())
+                << " agent=" << static_cast<const void*>(contents_agent)
+                << " quads=" << gpu_.controls_cache.size();
+    }
+
+    // TEMPORARY. Marker: URGE_WINKIND
+    // Which windows have no skin at all - those draw only their contents. The seam fix under
+    // consideration makes such contents opaque (so blending it twice equals blending it once, and
+    // the seam stops depending on where the render pass is broken), and that changes how they
+    // look. Logged once per window, on the first frame it draws.
+    {
+      static uint32_t s_kind_frame = 0;
+      static std::unordered_set<const void*> s_kind_seen;
+      const uint32_t fc = context()->sprite_batcher->FrameCount();
+      if (fc != s_kind_frame) {
+        s_kind_frame = fc;
+        if (s_kind_seen.insert(this).second)
+          LOG(INFO) << "[WinKind] win=" << static_cast<const void*>(this) << " rect=" << bound_.x
+                    << "," << bound_.y << " " << bound_.width << "x" << bound_.height
+                    << " skin=" << (windowskin_agent ? 1 : 0)
+                    << " contents=" << (contents_agent ? 1 : 0)
+                    // The controller's audit logs nodes by pointer; this is what turns those
+                    // pointers back into windows, so a window that stops appearing can be named.
+                    << " bg_node=" << static_cast<const void*>(&background_node_)
+                    << " ctrl_node=" << static_cast<const void*>(&control_node_);
+      }
+    }
+    // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
+    {
+      const uint32_t fc = context()->sprite_batcher->FrameCount();
+      if (fc != gpu_.last_ctrl_frame) { gpu_.last_ctrl_frame = fc; gpu_.ctrl_draws = 0; }
+      if (++gpu_.ctrl_draws >= 2)
+        LOG(INFO) << "[WndDup] layer=ctrl frame=" << fc << " bound=" << bound_.width << "x"
+                  << bound_.height << " draws=" << gpu_.ctrl_draws;
+    }
+    // TEMPORARY. Marker: URGE_CTRLDRAW
+    // The panels' pixels come entirely from this layer (their background layer builds no quad at
+    // all), so whether the seam darkens must show up here: count the 191x98 control layers drawn
+    // per frame. Two lines per frame = both panels drew; one = one of them did not.
+    // TEMPORARY. Marker: URGE_CTRLDRAW
+    // Every window layer, not just the two panels: the band between them may also be covered by
+    // whichever other windows are on screen, and their set changes with the UI state - which the
+    // panel-only probe could never see.
+    {
+      LOG(INFO) << "[CtrlDraw] f=" << context()->sprite_batcher->FrameCount()
+                << " win=" << static_cast<const void*>(this)
+                << " rect=" << bound_.x << "," << bound_.y << " " << bound_.width << "x"
+                << bound_.height
+                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
+    }
     GPURenderControlLayerInternal(params->context, params->world_binding,
                                   windowskin_agent, contents_agent,
                                   params->scissors);
+    MarkLayerDrawnInternal(this, /*background=*/false);
+
+    // See the background layer above: this trace was removed for performance.
   }
 }
 
 void WindowImpl::GPUCreateWindowInternal() {
-  gpu_.background_batch = renderer::QuadBatch::Make(**context()->render_device);
-  gpu_.controls_batch = renderer::QuadBatch::Make(**context()->render_device);
+  for (int32_t i = 0; i < GPUData::kFrameSets; ++i) {
+    gpu_.background_batch[i] = renderer::QuadBatch::Make(**context()->render_device);
+    gpu_.controls_batch[i] = renderer::QuadBatch::Make(**context()->render_device);
+  }
 
   gpu_.base_binding = context()->render.pipeline_loader->base.CreateBinding();
   gpu_.content_binding =
       context()->render.pipeline_loader->base.CreateBinding();
 }
 
+// A window layer composed in the enqueue stage that never reaches the draw stage would
+// lose the window for a frame. Such layers are registered here and emitted by
+// FlushPendingLayers before the pass that composed them closes. |composites| counts
+// every layer queued, |draws| every layer emitted (by its node or by that fallback):
+// the two must end up equal.
+struct PendingWindowLayer {
+  WindowImpl* window = nullptr;
+  Diligent::IBuffer* world = nullptr;
+  bool background = false;
+  bool control = false;
+};
+
+static std::vector<PendingWindowLayer> g_pending_layers;
+static int64_t g_window_layer_composites = 0;
+static int64_t g_window_layer_draws = 0;
+static int64_t g_window_layer_fallback = 0;
+static int64_t g_window_layer_registered = 0;
+
+static void RegisterLayerInternal(WindowImpl* window,
+                                  Diligent::IBuffer* world,
+                                  bool background) {
+  if (++g_window_layer_registered % 300 == 0)
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[WindowAudit] composites=" << g_window_layer_composites
+              << " draws=" << g_window_layer_draws
+              << " fallback_layers=" << g_window_layer_fallback;
+
+  for (auto& it : g_pending_layers) {
+    if (it.window == window) {
+      (background ? it.background : it.control) = true;
+      return;
+    }
+  }
+
+  PendingWindowLayer entry;
+  entry.window = window;
+  entry.world = world;
+  entry.background = background;
+  entry.control = !background;
+  g_pending_layers.push_back(entry);
+}
+
+static void MarkLayerDrawnInternal(WindowImpl* window, bool background) {
+  for (auto it = g_pending_layers.begin(); it != g_pending_layers.end(); ++it) {
+    if (it->window != window)
+      continue;
+    (background ? it->background : it->control) = false;
+    if (!it->background && !it->control)
+      g_pending_layers.erase(it);
+    return;
+  }
+}
+
+static void ForgetLayersInternal(WindowImpl* window) {
+  for (auto it = g_pending_layers.begin(); it != g_pending_layers.end(); ++it) {
+    if (it->window == window) {
+      g_pending_layers.erase(it);
+      return;
+    }
+  }
+}
+
+void WindowImpl::FlushPendingLayers(Diligent::IDeviceContext* context,
+                                    Diligent::IBuffer* world,
+                                    const base::Rect& scissor) {
+  if (g_pending_layers.empty())
+    return;
+
+  // Only this pass's level: a layer composed under another world belongs to that
+  // level's pass, whose draw stage has not run yet at this point.
+  std::vector<PendingWindowLayer> pending;
+  int32_t skipped = 0;
+  for (const auto& it : g_pending_layers) {
+    if (it.world == world)
+      pending.push_back(it);
+    else
+      ++skipped;
+  }
+
+  // Report what this pass actually saw: entries left over (the fallback about to run)
+  // or entries skipped because they belong to another level.
+  if (skipped || !pending.empty())
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[WindowAudit] flush pending=" << pending.size()
+              << " skipped=" << skipped << " registered="
+              << g_pending_layers.size();
+
+  if (pending.empty())
+    return;
+
+  ScissorStack scissor_stack(context, scissor);
+
+  for (const PendingWindowLayer& it : pending) {
+    WindowImpl* window = it.window;
+    BitmapTexture* windowskin_agent =
+        Disposable::IsValid(window->windowskin_.get()) ? **window->windowskin_
+                                                       : nullptr;
+    BitmapTexture* contents_agent =
+        Disposable::IsValid(window->contents_.get()) ? **window->contents_ : nullptr;
+
+    if (it.background) {
+      ++g_window_layer_fallback;
+      window->GPURenderBackgroundLayerInternal(context, world, windowskin_agent);
+    }
+    if (it.control)
+      window->GPURenderControlLayerInternal(context, world, windowskin_agent,
+                                            contents_agent, &scissor_stack);
+  }
+
+  for (const PendingWindowLayer& it : pending)
+    ForgetLayersInternal(it.window);
+}
+
+static bool AuditSkipWindowLayers() {
+  static int32_t s_poll = 0;
+  static bool s_skip = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "nowindow.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_skip = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/nowindow.txt");
+    }
+  }
+  return s_skip;
+}
+
 void WindowImpl::GPUCompositeBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin) {
+  if (AuditSkipWindowLayers())
+    return;
+  ++g_window_layer_composites;
+
+  // Temporary probe: the background layer builds no quad at all without a windowskin
+  // (see the "if (windowskin)" below), so a frame where the skin bitmap is invalid
+  // loses the entire frame border while the control layer keeps drawing the contents -
+  // exactly "only the border disappears for a frame".
+  if (!windowskin && windowskin_)
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[WindowAudit] background composed without a valid windowskin"
+              << " object_valid=" << Disposable::IsValid(windowskin_.get());
+
+  // Temporary probe: the border layer is composed and drawn every frame (the layer
+  // counters are paired), so a border that still disappears for a frame can only be
+  // drawn with the wrong content - the skin texture being replaced or re-uploaded.
+  // The game creates ~40 bitmaps per second, so report every change of skin texture.
   const base::Vec2i& draw_offset = bound_.Position();
 
   // Generate background quads
@@ -390,6 +1123,8 @@ void WindowImpl::GPUCompositeBackgroundLayerInternal(
     quads.resize(quad_count);
 
     // Draw attributes
+    // Alpha was forced to 1 here to test the transparency path: the window kept
+    // vanishing, so its alpha is not the cause and the real opacity maths is restored.
     const float opacity_norm = static_cast<float>(opacity_) / 255.0f;
     const float back_opacity_norm = static_cast<float>(back_opacity_) / 255.0f;
 
@@ -486,17 +1221,22 @@ void WindowImpl::GPUCompositeBackgroundLayerInternal(
   // Make sure quads drawcall count
   gpu_.background_draw_count = quad_index;
 
-  // Update vertex buffer
+  // Update vertex buffer, into this frame's own set (see GPUData::kFrameSets)
+    gpu_.bg_write_set = context()->sprite_batcher->FrameSetIndex();  // TEMPORARY. Marker: URGE_FRAMESET
   if (!gpu_.background_cache.empty())
-    gpu_.background_batch.QueueWrite(render_context,
-                                     gpu_.background_cache.data(),
-                                     gpu_.background_cache.size());
+    gpu_.background_batch[context()->sprite_batcher->FrameSetIndex()].QueueWrite(
+        render_context, gpu_.background_cache.data(),
+        gpu_.background_cache.size());
 }
 
 void WindowImpl::GPUCompositeControlLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin,
     BitmapTexture* contents) {
+  if (AuditSkipWindowLayers())
+    return;
+  ++g_window_layer_composites;
+
   const float contents_opacity_norm = contents_opacity_ / 255.0f;
   const float cursor_opacity_norm = cursor_opacity_ / 255.0f;
 
@@ -675,15 +1415,73 @@ void WindowImpl::GPUCompositeControlLayerInternal(
   // Make sure index buffer count
   context()->render.quad_index->Allocate(quad_index);
 
-  // Update vertex buffer
+  // Update vertex buffer, into this frame's own set (see GPUData::kFrameSets)
+    gpu_.ctrl_write_set = context()->sprite_batcher->FrameSetIndex();  // TEMPORARY. Marker: URGE_FRAMESET
   if (!quads.empty())
-    gpu_.controls_batch.QueueWrite(render_context, quads.data(), quads.size());
+    gpu_.controls_batch[context()->sprite_batcher->FrameSetIndex()].QueueWrite(
+        render_context, quads.data(), quads.size());
+}
+
+// TEMPORARY per-frame draw audit for this class. Marker: URGE_WNDAUDIT
+//
+// Twelve days of instruments were all built on the tilemap, which turned out not to be the victim:
+// skipping this class makes the whole room picture vanish, so the layer that goes missing for a frame
+// is one of these. Nothing here has ever been audited per frame. This counts, for every frame, how
+// many times the background and control layers are drawn and how many quads they submit, and prints
+// only when one of those numbers changes - a steady frame stays silent, so the timing is untouched.
+// The frame number is the same counter the probe logs, so a line here and a [CellAll] event line can
+// be lined up directly: an audit line on a defect frame means the layer's submission differed in
+// that frame, and no line means it was submitted exactly like any other frame.
+static void AuditWindowDrawInternal(int64_t frame, const char* kind,
+                                   int32_t quads) {
+  // See UrgeDiagEnabled in renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+  if (!UrgeDiagEnabled()) return;
+  static int64_t s_frame = -1;
+  static int32_t s_counts[4] = {0, 0, 0, 0};  // 0=bg calls, 1=bg quads, 2=ctrl calls, 3=ctrl quads
+  if (frame != s_frame) {
+    if (s_frame >= 0) {
+      static int32_t s_prev[4] = {-1, -1, -1, -1};
+      bool changed = false;
+      for (int32_t i = 0; i < 4; ++i) {
+        if (s_counts[i] != s_prev[i]) {
+          s_prev[i] = s_counts[i];
+          changed = true;
+        }
+      }
+      if (changed)
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[WndAudit] f=" << s_frame << " bg_calls=" << s_counts[0]
+                  << " bg_quads=" << s_counts[1] << " ctrl_calls=" << s_counts[2]
+                  << " ctrl_quads=" << s_counts[3];
+    }
+    s_counts[0] = s_counts[1] = s_counts[2] = s_counts[3] = 0;
+    s_frame = frame;
+  }
+  const int32_t slot = (std::strcmp(kind, "bg") == 0) ? 0 : 2;
+  ++s_counts[slot];
+  s_counts[slot + 1] += quads;
 }
 
 void WindowImpl::GPURenderBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding,
     BitmapTexture* windowskin) {
+  // Diagnosis, see AuditSkipWindowLayers(): the composite stage is skipped too, but a node
+  // can still reach the draw stage with the quads of an earlier frame, which would show as
+  // a stale fragment instead of an absent layer - that would confound the bisection.
+  if (AuditSkipWindowLayers())
+    return;
+  ++g_window_layer_draws;
+
+  // The window draws with the shared quad index buffer, whose size is otherwise decided
+  // by this frame's sprite count (SubmitBatchDataAndResetCache allocates for the sprite
+  // cache). A window needs far more indices than a sprite batch usually does - four
+  // corners plus dozens of tiles - so NumIndices below could exceed the buffer, and
+  // reading indices past its end is what makes whole windows vanish on this driver while
+  // others tolerate it. Allocate() only ever grows, so the sprite path is unaffected.
+  if (!gpu_.background_cache.empty())
+    context()->render.quad_index->Allocate(gpu_.background_cache.size());
+
   if (windowskin) {
     auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
@@ -692,7 +1490,8 @@ void WindowImpl::GPURenderBackgroundLayerInternal(
     gpu_.base_binding.u_texture->Set(windowskin->shader_resource_view);
 
     // Apply vertex index
-    Diligent::IBuffer* const vertex_buffer = *gpu_.background_batch;
+    Diligent::IBuffer* const vertex_buffer =
+        *gpu_.background_batch[context()->sprite_batcher->FrameSetIndex()];
     render_context->SetVertexBuffers(
         0, 1, &vertex_buffer, nullptr,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -709,6 +1508,9 @@ void WindowImpl::GPURenderBackgroundLayerInternal(
     // Execute render command
     Diligent::DrawIndexedAttribs draw_indexed_attribs;
     draw_indexed_attribs.NumIndices = gpu_.background_draw_count * 6;
+  // TEMPORARY, see AuditWindowDrawInternal. Marker: URGE_WNDAUDIT
+  AuditWindowDrawInternal(context()->sprite_batcher->FrameCount(), "bg",
+                          static_cast<int32_t>(gpu_.background_draw_count));
     draw_indexed_attribs.IndexType =
         context()->render.quad_index->GetIndexType();
     render_context->DrawIndexed(draw_indexed_attribs);
@@ -721,6 +1523,51 @@ void WindowImpl::GPURenderControlLayerInternal(
     BitmapTexture* windowskin,
     BitmapTexture* contents,
     ScissorStack* scissor_stack) {
+  if (AuditSkipWindowLayers())
+    return;
+  ++g_window_layer_draws;
+
+  // Same index-buffer reservation as the background layer above: this layer queues the
+  // frame, the cursor and the contents into one buffer, so its index needs are the
+  // largest of the two.
+  if (!gpu_.controls_cache.empty())
+    context()->render.quad_index->Allocate(gpu_.controls_cache.size());
+
+  // TEMPORARY. Marker: URGE_ENTRY
+  // Which of the two draw branches this call will take. Neither logged anything for the two
+  // panels, yet they are visible, so the branch that paints them is not the one assumed.
+  if (bound_.width == 191 && bound_.height == 98) {
+    LOG(INFO) << "[Entry] f=" << context()->sprite_batcher->FrameCount()
+              << " y=" << bound_.y << " skin=" << (windowskin ? 1 : 0)
+              << " contents=" << (contents ? 1 : 0) << " cache=" << gpu_.controls_cache.size()
+              << " ctrl_quads=" << gpu_.controls_draw_count
+              << " ctrl_offset=" << gpu_.contents_quad_offset
+              << " bg_quads=" << gpu_.background_draw_count;
+  }
+
+  // TEMPORARY seam probe. Marker: URGE_QUADHASH
+  // Hash the vertices this layer is about to submit. Frame-over-frame, the seam between the two
+  // panels is sometimes the normal gold edge and sometimes a darker version of it. If the hash
+  // differs between the two, the two versions are computed before the GPU sees them (vertex
+  // positions or colours differ). If it is identical, the same data renders differently, and the
+  // cause is GPU state rather than data.
+  // TEMPORARY seam probe. Marker: URGE_QUADHASH
+  // Every window, not only the two battle panels: the shimmering text in the side panel belongs to
+  // a window of a different size, and its vertices had never been looked at. Two values of this
+  // hash across frames mean the difference is computed before the GPU sees it.
+  if (bound_.width == 191 && bound_.height == 98 && !gpu_.controls_cache.empty()) {
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(gpu_.controls_cache.data());
+    const size_t count = gpu_.controls_cache.size() * sizeof(gpu_.controls_cache[0]);
+    uint64_t hash = 1469598103934665603ULL;
+    for (size_t i = 0; i < count; ++i) {
+      hash ^= bytes[i];
+      hash *= 1099511628211ULL;
+    }
+    LOG(INFO) << "[QuadHash] f=" << context()->sprite_batcher->FrameCount()
+              << " n=" << gpu_.controls_cache.size() << " hash=" << hash
+              << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
+  }
+
   const auto current_viewport =
       background_node_.GetParentViewport()->bound.Position() -
       background_node_.GetParentViewport()->origin;
@@ -730,7 +1577,40 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      current_viewport.y + bound_.y,
                                      bound_.width, bound_.height);
 
-    if (scissor_stack->Push(clipping_region)) {
+    const bool frame_pushed = scissor_stack->Push(clipping_region);
+    // TEMPORARY. Marker: URGE_SCISSOR
+    // The clip each layer draws under. The panels take this branch (the engine hands a no-skin
+    // window a stand-in skin, so windowskin is not null), and the clip rect - not the vertices -
+    // is the last input that had not been recorded when the seam rendered differently.
+    if (bound_.width == 191 && bound_.height == 98) {
+      LOG(INFO) << "[Scissor] f=" << context()->sprite_batcher->FrameCount()
+                << " y=" << bound_.y << " clip=" << clipping_region.x << "," << clipping_region.y
+                << " " << clipping_region.width << "x" << clipping_region.height
+                << " pushed=" << (frame_pushed ? 1 : 0) << " vp=" << current_viewport.x << ","
+                << current_viewport.y << " scale=" << scale_
+                << " skin=" << static_cast<const void*>(windowskin);
+    }
+    if (!frame_pushed) {
+      // The border layer draws nothing at all when its clip region does not intersect the
+      // scissor in force. This was invisible in every earlier trace because those were
+      // placed after the call: the draw is simply skipped. The parent viewport's rect and
+      // origin are the inputs that decide it, and they are the ones never inspected.
+      static int64_t s_frame_clip_fails = 0;
+      auto* parent_viewport = background_node_.GetParentViewport();
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WinClip] window=" << static_cast<const void*>(this)
+                << " layer=frame fails=" << ++s_frame_clip_fails
+                << " clip=" << clipping_region.x << "," << clipping_region.y << " "
+                << clipping_region.width << "x" << clipping_region.height
+                << " viewport_pos=" << current_viewport.x << ","
+                << current_viewport.y << " viewport_origin="
+                << parent_viewport->origin.x << "," << parent_viewport->origin.y
+                << " viewport_bound=" << parent_viewport->bound.width << "x"
+                << parent_viewport->bound.height << " window_bound=" << bound_.x << ","
+                << bound_.y << " " << bound_.width << "x" << bound_.height;
+    }
+
+    if (frame_pushed) {
       auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
       // Setup shader resource
@@ -738,7 +1618,8 @@ void WindowImpl::GPURenderControlLayerInternal(
       gpu_.base_binding.u_texture->Set(windowskin->shader_resource_view);
 
       // Apply vertex index
-      Diligent::IBuffer* const vertex_buffer = *gpu_.controls_batch;
+      Diligent::IBuffer* const vertex_buffer =
+          *gpu_.controls_batch[context()->sprite_batcher->FrameSetIndex()];
       render_context->SetVertexBuffers(
           0, 1, &vertex_buffer, nullptr,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -770,7 +1651,30 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      bound_.width - 16 * scale_,
                                      bound_.height - 16 * scale_);
 
-    if (scissor_stack->Push(clipping_region)) {
+    const bool contents_pushed = scissor_stack->Push(clipping_region);
+    // TEMPORARY. Marker: URGE_SCISSOR
+    // The clip rect each layer draws under, plus the viewport it is derived from. Every other
+    // input of these layers was measured identical across frames that render the seam
+    // differently, so the clip is the remaining candidate.
+
+    if (!contents_pushed) {
+      // See the border layer above: a refused clip silently skips the contents.
+      static int64_t s_contents_clip_fails = 0;
+      auto* parent_viewport = background_node_.GetParentViewport();
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[WinClip] window=" << static_cast<const void*>(this)
+                << " layer=contents fails=" << ++s_contents_clip_fails
+                << " clip=" << clipping_region.x << "," << clipping_region.y << " "
+                << clipping_region.width << "x" << clipping_region.height
+                << " viewport_pos=" << current_viewport.x << ","
+                << current_viewport.y << " viewport_origin="
+                << parent_viewport->origin.x << "," << parent_viewport->origin.y
+                << " viewport_bound=" << parent_viewport->bound.width << "x"
+                << parent_viewport->bound.height << " window_bound=" << bound_.x << ","
+                << bound_.y << " " << bound_.width << "x" << bound_.height;
+    }
+
+    if (contents_pushed) {
       auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
       // Setup shader resource
@@ -778,7 +1682,8 @@ void WindowImpl::GPURenderControlLayerInternal(
       gpu_.content_binding.u_texture->Set(contents->shader_resource_view);
 
       // Apply vertex index
-      Diligent::IBuffer* const vertex_buffer = *gpu_.controls_batch;
+      Diligent::IBuffer* const vertex_buffer =
+          *gpu_.controls_batch[context()->sprite_batcher->FrameSetIndex()];
       render_context->SetVertexBuffers(
           0, 1, &vertex_buffer, nullptr,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -793,6 +1698,23 @@ void WindowImpl::GPURenderControlLayerInternal(
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
       // Execute render command
+      // TEMPORARY. Marker: URGE_DRAWSTATE
+      // The state this contents quad is actually submitted under. Marker unchanged across
+      // frames that render the seam differently would mean the difference is not in the call.
+      if (bound_.width == 191 && bound_.height == 98) {
+        const base::Rect active = scissor_stack->Current();
+        LOG(INFO) << "[DrawState] f=" << context()->sprite_batcher->FrameCount()
+                  << " y=" << bound_.y << " clip=" << clipping_region.x << ","
+                  << clipping_region.y << " " << clipping_region.width << "x"
+                  << clipping_region.height << " active=" << active.x << "," << active.y << " "
+                  << active.width << "x" << active.height
+                  << " first=" << gpu_.contents_quad_offset * 6
+                  << " tex=" << static_cast<const void*>(contents)
+                  << " srv=" << static_cast<const void*>(contents->shader_resource_view)
+                  << " pipe=" << static_cast<const void*>(pipeline)
+                  << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
+      }
+
       Diligent::DrawIndexedAttribs draw_indexed_attribs;
       draw_indexed_attribs.NumIndices = 6;
       draw_indexed_attribs.IndexType =
@@ -804,6 +1726,8 @@ void WindowImpl::GPURenderControlLayerInternal(
       scissor_stack->Pop();
     }
   }
+  // TEMPORARY, see AuditWindowDrawInternal. Marker: URGE_WNDAUDIT
+  AuditWindowDrawInternal(context()->sprite_batcher->FrameCount(), "ctrl", 0);
 }
 
 }  // namespace content

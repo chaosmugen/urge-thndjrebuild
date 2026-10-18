@@ -11,6 +11,7 @@
 
 #include "renderer/layout/vertex_layout.h"
 #include "renderer/renderer_config.h"
+#include "renderer/utils/texture_utils.h"
 
 namespace renderer {
 
@@ -83,7 +84,9 @@ class BatchBuffer {
       Diligent::BufferDesc buffer_desc;
       MakeBufferDesc(buffer_desc, bytes_size);
 
-      buffer_.Release();
+      // Growing the batch buffer replaces it; a draw recorded in an earlier frame may still be
+      // reading the old one on the GPU. See renderer::DeferredTextureRelease.
+      renderer::DeferredTextureRelease(buffer_);
       device_->CreateBuffer(buffer_desc, nullptr, &buffer_);
     }
 

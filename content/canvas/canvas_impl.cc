@@ -19,6 +19,8 @@
 #include "content/screen/renderscreen_impl.h"
 #include "renderer/device/gpu_audit.h"
 #include "renderer/utils/texture_utils.h"
+// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -360,7 +362,68 @@ void CanvasImpl::InvalidateSurfaceCache() {
   }
 }
 
-void CanvasImpl::SubmitQueuedCommands() {
+void CanvasImpl::SubmitQueuedCommands(bool at_frame_boundary) {
+  // TODO(canvas-order): temporary ordering marker. The window contents are painted by the
+  // game (clear, then redraw) and applied here; the window samples the texture. If a
+  // window draws before the paint commands of that frame are applied it shows the cleared
+  // - but not yet redrawn - contents, i.e. an empty window for exactly one frame.
+  if (commands_) {
+    // A batch that only clears has no content yet: the game's redraw commands have not
+    // been queued at this point (the script yields between "clear" and "redraw"). Drawing
+    // it now would show the cleared surface - the map background loses its content for a
+    // frame. Wait for the redraw to join the same batch, and only give up after a few
+    // frames so a deliberate clear still takes effect.
+    bool clear_only = true;
+    for (Command* it = commands_; it; it = it->next) {
+      if (it->id != CommandID::CLEAR && it->id != CommandID::NONE) {
+        clear_only = false;
+        break;
+      }
+    }
+    // The cap below is what makes the map background lose its content for a frame: a clear
+    // that is still alone after that many frames is applied anyway, and whatever samples
+    // the canvas in that frame shows the cleared surface. Raise it with
+    // urge_debug/clearcap.txt to test whether that is the whole story - if the one-frame
+    // region loss disappears, the fix is to stop applying a clear before the redraw it
+    // belongs to, not to wait longer.
+    static int32_t s_clear_cap_poll = 0;
+    // Unverified, so off by default (0 = no holding); clearcap.txt sets a nonzero cap to test.
+    // Marker: URGE_DEFAULTS
+    static int32_t s_clear_cap = 0;
+    if (++s_clear_cap_poll >= 30) {
+      s_clear_cap_poll = 0;
+      FILE* file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "clearcap.txt",
+          "r");
+      if (file) {
+        int32_t value = 3;
+        if (fscanf(file, "%d", &value) == 1)
+          s_clear_cap = value >= 0 ? value : 0;
+        fclose(file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/clearcap.txt");
+      }
+    }
+    if (clear_only && at_frame_boundary && ++pending_clear_frames_ < s_clear_cap) {
+      if (context()->sprite_batcher->RunFpEnabled())
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[CanvasOrder] hold clear-only batch f="
+                  << context()->sprite_batcher->FrameCount() << " canvas="
+                  << static_cast<const void*>(this) << " attempts="
+                  << pending_clear_frames_;
+      return;
+    }
+
+    if (context()->sprite_batcher->RunFpEnabled())
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[CanvasOrder] submit frame="
+                << context()->sprite_batcher->FrameCount() << " canvas="
+                << static_cast<const void*>(this) << " t="
+                << static_cast<const void*>(&gpu_) << " clear_only="
+                << clear_only;
+    pending_clear_frames_ = 0;
+  }
   Command* command_sequence = commands_;
   // Execute pending commands,
   // encode draw command in wgpu encoder.
@@ -886,6 +949,21 @@ void CanvasImpl::OnObjectDisposed() {
   // Free memory surface cache
   InvalidateSurfaceCache();
 
+  // Park the GPU objects instead of destroying them here. This is where a game bitmap dies
+  // - including the window contents bitmap, which the game replaces several times a second
+  // while the window keeps drawing - and a texture destroyed while a draw recorded in an
+  // earlier frame may still be sampling it has its memory handed to the next allocation on
+  // Vulkan, which paints a piece of some other image into exactly one frame. See
+  // renderer::DeferredTextureRelease.
+  renderer::DeferredTextureRelease(gpu_.data);
+  renderer::DeferredTextureRelease(gpu_.depth);
+  // The three views hang off those two textures. Parking the textures but destroying their
+  // views here leaves every descriptor still in flight naming a freed view object - the same
+  // hazard one level up, so they go into the same graveyard.
+  renderer::DeferredTextureRelease(gpu_.shader_resource_view);
+  renderer::DeferredTextureRelease(gpu_.render_target_view);
+  renderer::DeferredTextureRelease(gpu_.depth_stencil_view);
+
   // Destroy GPU texture
   GPUData empty_data;
   std::swap(gpu_, empty_data);
@@ -900,6 +978,21 @@ void CanvasImpl::BlitTextureInternal(const base::Rect& dst_rect,
   // blit the sourcetexture to destination texture immediately.
   src_texture->SubmitQueuedCommands();
   SubmitQueuedCommands();
+
+  // Temporary ordering marker: the paint commands of a canvas are applied at a frame
+  // boundary, but the blits that finish its content run here, when the game gets to them.
+  // If a node samples the destination texture before this line for the same frame, that
+  // frame draws the half-painted bitmap - the background losing its content for a frame.
+  // The frame number and the texture pointers say which canvas and in which order.
+  if (context()->sprite_batcher->RunFpEnabled())
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[CanvasBlt] f=" << context()->sprite_batcher->FrameCount()
+              << " dst=" << static_cast<const void*>(this) << " dt="
+              << static_cast<const void*>(&gpu_) << " src="
+              << static_cast<const void*>(src_texture) << " st="
+              << static_cast<const void*>(&src_texture->gpu_) << " rect="
+              << dst_rect.x << "," << dst_rect.y << " " << dst_rect.width << "x"
+              << dst_rect.height;
 
   // Execute blit immediately.
   if (blend_type >= 0) {
@@ -924,6 +1017,20 @@ void CanvasImpl::ClipTextureInternal(const base::Rect& dst_rect,
   // blit the sourcetexture to destination texture immediately.
   src_texture->SubmitQueuedCommands();
   SubmitQueuedCommands();
+
+  // Temporary ordering marker, same purpose as the one in BlitTextureInternal: the only
+  // other path that writes into a canvas' texture. See the blt marker above.
+  if (context()->sprite_batcher->RunFpEnabled())
+    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+    LOG(INFO) << "[CanvasClip] f=" << context()->sprite_batcher->FrameCount()
+              << " dst=" << static_cast<const void*>(this) << " dt="
+              << static_cast<const void*>(&gpu_) << " src="
+              << static_cast<const void*>(src_texture) << " st="
+              << static_cast<const void*>(&src_texture->gpu_) << " clip="
+              << static_cast<const void*>(clip_texture) << " ct="
+              << static_cast<const void*>(&clip_texture->gpu_) << " rect="
+              << dst_rect.x << "," << dst_rect.y << " " << dst_rect.width << "x"
+              << dst_rect.height;
 
   // Execute clip blit immediately.
   GPUClipTextureInternal(dst_rect, &src_texture->gpu_, src_rect,
@@ -1081,6 +1188,58 @@ void CanvasImpl::GPUApproximateBlitTextureInternal(const base::Rect& dst_region,
   render_context->CopyTexture(copy_attribs);
   renderer::ConsiderLoadDrain();
 
+  // Targeted sync between the copy above and the draw below, rotating with the auto arms:
+  // 0 and 2 do nothing, 1 invalidates the state cache, 3 drains. Every canvas blit copies
+  // the source into the shared intermediate cache and then draws with that cache bound, so
+  // it samples a texture written by the command immediately before it - the shape measured
+  // to read stale tiles on this driver (sampling a freshly blitted copy multiplied the loss
+  // by 20). Draining before the canvas batch removes most of the loss (4.88 to 0.95 events
+  // per 10000 frames, p=0.0005) but cannot retire this pair, which happens inside the batch.
+  {
+    static int32_t s_blt_sync_poll = 0;
+    static bool s_blt_sync_auto = false;
+    static bool s_blt_sync_manual = false;
+    if (++s_blt_sync_poll >= 30) {
+      s_blt_sync_poll = 0;
+      FILE* file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "bltsync.txt",
+          "r");
+      if (file) {
+        int32_t value = 0;
+        if (fscanf(file, "%d", &value) == 1)
+          s_blt_sync_manual = value != 0;
+        fclose(file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/bltsync.txt");
+      }
+      FILE* auto_file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "autosync.txt",
+          "r");
+      if (auto_file) {
+        int32_t value = 1;
+        if (fscanf(auto_file, "%d", &value) == 1)
+          s_blt_sync_auto = value != 0;
+        fclose(auto_file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/autosync.txt");
+      }
+    }
+    const uint32_t blt_arm =
+        (context()->sprite_batcher->FrameCount() / 1000u) % 4u;
+    if (s_blt_sync_auto ? (blt_arm == 1 || blt_arm == 3) : s_blt_sync_manual) {
+      // Manual mode always drains: the drain is the one lever with measurements behind it,
+      // while the invalidating variant measured no better than doing nothing at all.
+      if (s_blt_sync_auto ? blt_arm == 3 : true) {
+        render_context->Flush();
+        render_context->WaitForIdle();
+      } else {
+        render_context->InvalidateState();
+      }
+    }
+  }
+
   // Custom blend blit pipeline
   auto* pipeline = context()->render.pipeline_states->bitmap.bitmapblt.RawPtr();
 
@@ -1185,13 +1344,13 @@ void CanvasImpl::GPUClipTextureInternal(const base::Rect& dst_region,
   renderer::Quad::SetTexCoordRect(&transient_quad, src_region,
                                   src_texture->size.Recast<float>());
 
-  // Set dst texture uv
+  // Set dst texture uv, and stamp the quad corner into the otherwise unused colour .z:
+  // the clip shader must not take the corner from SV_VertexID, which the Mali driver on
+  // the target TV delivers wrong (every draw resolves the same index, so a quad could
+  // sample one corner's clip alpha everywhere and vanish for a frame). See
+  // kHLSL_BitmapClipBltRender_Vertex.
   const base::Vec2 dst_uv(dst_region.width / intermediate_size.x,
                           dst_region.height / intermediate_size.y);
-  // Set dst texture uv, and stamp the quad corner into the otherwise unused colour .z.
-  // The clip shader must not take the corner from SV_VertexID: the Mali driver on the
-  // target TV hands the same index to every draw of a frame, so all four corners would
-  // sample one corner's clip alpha and the element would vanish for a frame.
   transient_quad.vertices[0].color = base::Vec4(0, 0, 0.0f, 0);
   transient_quad.vertices[1].color = base::Vec4(dst_uv.x, 0, 1.0f, 0);
   transient_quad.vertices[2].color = base::Vec4(dst_uv.x, dst_uv.y, 2.0f, 0);
@@ -1352,7 +1511,7 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
     gpu_.text_cache_size.x = std::max<int32_t>(gpu_.text_cache_size.x, text->w);
     gpu_.text_cache_size.y = std::max<int32_t>(gpu_.text_cache_size.y, text->h);
 
-    gpu_.text_cache_texture.Release();
+    renderer::DeferredTextureRelease(gpu_.text_cache_texture);
     renderer::CreateTexture2D(*render_device, &gpu_.text_cache_texture,
                               "textdraw.cache", gpu_.text_cache_size);
   }
@@ -1366,6 +1525,43 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
       gpu_.text_cache_texture, 0, 0, box, texture_sub_res_data,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+  // Every text draw uploads its glyphs into the shared text cache texture and then, a dozen
+  // lines below, binds that same texture to draw with - a write followed immediately by a
+  // read of one texture, which is the shape that reads stale tiles on this driver. It is
+  // also the shape that matches the reported reproduction exactly: entering battle, using
+  // skills (skill names, damage numbers - a burst of text) and watching the bottom of the
+  // picture, where the message and status windows live. None of the drains added elsewhere
+  // covered this pair; it happens on the canvas scheduler's own context.
+  // urge_debug/textsync.txt = 0 turns it off.
+  {
+    static int32_t s_text_sync_poll = 0;
+    // Off by default: this is a drain, and the drain line is closed. The builds the
+    // developer played had this drain, the canvas drain and the present drain (which also
+    // drains the canvas context) all on by default, and the flicker still happened; the
+    // four-arm comparison in a real battle measured 0.100% of frames losing a region with a
+    // drain against 0.100% without. Kept as a switch, off.
+    static bool s_text_sync = false;
+    if (++s_text_sync_poll >= 60) {
+      s_text_sync_poll = 0;
+      FILE* file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "textsync.txt",
+          "r");
+      if (file) {
+        int32_t value = 1;
+        if (fscanf(file, "%d", &value) == 1)
+          s_text_sync = value != 0;
+        fclose(file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/textsync.txt");
+      }
+    }
+    if (s_text_sync) {
+      render_context->Flush();
+      render_context->WaitForIdle();
+    }
+  }
 
   // Render text stage data to current texture
   base::Vec4 blend_alpha;

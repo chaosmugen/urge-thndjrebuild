@@ -48,10 +48,10 @@ void QuadIndexCache::Allocate(size_t quadrangle_size) {
     uint8_t* index_ptr = cache_.data();
     for (size_t i = 0; i < quadrangle_size; ++i) {
       for (const auto& it : kQuadrangleDrawIndices) {
-        // Write exactly one index of the selected type. A uint32_t store advancing by the
-        // index size wrote two bytes past the end of the buffer in the UINT16 case (the
-        // overlapping stores happened to produce the right values, but the write itself was
-        // out of bounds and landed in the heap).
+        // Write exactly one index of the selected type. A uint32_t store advancing
+        // by the index size wrote 2 bytes past the end of the buffer for the
+        // UINT16 case (the overlapping stores happened to produce the right
+        // values, but the write itself was out of bounds and landed in the heap).
         const uint32_t index = static_cast<uint32_t>(i * 4 + it);
         if (type_ == Diligent::VT_UINT32) {
           std::memcpy(index_ptr, &index, sizeof(uint32_t));
@@ -63,8 +63,9 @@ void QuadIndexCache::Allocate(size_t quadrangle_size) {
       }
     }
 
-    // Reset buffer
-    buffer_.Release();
+    // Reset buffer. The old one may still be read by a draw the GPU has not finished, so it is
+    // parked instead of destroyed. See renderer::DeferredTextureRelease.
+    renderer::DeferredTextureRelease(buffer_);
   }
 
   // Upload to GPU

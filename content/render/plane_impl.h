@@ -16,7 +16,14 @@ namespace content {
 class PlaneImpl : public Plane, public EngineObject, public Disposable {
  public:
   struct GPUData {
-    renderer::QuadBatch batch;
+    // One vertex buffer per frame in flight, exactly like the sprite batch and the window
+    // path. A single buffer that the compose stage rewrites every frame can be read by a
+    // frame (or a pass) still executing, and the plane then draws another frame's
+    // vertices: the background shows up zoomed/jumping for that frame. The plane is not
+    // part of the sprite batch, so it needs its own sets. Rotated by
+    // SpriteBatch::FrameSetIndex().
+    static constexpr int32_t kFrameSets = 8;
+    renderer::QuadBatch batch[kFrameSets];
     std::vector<renderer::Quad> cache;
     uint32_t quad_size;
 

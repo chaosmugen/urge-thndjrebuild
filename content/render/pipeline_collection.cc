@@ -199,6 +199,15 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                                  depth_stencil_state, primitive_topology,
                                  {target_format}, depth_stencil_format,
                                  default_sample);
+
+    // TEMPORARY A/B, see the member's note. Marker: URGE_SPRNODEPTH
+    {
+      Diligent::DepthStencilStateDesc no_depth = GetDefaultDepthStencilState(false);
+      loader->sprite.BuildPipeline(&sprite_nodepth[i], blend_state,
+                                   rasterizer_state, no_depth,
+                                   primitive_topology, {target_format},
+                                   depth_stencil_format, default_sample);
+    }
   }
 
   // Viewport Effect (flat) - with scissor - no depth
@@ -260,6 +269,17 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                                   depth_stencil_state, primitive_topology,
                                   {target_format}, depth_stencil_format,
                                   default_sample);
+
+    // See PipelineSet::tilemap_noblend: identical, but with blending off, so the tilemap writes its
+    // pixels instead of blending them into whatever is already there. Marker: URGE_NOBLEND
+    {
+      Diligent::BlendStateDesc no_blend_state = blend_state;
+      no_blend_state.RenderTargets[0].BlendEnable = Diligent::False;
+      loader->tilemap.BuildPipeline(&tilemap_noblend, no_blend_state,
+                                    rasterizer_state, depth_stencil_state,
+                                    primitive_topology, {target_format},
+                                    depth_stencil_format, default_sample);
+    }
     loader->tilemap2.BuildPipeline(&tilemap2, blend_state, rasterizer_state,
                                    depth_stencil_state, primitive_topology,
                                    {target_format}, depth_stencil_format,

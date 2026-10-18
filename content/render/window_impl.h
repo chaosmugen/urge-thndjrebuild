@@ -20,9 +20,15 @@ namespace content {
 class WindowImpl : public Window, public EngineObject, public Disposable {
  public:
   struct GPUData {
-    renderer::QuadBatch background_batch;
+    // One set per frame in flight, exactly like the sprite batch: a single buffer that is
+    // overwritten every frame can be read by a frame still executing while the next one
+    // writes it, and the window then draws from another frame's vertices - which shows up
+    // as the whole window (border and contents together) vanishing for that frame and
+    // coming back on the next. Rotated by SpriteBatch::FrameSetIndex().
+    static constexpr int32_t kFrameSets = 8;
+    renderer::QuadBatch background_batch[kFrameSets];
     std::vector<renderer::Quad> background_cache;
-    renderer::QuadBatch controls_batch;
+    renderer::QuadBatch controls_batch[kFrameSets];
     std::vector<renderer::Quad> controls_cache;
 
     renderer::Binding_Base base_binding;
@@ -31,7 +37,36 @@ class WindowImpl : public Window, public EngineObject, public Disposable {
     int32_t background_draw_count = 0;
     int32_t controls_draw_count = 0;
     int32_t contents_quad_offset = 0;
+
+
+    // TEMPORARY diagnostic. Marker: URGE_FRAMESET
+    // Which rotating frame set each layer queued its vertices into. The read side resolves the
+    // index again later in the frame; if the frame counter advanced in between, it reads a
+    // different set - one holding an earlier round's vertices.
+    int32_t bg_write_set = -1;
+    int32_t ctrl_write_set = -1;
+
+    // TEMPORARY diagnostic: how many times each of this window's layers was drawn in the current
+    // frame. A layer drawn twice in one frame blends its translucent edges twice, which is what
+    // makes the seam between two stacked panels go dark.
+    uint32_t last_bg_frame = 0;
+    int32_t bg_draws = 0;
+    uint32_t last_ctrl_frame = 0;
+    int32_t ctrl_draws = 0;
   };
+
+  // A window layer is composed in the enqueue stage and drawn in the draw stage. The
+  // drawable list is re-linked while a frame runs, so the window node can be missing
+  // from the draw stage and its frame (with its contents) vanishes for that frame -
+  // measured on the TV as composites=18000 draws=17998. The pass that is ending calls
+  // this to emit the layers that never reached their draw stage. Only the layers
+  // composed under |world| are emitted, which keeps each level's windows in the pass
+  // that owns the render target and transform.
+  static void FlushPendingLayers(Diligent::IDeviceContext* context,
+                                 Diligent::IBuffer* world,
+                                 const base::Rect& scissor);
+
+
 
   WindowImpl(ExecutionContext* execution_context,
              scoped_refptr<ViewportImpl> parent,
@@ -114,6 +149,19 @@ class WindowImpl : public Window, public EngineObject, public Disposable {
   int32_t opacity_ = 255;
   int32_t back_opacity_ = 255;
   int32_t contents_opacity_ = 255;
+
+  // Last skin / contents whose texture was actually usable. A window must not become
+  // invisible because its bitmap was cleared or replaced: the border layer builds no
+  // quad at all without a skin and the control layer draws nothing without contents,
+  // so a window with both missing draws no pixel (measured: 46 skin assignments, 18 of
+  // them clears, and the window disappears for those frames while the background shows
+  // through). Holding the reference also keeps the GPU texture alive while it is used.
+  scoped_refptr<CanvasImpl> last_windowskin_;
+  scoped_refptr<CanvasImpl> last_contents_;
+
+  // Skin / contents to draw with, falling back to the last usable ones.
+  BitmapTexture* ResolveWindowskinInternal();
+  BitmapTexture* ResolveContentsInternal();
 };
 
 }  // namespace content

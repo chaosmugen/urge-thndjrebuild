@@ -26,6 +26,10 @@ class SpriteImpl : public Sprite, public EngineObject, public Disposable {
 
     uint32_t instance_offset = 0;
     uint32_t instance_count = 0;
+
+    // Set when this node had to close a batch belonging to another render level:
+    // that batch must be drawn with its own world transform, not this node's.
+    Diligent::IBuffer* draw_world = nullptr;
   };
 
   struct WaveParams {

@@ -4,9 +4,14 @@
 
 #include "content/render/window2_impl.h"
 
+#include <unordered_map>  // TEMPORARY. Marker: URGE_W2DUP
+
 #include "content/context/execution_context.h"
 #include "content/render/tilequad.h"
 #include "renderer/utils/texture_utils.h"
+
+// TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
+extern "C" void UrgeTagRtSwitch(int32_t index);
 
 namespace content {
 
@@ -80,6 +85,11 @@ Window2Impl::Window2Impl(ExecutionContext* execution_context,
       padding_bottom_(padding_),
       back_opacity_(rgss3_style_ ? 192 : 255),
       tone_(base::MakeRefCounted<ToneImpl>(base::Vec4())) {
+  // TEMPORARY stable tag, see the order audit in drawable_controller.cc. Marker: URGE_ORDER_AUDIT
+  //
+  // This node is the one that draws through the "base" pipeline - the wallpaper the defect frame
+  // exposes - and it was the only participant in the suspected order swap that carried no tag.
+  node_.SetDebugTag(0x2000);
   node_.RegisterEventHandler(base::BindRepeating(
       &Window2Impl::DrawableNodeHandlerInternal, base::Unretained(this)));
 
@@ -415,8 +425,41 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
 void Window2Impl::OnObjectDisposed() {
   node_.DisposeNode();
 
+  // The target texture can still be sampled by a draw recorded in an earlier frame while the
+  // GPU is executing it, so it goes into the deferred-release graveyard instead of being
+  // destroyed here. CanvasImpl's disposal already does this; the window paths did not.
+  renderer::DeferredTextureRelease(gpu_.texture);
+
   GPUData empty_data;
   std::swap(gpu_, empty_data);
+}
+
+// TEMPORARY class-skip switch. Marker: URGE_SKIPDRAW
+//
+// The one-frame loss was measured to be a large region getting *brighter*, and the pipeline tags put
+// that region on the basic/window-bitmap layer rather than on the tilemap - so the victim is some
+// drawable of one of these classes and not the map at all. Skipping a whole class one at a time and
+// looking at the screen says which class owns the room picture and which owns the dark overlay, far
+// more reliably than an opaque tag does (a tag shows coverage, a skip shows visibility).
+// 0 skips the class, 1 restores it.
+static bool SkipDrawEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_skipped = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/skip_window2.txt",
+        "r");
+    if (file) {
+      int32_t value = 1;
+      if (fscanf(file, "%d", &value) == 1)
+        s_skipped = value == 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/skip_window2.txt");
+    }
+  }
+  return s_skipped;
 }
 
 void Window2Impl::DrawableNodeHandlerInternal(
@@ -438,6 +481,7 @@ void Window2Impl::DrawableNodeHandlerInternal(
     GPUCompositeWindowQuadsInternal(params->context, contents_agent,
                                     windowskin_agent, padding_rect);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
     GPURenderWindowQuadsInternal(params->context, params->world_binding,
                                  contents_agent, windowskin_agent, padding_rect,
                                  params->scissors);
@@ -464,11 +508,34 @@ void Window2Impl::GPUCompositeWindowQuadsInternal(
     BitmapTexture* contents,
     BitmapTexture* windowskin,
     const base::Rect& padding_rect) {
+  // Diagnostic bisection, see the note on AuditSkipWindowLayers() in window_impl.cc.
+  {
+    static int32_t s_poll = 0;
+    static bool s_skip = false;
+    if (++s_poll >= 30) {
+      s_poll = 0;
+      FILE* file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "nowindow.txt",
+          "r");
+      if (file) {
+        int32_t value = 0;
+        if (fscanf(file, "%d", &value) == 1)
+          s_skip = value != 0;
+        fclose(file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/nowindow.txt");
+      }
+    }
+    if (s_skip)
+      return;
+  }
+
   // Reset texture if size changed
   if (!gpu_.texture ||
       static_cast<int32_t>(gpu_.texture->GetDesc().Width) != bound_.width ||
       static_cast<int32_t>(gpu_.texture->GetDesc().Height) != bound_.height) {
-    gpu_.texture.Release();
+    renderer::DeferredTextureRelease(gpu_.texture);
     renderer::CreateTexture2D(
         **context()->render_device, &gpu_.texture, "window2.texture",
         bound_.Size(), Diligent::USAGE_DEFAULT,
@@ -863,6 +930,7 @@ void Window2Impl::GPUCompositeWindowQuadsInternal(
   // Setup render pass
   auto* render_target_view =
       gpu_.texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+  UrgeTagRtSwitch(8);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -949,6 +1017,48 @@ void Window2Impl::GPURenderWindowQuadsInternal(
     BitmapTexture* windowskin,
     const base::Rect& padding_rect,
     ScissorStack* scissor_stack) {
+  // TEMPORARY. Marker: URGE_W2DUP
+  // The two panels whose seam flickers were only ever counted on the WindowImpl path. This is the
+  // other possible owner, and it had no counter at all. Count every object once per frame; report
+  // any object drawn twice, and also report every 191x98 object so the owner class is settled.
+  {
+    static uint32_t s_frame = 0;
+    static std::unordered_map<const void*, int32_t> s_counts;
+    const uint32_t frame_count = context()->sprite_batcher->FrameCount();
+    if (frame_count != s_frame) {
+      s_frame = frame_count;
+      s_counts.clear();
+    }
+    const int32_t draws = ++s_counts[this];
+    if (draws >= 2 || (bound_.width == 191 && bound_.height == 98))
+      LOG(INFO) << "[W2Dup] f=" << frame_count << " win=" << static_cast<const void*>(this)
+                << " bound=" << bound_.width << "x" << bound_.height
+                << " draws=" << draws;
+  }
+  // Diagnosis, see the note in window_impl.cc: the composite stage is skipped as well, but
+  // the draw has to be blocked too or an earlier frame's quads would still reach it.
+  {
+    static int32_t s_poll = 0;
+    static bool s_skip = false;
+    if (++s_poll >= 30) {
+      s_poll = 0;
+      FILE* file = fopen(
+          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+          "nowindow.txt",
+          "r");
+      if (file) {
+        int32_t value = 0;
+        if (fscanf(file, "%d", &value) == 1)
+          s_skip = value != 0;
+        fclose(file);
+        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+               "urge_debug/nowindow.txt");
+      }
+    }
+    if (s_skip)
+      return;
+  }
+
   auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
   // Setup shader binding

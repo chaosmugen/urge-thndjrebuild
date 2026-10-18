@@ -10,6 +10,39 @@
 
 #include <cstdio>
 #include <string>
+// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+extern "C" bool UrgeDiagEnabled();
+
+// TEMPORARY, see sprite_batch.cc. Marker: URGE_SPRREDRAW
+extern "C" bool UrgeSpriteRedrawEnabled();
+extern "C" bool UrgeSpriteRedrawBreakEnabled();
+extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
+
+// TEMPORARY A/B switch, see PipelineCollection::sprite_nodepth. Marker: URGE_SPRNODEPTH
+//
+// 1 uses the sprite pipelines with the depth test off; 0 (the default) keeps the test on.
+static bool SpriteNoDepthEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_enabled = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "sprnodepth.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_enabled = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/sprnodepth.txt");
+      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+      LOG(INFO) << "[SprNoDepth] enabled=" << s_enabled;
+    }
+  }
+  return s_enabled;
+}
 
 namespace content {
 
@@ -431,6 +464,34 @@ void SpriteImpl::OnObjectDisposed() {
   std::swap(gpu_, empty_data);
 }
 
+// TEMPORARY class-skip switch. Marker: URGE_SKIPDRAW
+//
+// The one-frame loss was measured to be a large region getting *brighter*, and the pipeline tags put
+// that region on the basic/window-bitmap layer rather than on the tilemap - so the victim is some
+// drawable of one of these classes and not the map at all. Skipping a whole class one at a time and
+// looking at the screen says which class owns the room picture and which owns the dark overlay, far
+// more reliably than an opaque tag does (a tag shows coverage, a skip shows visibility).
+// 0 skips the class, 1 restores it.
+static bool SkipDrawEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_skipped = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/skip_sprite.txt",
+        "r");
+    if (file) {
+      int32_t value = 1;
+      if (fscanf(file, "%d", &value) == 1)
+        s_skipped = value == 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/skip_sprite.txt");
+    }
+  }
+  return s_skipped;
+}
+
 void SpriteImpl::DrawableNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
@@ -473,12 +534,23 @@ void SpriteImpl::DrawableNodeHandlerInternal(
     BitmapTexture* next_texture =
         GetOtherRenderBatchableTextureInternal(next_sprite);
 
+    // A queued batch is drawn with a single world transform, so a node of another
+    // render level (the screen versus a nested viewport) must not join it: emit
+    // what is queued right here - with the transform and texture it was built for -
+    // and let this node start a fresh batch. Emitting it now, rather than leaving
+    // it for a later node, is what keeps every level's sprites in their own render
+    // target and coordinate space without ever dropping a sprite.
+    context()->sprite_batcher->SetBatchWorld(params->world_binding);
+    context()->sprite_batcher->SetBatchBlend(blend_type_);
+    context()->sprite_batcher->AuditNodeEnqueued();
+
     GPUUpdateBatchSpriteInternal(params->context, current_texture, next_texture,
                                  src_rect);
 
     wave_.dirty = false;
     src_rect_dirty_ = false;
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
+    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
     GPUOnSpriteRenderingInternal(params->context, params->world_binding,
                                  current_texture);
   }
@@ -584,6 +656,11 @@ void SpriteImpl::GPUUpdateBatchSpriteInternal(
                                     texture->size.Recast<float>());
   }
 
+  // Batched path: the batcher owns the queue. A run starts whenever the texture
+  // changes and every run is emitted by the batcher at the end of the render pass
+  // (SpriteBatch::FlushPass). Drawing is deliberately not tied to this node: the
+  // drawable list is re-linked while a frame runs, so a node that enqueues can be
+  // gone by the time draws are issued - which used to drop its bitmaps for a frame.
   // Start a batch if no context
   if (!context()->sprite_batcher->GetCurrentTexture())
     context()->sprite_batcher->BeginBatch(texture);
@@ -625,8 +702,12 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
     BitmapTexture* texture) {
   if (gpu_.instance_count) {
     // Batch draw
+    // TEMPORARY, see SpriteNoDepthEnabledInternal. Marker: URGE_SPRNODEPTH
     auto* pipeline =
-        context()->render.pipeline_states->sprite[blend_type_].RawPtr();
+        (SpriteNoDepthEnabledInternal()
+             ? context()->render.pipeline_states->sprite_nodepth[blend_type_]
+             : context()->render.pipeline_states->sprite[blend_type_])
+            .RawPtr();
 
     // Determine batch mode
     const bool enable_batch = context()->sprite_batcher->IsBatchEnabled();
@@ -662,19 +743,78 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
 
     // Execute render command
     if (enable_batch) {
+      // TEMPORARY A/B. Marker: URGE_RECOMMIT
+      // One frame in a few thousand draws this sprite with the *previous* texture: the region shows
+      // another artwork that exists elsewhere in the frame, for exactly one frame, while every
+      // CPU-side value is identical. That is what a stale descriptor looks like - the binding was
+      // updated, the draw did not see it. Committing the same resources again right before the draw
+      // is idempotent (no second blend, no visual change), so it is safe to A/B.
+      render_context->CommitShaderResources(
+          *context()->sprite_batcher->GetShaderBinding(),
+          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
       Diligent::DrawIndexedAttribs draw_indexed_attribs;
       draw_indexed_attribs.NumIndices = 6 * gpu_.instance_count;
       draw_indexed_attribs.IndexType =
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
       render_context->DrawIndexed(draw_indexed_attribs);
+      // See UrgeSpriteRedrawEnabled: draw the same run again in a render pass of its own, so a lost
+      // write in one pass is covered by the other. Marker: URGE_SPRREDRAW
+      if (UrgeSpriteRedrawEnabled()) {
+        if (UrgeSpriteRedrawBreakEnabled())
+          UrgeForcePassBoundary(render_context);
+        render_context->DrawIndexed(draw_indexed_attribs);
+      }
+
+      // Temporary: identity of the run this node is drawing. A frame that shows another
+      // bitmap's content has a run whose texture name or size differs from its
+      // neighbours', and this names it.
+      if (context()->sprite_batcher->RunFpEnabled())
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[RunFp] f=" << context()->sprite_batcher->FrameCount()
+                  << " src=node st=" << gpu_.instance_offset
+                  << " n=" << gpu_.instance_count << " bl=" << blend_type_
+                  << " t=" << static_cast<const void*>(texture)
+                  << " name=" << texture->name << " size=" << texture->size.x << "x"
+                  << texture->size.y << " srv="
+                  << static_cast<const void*>(texture->shader_resource_view.RawPtr())
+                  << " p=" << static_cast<const void*>(
+                         context()->sprite_batcher->GetUniformBinding())
+                  // The world buffer is the one draw input the fingerprint above does not
+                  // carry. A frame that draws with another level's transform shows the same
+                  // texture, the same run and the same size, and still lands somewhere else.
+                  << " w=" << static_cast<const void*>(world_binding);
+
+      if (!texture->shader_resource_view)
+        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
+        LOG(INFO) << "[BatchAudit] node draw with no shader resource view";
+
+      // This run is on screen now: FlushPass only emits runs that no node drew.
+      context()->sprite_batcher->MarkEmitted(gpu_.instance_offset,
+                                             gpu_.instance_count);
     } else {
+      // TEMPORARY A/B. Marker: URGE_RECOMMIT
+      // One frame in a few thousand draws this sprite with the *previous* texture: the region shows
+      // another artwork that exists elsewhere in the frame, for exactly one frame, while every
+      // CPU-side value is identical. That is what a stale descriptor looks like - the binding was
+      // updated, the draw did not see it. Committing the same resources again right before the draw
+      // is idempotent (no second blend, no visual change), so it is safe to A/B.
+      render_context->CommitShaderResources(
+          *context()->sprite_batcher->GetShaderBinding(),
+          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
       Diligent::DrawIndexedAttribs draw_indexed_attribs;
       draw_indexed_attribs.NumIndices = 6;
       draw_indexed_attribs.IndexType =
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
       render_context->DrawIndexed(draw_indexed_attribs);
+      // See UrgeSpriteRedrawEnabled: draw the same run again in a render pass of its own, so a lost
+      // write in one pass is covered by the other. Marker: URGE_SPRREDRAW
+      if (UrgeSpriteRedrawEnabled()) {
+        if (UrgeSpriteRedrawBreakEnabled())
+          UrgeForcePassBoundary(render_context);
+        render_context->DrawIndexed(draw_indexed_attribs);
+      }
     }
   }
 }

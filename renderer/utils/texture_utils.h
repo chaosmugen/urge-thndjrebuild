@@ -5,8 +5,11 @@
 #ifndef RENDERER_UTILS_TEXTURE_UTILS_H_
 #define RENDERER_UTILS_TEXTURE_UTILS_H_
 
+#include <type_traits>
+
 #include "SDL3/SDL_surface.h"
 
+#include "Graphics/GraphicsEngine/interface/DeviceObject.h"
 #include "Graphics/GraphicsEngine/interface/RenderDevice.h"
 #include "Graphics/GraphicsEngine/interface/Texture.h"
 
@@ -31,6 +34,50 @@ void SetVulkanBackend(bool vulkan);
 // while, which keeps it out of play entirely - including battle animations,
 // which blit heavily but still present every frame.
 void ConsiderLoadDrain();
+
+// Deferred release, and the leading explanation for the one-frame region loss.
+//
+// A texture that the game drops while draws recorded in earlier frames may still be
+// sampling it must not be destroyed on the spot. On Vulkan the device hands a destroyed
+// texture's memory to the next allocation, so one frame paints a piece of some other
+// image over a region - which is exactly the recorded shape of the defect: one frame, one
+// region, byte-identical again on the next, only on Vulkan, with every CPU-side value and
+// every texture readback correct. GL defers the deletion itself until the object can no
+// longer be in use, which is why the same build never loses a region on GLES. It is the
+// release-side counterpart of the frame sets (SpriteBatch::FrameSetIndex) that keep the CPU
+// from overwriting buffers still in flight, and like them it is not a synchronisation: a
+// drain gives the CPU a moment of rest and the next frame races ahead again, which is why
+// every drain this project tried - six positions, on both device contexts - measured
+// nothing at all in real play.
+//
+// DeferredTextureRelease takes the caller's reference into a graveyard that is emptied
+// kDeferredReleaseFrames frames later (see AdvanceDeferredRelease), so the object outlives
+// every draw that could still be reading it. urge_debug/texring.txt = 0 turns it off.
+//
+// The graveyard holds IDeviceObject, so the same ring covers every resource whose memory the
+// device recycles on the spot: textures, the views hanging off them, and buffers. Views and
+// buffers matter for the same reason the textures do - a descriptor still in flight that names
+// a destroyed image view, or a draw still reading a vertex buffer that was released and
+// replaced, is the same "somebody else's object" hazard one level up.
+constexpr int32_t kDeferredReleaseFrames = 8;
+void DeferredReleaseObject(Diligent::IDeviceObject* object);
+void AdvanceDeferredRelease();
+bool DeferredReleaseEnabled();
+
+// Transfers the caller's reference into the graveyard - the caller's pointer ends up empty -
+// or releases it at once when the ring is switched off. Takes any Diligent GPU object.
+template <typename ObjectType>
+void DeferredTextureRelease(Diligent::RefCntAutoPtr<ObjectType>& object) {
+  static_assert(std::is_base_of<Diligent::IDeviceObject, ObjectType>::value,
+                "the deferred release ring only takes Diligent GPU objects");
+  if (!object)
+    return;
+  if (!DeferredReleaseEnabled()) {
+    object.Release();
+    return;
+  }
+  DeferredReleaseObject(object.Detach());
+}
 
 // Called after a frame reaches the screen. A load is a single very long script
 // frame, so nothing is presented for its whole duration, while normal play

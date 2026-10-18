@@ -26,6 +26,12 @@ class RenderScreenImpl : public Graphics, public EngineObject {
  public:
   struct GPUData {
     RRefPtr<Diligent::ITexture> screen_buffer;
+    // The screen target rendered on the PREVIOUS frame. The composite samples this one, so
+    // no draw ever reads a buffer the current frame is writing. The measured failure is a
+    // frame that mixes two frames - the top 78% of the screen from one, the bottom from
+    // another, and byte-identical again on the next frame, three times in twelve minutes -
+    // which is what compositing a target that is still being rendered looks like.
+    RRefPtr<Diligent::ITexture> screen_buffer_prev;
     RRefPtr<Diligent::ITexture> frozen_buffer;
     RRefPtr<Diligent::ITexture> transition_buffer;
 
@@ -35,6 +41,9 @@ class RenderScreenImpl : public Graphics, public EngineObject {
 
     RRefPtr<Diligent::IBuffer> root_transform;
     RRefPtr<Diligent::IBuffer> world_transform;
+    // The values that were uploaded into |world_transform|, kept because a draw that carries its
+    // parameters in the same constant buffer as its transform has to write that buffer itself.
+    renderer::WorldTransform world_transform_cpu = {};
 
     renderer::QuadBatch effect_quads;
     renderer::Binding_Color effect_binding;
@@ -145,6 +154,12 @@ class RenderScreenImpl : public Graphics, public EngineObject {
                                        Diligent::ITexture* render_target,
                                        Diligent::ITexture* depth_stencil);
   void GPUFrameEndRenderPassInternal(Diligent::IDeviceContext* render_context);
+
+  // Emits the still queued sprite batch, with the transform, texture and blend mode
+  // it was built with. Called at the end of every render pass (the screen's and each
+  // viewport's, which reuses this helper) so that no queue survives into a pass
+  // with another render target or another level's transform.
+  void FlushSpriteQueueInternal(Diligent::IDeviceContext* render_context);
   void GPURenderAlphaTransitionFrameInternal(
       Diligent::IDeviceContext* render_context,
       float progress);

@@ -4,6 +4,9 @@
 
 #include "renderer/utils/texture_utils.h"
 
+#include <deque>
+#include <utility>
+
 #include "SDL3/SDL_timer.h"
 
 #include "Graphics/GraphicsAccessories/interface/GraphicsAccessories.hpp"
@@ -16,6 +19,13 @@ namespace {
 Diligent::IDeviceContext* g_drain_context = nullptr;
 bool g_vulkan_backend = false;
 uint64_t g_last_present_ms = 0;
+
+// See DeferredTextureRelease(): the references parked by it and the frame they belong to.
+// IDeviceObject is the common base of every resource the ring covers (textures, texture views,
+// buffers).
+std::deque<std::pair<uint64_t, Diligent::RefCntAutoPtr<Diligent::IDeviceObject>>>
+    g_graveyard;
+uint64_t g_release_frame = 0;
 
 }  // namespace
 
@@ -31,6 +41,48 @@ void NotifyFramePresented() {
   // A frame reached the screen: it re-arms the quiet period below. Play presents
   // constantly (battle animations included), so the drain never engages there.
   g_last_present_ms = SDL_GetTicks();
+}
+
+bool DeferredReleaseEnabled() {
+  // See DeferredTextureRelease() in the header.
+  static int32_t s_ring_poll = 0;
+  // Unverified for the loss, so off by default; texring.txt = 1 turns it on. Marker: URGE_DEFAULTS
+  static bool s_ring_on = false;
+  if (++s_ring_poll >= 30) {
+    s_ring_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "texring.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_ring_on = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/texring.txt");
+    }
+  }
+  return s_ring_on;
+}
+
+void AdvanceDeferredRelease() {
+  // One call per frame; this is the clock the graveyard is measured against.
+  ++g_release_frame;
+  while (!g_graveyard.empty() &&
+         g_graveyard.front().first + kDeferredReleaseFrames <= g_release_frame)
+    g_graveyard.pop_front();
+}
+
+void DeferredReleaseObject(Diligent::IDeviceObject* object) {
+  if (!object)
+    return;
+
+  // The caller detached its reference, so it is handed over as-is: no AddRef, the graveyard
+  // owns it and drops it - at the latest - when it is popped after kDeferredReleaseFrames.
+  g_graveyard.emplace_back(g_release_frame,
+                           Diligent::RefCntAutoPtr<Diligent::IDeviceObject>());
+  g_graveyard.back().second.Attach(object);
 }
 
 void ConsiderLoadDrain() {
@@ -81,12 +133,18 @@ void CreateTexture2D(Diligent::IRenderDevice* device,
   // unsupported path is taken silently, which is exactly what we do not want
   // on a backend this strict. GL tolerates it, which is why this only ever
   // showed up on Vulkan.
+  //
+  // Readback textures must not be created with initial content either, and for
+  // the same reason the check exists: the data has nowhere to go. The Vulkan
+  // backend checks it ("Readback textures should not be initialized with data",
+  // TextureVkImpl.cpp) and the engine's own probe textures - the CellProbe
+  // staging target is one - are USAGE_STAGING + CPU_ACCESS_READ. Under
+  // DILIGENT_DEBUG that check is VERIFY, which raises SIGTRAP and kills the
+  // process on the first presented frame; the zero fill below is for render
+  // targets and for textures that are sampled, not for a destination that only
+  // ever receives copies.
   const bool is_depth_stencil =
       (bind_flags & Diligent::BIND_DEPTH_STENCIL) != 0;
-  // Readback destinations must not be created with initial content either: passing a zero
-  // fill makes the driver allocate and copy it, which on this path aborts the process on the
-  // first presented frame. The fill below is for render targets and for textures that are
-  // sampled - not for a texture that only ever receives copies.
   const bool is_readback =
       (access & Diligent::CPU_ACCESS_READ) != 0 ||
       usage == Diligent::USAGE_STAGING;

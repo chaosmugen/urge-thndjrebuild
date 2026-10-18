@@ -13,6 +13,7 @@
 #include "base/containers/linked_list.h"
 #include "base/math/rectangle.h"
 #include "renderer/device/render_device.h"
+#include "renderer/layout/uniform_layout.h"
 #include "renderer/resource/render_buffer.h"
 
 namespace content {
@@ -85,9 +86,21 @@ struct ViewportInfo {
 
   // Origin attribute of current viewport
   base::Vec2i origin;
+
+  // The owning viewport's visibility. A viewport keeps its visibility on its own node and never
+  // passed it to the nodes inside it, so hiding a viewport left everything in it being drawn; the
+  // walk checks this so that a drawable is drawn only when its viewport is visible too.
+  bool visible = true;
 };
 
 // Stacked scissor state manager
+// TEMPORARY: the rectangle currently programmed, so a draw site can log what it ran under.
+// Marker: URGE_SCISSOR_AUDIT. Written by ScissorStack::SetScissor, read by the tilemap's draws:
+// the map viewport's rectangle is constant for a whole session, so a frame in which the value at
+// the tilemap's draw differs is exactly the "stale rectangle" this is looking for, and the log
+// stays silent otherwise.
+extern int32_t g_scissor_current[4];
+
 class ScissorStack {
  public:
   ScissorStack(Diligent::IDeviceContext* context, const base::Rect& first);
@@ -171,6 +184,16 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
   // Register the main executer for current drawable node's host
   void RegisterEventHandler(const NotificationHandler& handler);
 
+  // TEMPORARY stable tag for the order audit. Marker: URGE_ORDER_AUDIT
+  //
+  // A node cannot be identified across frames by its pointer or its sort key: the tilemap destroys
+  // and recreates its above layers every frame and re-sets their keys, so both churn. The host of
+  // a node sets this once at creation from something that survives - the tilemap tags its ground
+  // layer and each above layer by index - and the audit digests the sequence of tags together with
+  // where they were visited. Zero means "not tagged" and is skipped.
+  void SetDebugTag(int32_t tag) { debug_tag_ = tag; }
+  int32_t GetDebugTag() const { return debug_tag_; }
+
   // Tone-exempt mark: explicitly marked drawables (map lights) are rendered
   // after the viewport tone pass so they are not tinted by the viewport tone.
   // Ordinary additive/subtractive content (battle state animations, fog,
@@ -238,6 +261,7 @@ class DrawableNode final : public base::LinkNode<DrawableNode> {
   bool tone_exempt_ = false;
 
   SortKey key_;
+  int32_t debug_tag_ = 0;
   bool visible_;
 
   std::size_t batch_id_;
