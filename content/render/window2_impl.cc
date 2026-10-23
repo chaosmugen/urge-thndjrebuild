@@ -10,8 +10,6 @@
 #include "content/render/tilequad.h"
 #include "renderer/utils/texture_utils.h"
 
-// TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
-extern "C" void UrgeTagRtSwitch(int32_t index);
 
 namespace content {
 
@@ -930,7 +928,6 @@ void Window2Impl::GPUCompositeWindowQuadsInternal(
   // Setup render pass
   auto* render_target_view =
       gpu_.texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-  UrgeTagRtSwitch(8);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

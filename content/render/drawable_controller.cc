@@ -137,8 +137,6 @@ static int32_t g_urge_probe_frame = 0;
 // How many nodes each tone pass actually drew. The compass in the corner changes colour for one
 // frame now and then (110,70,3 <-> 181,133,48) with every submitted batch identical, which is what
 // a tone pass applied a different number of times looks like; these counters make that visible.
-int32_t g_urge_pass0_drawn = 0;
-int32_t g_urge_pass1_drawn = 0;
 
 // True for the nodes this investigation follows: the two stacked panels' background (150) and
 // contents (152) nodes. Their contents node is missing from the list on a good share of frames,
@@ -485,10 +483,6 @@ void DrawNodeController::BroadCastNotification(
                 << " calling=" << (visible ? 1 : 0);
     if (visible) {
       node->handler_.Run(nid, params);
-      if (blend_filter == 0)
-        ++g_urge_pass0_drawn;
-      else if (blend_filter == 1)
-        ++g_urge_pass1_drawn;
     }
   }
 }

@@ -74,8 +74,6 @@ static bool DirectSwapEnabledInternal() {
 // Defined further down. Marker: URGE_DIAG_GATE
 extern "C" bool UrgeDiagEnabled();
 
-// TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
-extern "C" void UrgeTagRtSwitch(int32_t index);
 
 // TEMPORARY offscreen-then-copy experiment. Marker: URGE_OFFSCREEN
 //
@@ -1895,7 +1893,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   // Prepare for rendering
   float clear_color[] = {0, 0, 0, 1};
   URGE_GPU_AUDIT("present:before-setrt", true);
-  UrgeTagRtSwitch(0);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -2410,43 +2407,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   URGE_GPU_AUDIT("present:after-present", true);
 }
 
-// TEMPORARY pass-boundary audit. Marker: URGE_PASS_AUDIT
-//
-// See VulkanUtilities/CommandBuffer.hpp: the counter lives in the Vulkan command buffer and is
-// printed here once per frame, but only when the count changes - a steady frame stays silent.
-extern "C" int g_urge_pass_breaks[10];
-extern "C" int g_urge_begin_dyn;
-extern "C" int g_urge_begin_classic;
-// TEMPORARY, see device_context_impl.cc. Marker: URGE_RT_AUDIT
-extern "C" int g_urge_rt_calls;
-extern "C" int g_urge_rt_same;
-// TEMPORARY render-target tagging. Marker: URGE_RT_TAG
-//
-// [PassAudit] shows 19 to 34 render-scope boundaries per frame, all of them target changes; the
-// canvas only accounts for three to five of those, because it binds its three targets in groups and
-// Diligent does not end a scope when the target is unchanged. The remainder therefore comes from the
-// other render code - the screen passes, the viewport effect passes and the window layer - and this
-// tags each of those call sites so the per-frame counts can be attributed. Sites that only differ in
-// configuration (same colour target, different depth or load op) are the mergeable ones.
-extern "C" int g_urge_rt_tags[10] = {};
-extern "C" void UrgeTagRtSwitch(int32_t index) {
-  if (index >= 0 && index < 10)
-    ++g_urge_rt_tags[index];
-}
-
-// TEMPORARY, see DeviceContextVkImpl.cpp. Marker: URGE_FB_AUDIT
-extern "C" int g_urge_fb_changes;
-extern "C" int g_urge_fb_seen_count;
-extern "C" int g_urge_fb_to_null;
-extern "C" int g_urge_fb_to_other;
-extern "C" int g_urge_entry_setrt;
-extern "C" int g_urge_entry_clearcolor;
-extern "C" int g_urge_entry_cleardepth;
-extern "C" int g_urge_scope_merge_skip;
-extern "C" int g_urge_end_guard;
-extern "C" int g_urge_end_member;
-extern "C" int g_urge_commit_calls;
-
 // Master switch for the diagnostic output. Marker: URGE_DIAG_GATE
 //
 // Every audit, probe and counter print in this tree exists to investigate the one-frame loss, not to
@@ -2487,109 +2447,6 @@ void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::ITexture* render_target,
     Diligent::ITexture* depth_stencil) {
-  // TEMPORARY pass-boundary audit, see g_urge_pass_breaks. Marker: URGE_PASS_AUDIT
-    // See UrgeDiagEnabled. Marker: URGE_DIAG_GATE
-    if (UrgeDiagEnabled())
-  {
-    static int32_t s_last_total[10] = {};
-    static int32_t s_last_delta[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    int32_t delta[10];
-    bool changed = false;
-    for (int32_t i = 0; i < 10; ++i) {
-      delta[i] = g_urge_pass_breaks[i] - s_last_total[i];
-      s_last_total[i] = g_urge_pass_breaks[i];
-      if (delta[i] != s_last_delta[i]) {
-        s_last_delta[i] = delta[i];
-        changed = true;
-      }
-    }
-    static int32_t s_last_rt[2] = {0, 0};
-    const int32_t rt_calls = g_urge_rt_calls - s_last_rt[0];
-    const int32_t rt_same = g_urge_rt_same - s_last_rt[1];
-    s_last_rt[0] = g_urge_rt_calls;
-    s_last_rt[1] = g_urge_rt_same;
-    // TEMPORARY per-site attribution, see UrgeTagRtSwitch. Marker: URGE_RT_TAG
-    {
-      static int32_t s_last_tags[10] = {};
-      int32_t tag_delta[10];
-      bool tag_changed = false;
-      for (int32_t i = 0; i < 10; ++i) {
-        tag_delta[i] = g_urge_rt_tags[i] - s_last_tags[i];
-        s_last_tags[i] = g_urge_rt_tags[i];
-        if (tag_delta[i] != 0)
-          tag_changed = true;
-      }
-      if (tag_changed) {
-        std::ostringstream tags;
-        for (int32_t i = 0; i < 10; ++i)
-          if (tag_delta[i] != 0)
-            tags << " site" << i << "=" << tag_delta[i];
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[PassAudit] target switches per frame:" << tags.str();
-      }
-    }
-    // TEMPORARY scope accounting, see g_urge_fb_changes. Marker: URGE_FB_AUDIT
-    static int32_t s_last_fb[2] = {0, 0};
-    const int32_t fb_changes = g_urge_fb_changes - s_last_fb[0];
-    const int32_t fb_distinct = g_urge_fb_seen_count;
-    s_last_fb[0] = g_urge_fb_changes;
-    s_last_fb[1] = g_urge_fb_seen_count;
-    g_urge_fb_seen_count = 0;  // per-frame set
-    static int32_t s_last_fb_split[2] = {0, 0};
-    const int32_t fb_to_null = g_urge_fb_to_null - s_last_fb_split[0];
-    const int32_t fb_to_other = g_urge_fb_to_other - s_last_fb_split[1];
-    s_last_fb_split[0] = g_urge_fb_to_null;
-    s_last_fb_split[1] = g_urge_fb_to_other;
-    static int32_t s_last_entry[3] = {0, 0, 0};
-    const int32_t e_setrt = g_urge_entry_setrt - s_last_entry[0];
-    const int32_t e_clear = g_urge_entry_clearcolor - s_last_entry[1];
-    const int32_t e_cleard = g_urge_entry_cleardepth - s_last_entry[2];
-    s_last_entry[0] = g_urge_entry_setrt;
-    s_last_entry[1] = g_urge_entry_clearcolor;
-    s_last_entry[2] = g_urge_entry_cleardepth;
-    static int32_t s_last_end[3] = {0, 0, 0};
-    const int32_t end_guard = g_urge_end_guard - s_last_end[0];
-    const int32_t end_member = g_urge_end_member - s_last_end[1];
-    const int32_t commit_calls = g_urge_commit_calls - s_last_end[2];
-    s_last_end[0] = g_urge_end_guard;
-    s_last_end[1] = g_urge_end_member;
-    s_last_end[2] = g_urge_commit_calls;
-    if (end_guard != 0 || end_member != 0 || commit_calls != 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassAudit] ends per frame: guard=" << end_guard
-                << " member=" << end_member << " commits=" << commit_calls;
-    static int32_t s_last_skip = 0;
-    const int32_t e_skip = g_urge_scope_merge_skip - s_last_skip;
-    s_last_skip = g_urge_scope_merge_skip;
-    if (e_setrt != 0 || e_clear != 0 || e_cleard != 0 || e_skip != 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassAudit] entries per frame: SetRenderTargets=" << e_setrt
-                << " ClearRenderTarget=" << e_clear << " ClearDepthStencil=" << e_cleard
-                << " scopeMergeSkipped=" << e_skip;
-    static int32_t s_last_scope_kind[2] = {0, 0};
-    const int32_t scope_dyn = g_urge_begin_dyn - s_last_scope_kind[0];
-    const int32_t scope_classic = g_urge_begin_classic - s_last_scope_kind[1];
-    s_last_scope_kind[0] = g_urge_begin_dyn;
-    s_last_scope_kind[1] = g_urge_begin_classic;
-    if (scope_dyn != 0 || scope_classic != 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassAudit] scopes opened per frame: dynamicRendering=" << scope_dyn
-                << " classicRenderPass=" << scope_classic;
-    if (fb_changes != 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassAudit] scope accounting per frame: changes=" << fb_changes
-                << " distinct scopes=" << fb_distinct << " -> unbind=" << fb_to_null
-                << " -> other target=" << fb_to_other;
-    if (changed || rt_calls != 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassAudit] boundaries per frame: buf=" << delta[0]
-                << " buf2img=" << delta[1] << " img=" << delta[2]
-                << " blit=" << delta[3] << " other=" << delta[4]
-                << " target=" << delta[5] << " clearColor=" << delta[6]
-                << " clearDepth=" << delta[7] << " dispatch=" << delta[8]
-                << " otherCtx=" << delta[9] << " | rt calls=" << rt_calls
-                << " rt same-as-before=" << rt_same;
-  }
   // Setup screen effect params
   if (brightness_ < 255) {
     renderer::Quad effect_quad;
@@ -2635,7 +2492,6 @@ void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
         gpu_.screen_buffer_prev->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
     pass_depth_view = depth_stencil_view;
   }
-  UrgeTagRtSwitch(1);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &pass_target_view, pass_depth_view,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -2770,7 +2626,6 @@ void RenderScreenImpl::GPURenderAlphaTransitionFrameInternal(
   // Composite transition frame
   auto render_target_view =
       gpu_.screen_buffer->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-  UrgeTagRtSwitch(2);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -2833,7 +2688,6 @@ void RenderScreenImpl::GPURenderVagueTransitionFrameInternal(
   // Composite transition frame
   auto render_target_view =
       gpu_.screen_buffer->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-  UrgeTagRtSwitch(3);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

@@ -187,18 +187,6 @@ void DeviceContextImpl::SetScissorRects(
                            UINT32_MAX);
 }
 
-// TEMPORARY render-target audit. Marker: URGE_RT_AUDIT
-//
-// The Vulkan command buffer ends its render scope on every target change (30 a frame here), and on
-// this tiler that means storing and reloading every tile - the only remaining place the one-frame
-// region loss could come from. This counts the changes that go through this wrapper and, separately,
-// the ones that bind exactly what was already bound, which are pure waste and the first thing worth
-// removing. Logged per frame under [PassAudit].
-extern "C" int g_urge_rt_calls = 0;
-extern "C" int g_urge_rt_same = 0;
-static const void* s_urge_last_target = nullptr;
-static const void* s_urge_last_depth = nullptr;
-
 void DeviceContextImpl::SetRenderTargets(
     const std::vector<scoped_refptr<GPUTextureView>>& render_targets,
     scoped_refptr<GPUTextureView> depth_stencil,
@@ -215,17 +203,6 @@ void DeviceContextImpl::SetRenderTargets(
   auto* raw_depth_stencil = static_cast<TextureViewImpl*>(depth_stencil.get());
   auto* object_depth_stencil =
       raw_depth_stencil ? raw_depth_stencil->AsRawPtr() : nullptr;
-
-  // See g_urge_rt_calls. Marker: URGE_RT_AUDIT
-  {
-    const void* first_target = objects.empty() ? nullptr : objects[0];
-    ++g_urge_rt_calls;
-    if (first_target != nullptr && first_target == s_urge_last_target &&
-        object_depth_stencil == s_urge_last_depth)
-      ++g_urge_rt_same;
-    s_urge_last_target = first_target;
-    s_urge_last_depth = object_depth_stencil;
-  }
 
   object_->SetRenderTargets(
       objects.size(), objects.data(), object_depth_stencil,

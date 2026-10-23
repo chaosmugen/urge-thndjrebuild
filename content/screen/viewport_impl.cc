@@ -15,7 +15,6 @@
 extern "C" bool UrgeDiagEnabled();
 
 // TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
-extern "C" void UrgeTagRtSwitch(int32_t index);
 
 // See UrgeSetPassTarget: publishes the target of the pass this level is about to open, so a forced
 // pass boundary reopens the same one. Marker: URGE_FRAME_RTV
@@ -27,10 +26,6 @@ extern "C" void UrgePublishViewportRegion(int32_t x, int32_t y, int32_t w, int32
 
 namespace content {
 
-
-// Defined in content/render/drawable_controller.cc. Marker: URGE_TONE
-extern int32_t g_urge_pass0_drawn;
-extern int32_t g_urge_pass1_drawn;
 
 // static
 scoped_refptr<Viewport> Viewport::New(ExecutionContext* execution_context,
@@ -564,18 +559,12 @@ void ViewportImpl::DrawableNodeHandlerInternal(
         // broadcast so additive content blends exactly as before.
         controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
                                           &transient_params);
-        if (UrgeDiagEnabled()) {  // TEMPORARY gate. Marker: URGE_TONE
-          LOG(INFO) << "[Tone] f=" << context()->sprite_batcher->FrameCount()
-                    << " branch=single tone=" << tone.x << "," << tone.y << "," << tone.z << ","
-                    << tone.w;
-        }
       } else {
 
       // Pass 1: render tone-affected drawables (everything not explicitly
       // marked tone-exempt). The viewport tone/color effect is applied
       // afterwards, so explicitly marked lights drawn in pass 2 are not
       // tinted by it.
-      g_urge_pass0_drawn = 0;
       controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
                                         &transient_params,
                                         /*blend_filter=*/0);
@@ -588,21 +577,10 @@ void ViewportImpl::DrawableNodeHandlerInternal(
 
       // Pass 2: render tone-exempt drawables (explicitly marked lights) on
       // top of the toned base.
-      g_urge_pass1_drawn = 0;
       controller_.BroadCastNotification(DrawableNode::ON_RENDERING,
                                         &transient_params,
                                         /*blend_filter=*/1);
 
-      // TEMPORARY. Marker: URGE_TONE
-      // The tone this viewport applied, and how many nodes each pass drew. The compass changes
-      // colour for a single frame occasionally while everything submitted is identical, which is
-      // what one extra or one missing application of this looks like.
-      if (UrgeDiagEnabled()) {  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[Tone] f=" << context()->sprite_batcher->FrameCount()
-                  << " branch=two tone=" << tone.x << "," << tone.y << "," << tone.z << ","
-                  << tone.w << " light=" << transient_params.light_gain
-                  << " p0=" << g_urge_pass0_drawn << " p1=" << g_urge_pass1_drawn;
-      }
       }
 
       // Restore scissor region
@@ -627,20 +605,10 @@ void ViewportImpl::GPUCreateViewportAgent() {
 void ViewportImpl::GPUUpdateViewportTransform(
     Diligent::IDeviceContext* render_context,
     const base::Rect& region) {
-  // TEMPORARY. Marker: URGE_VPXFORM
-  // Three call sites write this one uniform, with regions derived from different things. If two of
-  // them disagree within a frame, or the order changes, everything drawn through the viewport moves
-  // by a fraction of a pixel from frame to frame - which is what makes text in the side panel
-  // shimmer. Recorded per frame so the three can be told apart.
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[VpTransform] f=" << context()->sprite_batcher->FrameCount()
-            << " region=" << region.x << "," << region.y << " " << region.width << "x"
-            << region.height
-            << " origin=" << origin_.x << "," << origin_.y
-            << " bound=" << controller_.CurrentViewport().bound.x << ","
-            << controller_.CurrentViewport().bound.y << " " << controller_.CurrentViewport().bound.width
-            << "x" << controller_.CurrentViewport().bound.height;
-
+  // See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
+  // The repair only redraws runs whose quad sticks out of this region, so the region has to be
+  // published on every update - without it the test has nothing to compare against and the repair
+  // silently never fires.
   UrgePublishViewportRegion(region.x, region.y, region.width, region.height);
 
   renderer::WorldTransform& world_matrix = gpu_.world_uniform_cpu;
@@ -823,7 +791,6 @@ void ViewportImpl::GPUApplyViewportEffect(
     draw_back_first_index = 6;
   } else {
     // Copy "screen" buffer desired region data to stage intermediate texture
-    UrgeTagRtSwitch(4);  // TEMPORARY, see render screen audit
     render_context->SetRenderTargets(
         0, nullptr, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
@@ -882,7 +849,6 @@ void ViewportImpl::GPUApplyViewportEffect(
   if (ViewportEffectKeepDepthInternal() && screen_depth_stencil)
     effect_depth_view =
         screen_depth_stencil->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
-  UrgeTagRtSwitch(5);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, effect_depth_view,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -959,7 +925,6 @@ void ViewportImpl::GPUApplyViewportEffect(
   Diligent::ITextureView* depth_stencil_view =
       screen_depth_stencil->GetDefaultView(
           Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
-  UrgeTagRtSwitch(6);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, depth_stencil_view,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -970,7 +935,6 @@ void ViewportImpl::GPUFrameBeginRenderPassInternal(
     Diligent::ITextureView* render_target_view,
     Diligent::ITextureView* depth_stencil_view,
     bool clear_target) {
-  UrgeTagRtSwitch(7);  // TEMPORARY, see render screen audit
   // See UrgeSetPassTarget: Viewport#render opens a pass on the bitmap it was given, and a forced
   // boundary inside it must reopen *that* bitmap - not the frame, which would put the viewport's
   // contents on the screen. Marker: URGE_FRAME_RTV

@@ -11,8 +11,6 @@
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 extern "C" bool UrgeDiagEnabled();
 
-// TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
-extern "C" void UrgeTagRtSwitch(int32_t index);
 
 namespace content {
 
@@ -311,7 +309,6 @@ void VideoDecoderImpl::GPURenderYUVInternal(
 
   // Setup render target
   float clear_color[] = {0, 0, 0, 0};
-  UrgeTagRtSwitch(9);  // TEMPORARY, see render screen audit
   render_context->SetRenderTargets(
       1, &render_target_view, nullptr,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
