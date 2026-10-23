@@ -751,99 +751,11 @@ static void AuditTilemapBindingInternal(const char* what, int32_t index,
 // submission is built or retired, moving the boundary should show it; if the loss follows the layer
 // regardless of where the boundaries fall, it does not. Costs a submit per layer, so this is an
 // experiment rather than something to ship.
-static bool TilemapFlushPerLayerEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmflush.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmflush.txt");
-    }
-  }
-  return s_enabled;
-}
-
 // TEMPORARY: pick the tilemap pipeline that does not blend. Marker: URGE_NOBLEND
 //
 // See PipelineSet::tilemap_noblend. If the region loss is the blend's write-back going missing, the
 // frame's destination content - the base layer - is what stays behind, which is what the probe sees.
 // Turning blending off turns the draw into a plain write, so the loss should have nowhere to hide.
-static bool TilemapNoBlendEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmblend.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmblend.txt");
-    }
-  }
-  return s_enabled;
-}
-
-static bool TilemapSplitDrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  // Deliberately off by default. Two A/B runs on the same session settled it: with the split off
-  // 12 events in 12.9 minutes, with it on 20 in the same span - no improvement, if anything the
-  // other way - so this is not an evasion for the one-frame loss and is not worth three extra
-  // draw calls per layer on every device. Kept as a switch so the result can be reproduced.
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmsplit4.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmsplit4.txt");
-    }
-  }
-  return s_enabled;
-}
-
-static bool TilemapDrawTwiceEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmdraw2.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmdraw2.txt");
-    }
-  }
-  return s_enabled;
-}
-
 // TEMPORARY: what rectangle the draw ran under. Marker: URGE_SCISSOR_AUDIT
 // See g_scissor_current in drawable_controller.h. The map viewport's rectangle is constant for a
 // session, so a frame in which the value seen here differs is the stale-scissor case - which would
@@ -1021,38 +933,8 @@ static bool ForcePassBoundaryInternal(Diligent::IDeviceContext* render_context,
 }
 
 static bool TilemapSecondPassEnabledInternal() {
-  static int32_t s_poll = 0;
-    // Uncertain fix, off by default: a second draw re-blends translucent content, so the
-  // picture can change, and the loss was still reported on the device. Reachable via its switch.
-  // Marker: URGE_DEFAULTS
-  static bool s_enabled = renderer::IsMaliGpu();  // TEMPORARY A/B, default on for Mali. Marker: URGE_DEFAULTS
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmsecondpass.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmsecondpass.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[SecondPass] enabled=" << s_enabled;
-    }
-  }
-  // Log the resolved value once, so the default (which needs no switch file on a Mali device) can be
-  // confirmed from the log rather than inferred from the pass count. Marker: URGE_SECONDPASS
-  static bool s_logged = false;
-  if (!s_logged) {
-    s_logged = true;
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[SecondPass] active=" << s_enabled
-              << " (default off; switch file overrides)";
-  }
-  return s_enabled;
+  // A second pass is needed on Mali (see the note in PipelineSet); other GPUs do not run it.
+  return renderer::IsMaliGpu();
 }
 
 void TilemapImpl::AboveNodeHandlerInternal(
@@ -1575,27 +1457,6 @@ void TilemapImpl::GPUMakeAtlasInternal(
 // urge_debug/tmuniring.txt, nonzero for on. See GPUData::batch_sets: with the ring on this
 // frame writes and reads its own batch and its own params buffer, so a draw can never read an
 // upload that belongs to another frame. Read about twice a second from every user below.
-static bool TilemapRingEnabledInternal() {
-  static int32_t s_tm_ring_poll = 0;
-  static bool s_tm_ring = false;
-  if (++s_tm_ring_poll >= 30) {
-    s_tm_ring_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmuniring.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_tm_ring = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmuniring.txt");
-    }
-  }
-  return s_tm_ring;
-}
-
 // urge_debug/tmforce.txt, 0 = off, see the use in GPUUpdateTilemapUniformInternal. The
 // one-frame ground loss draws an image that is byte-identical in every session, so the bad
 // input that frame reads instead of the right one is a constant; forcing one candidate
@@ -1673,13 +1534,7 @@ void TilemapImpl::GPUUploadTilesBatchInternal(
   }
 
   if (!total_quads.empty()) {
-    // Upload data - into this frame's own set when the ring is on, see GPUData::batch_sets.
-    if (TilemapRingEnabledInternal())
-      gpu_.batch_sets[context()->sprite_batcher->FrameSetIndex()].QueueWrite(
-          render_context, total_quads.data(), total_quads.size());
-    else
-      gpu_.batch.QueueWrite(render_context, total_quads.data(),
-                            total_quads.size());
+    gpu_.batch.QueueWrite(render_context, total_quads.data(), total_quads.size());
 
     // Allocate quad index
     context()->render.quad_index->Allocate(offset);
@@ -1748,10 +1603,6 @@ void TilemapImpl::GPUUpdateTilemapUniformInternal(
   // Candidate fix, see GPUData::batch_sets: with the ring on this frame's parameters go into
   // this frame's own buffer, picked by the same frame set the quads were uploaded to.
   Diligent::IBuffer* uniform_target = gpu_.uniform_buffer;
-  if (TilemapRingEnabledInternal() && gpu_.uniform_buffer_sets[0])
-    uniform_target =
-        gpu_.uniform_buffer_sets[context()->sprite_batcher->FrameSetIndex()]
-            .RawPtr();
   gpu_.uniform_in_use = uniform_target;
 
   // Temporary: one line per frame with the values the ground shader will read. A frame
@@ -1774,10 +1625,7 @@ void TilemapImpl::GPUUpdateTilemapUniformInternal(
               << gpu_.ground_draw_count << " set="
               << context()->sprite_batcher->FrameSetIndex() << " vbuf="
               << static_cast<const void*>(
-                     TilemapRingEnabledInternal()
-                         ? *gpu_.batch_sets[context()
-                                                ->sprite_batcher->FrameSetIndex()]
-                         : *gpu_.batch)
+*gpu_.batch)
               << " ubuf=" << static_cast<const void*>(uniform_target);
 
   render_context->UpdateBuffer(
@@ -1879,10 +1727,7 @@ void TilemapImpl::GPURenderGroundLayerInternal(
   }
 
   if (gpu_.ground_draw_count) {
-    auto* pipeline =
-          TilemapNoBlendEnabledInternal()
-              ? context()->render.pipeline_states->tilemap_noblend.RawPtr()
-              : context()->render.pipeline_states->tilemap.RawPtr();
+    auto* pipeline = context()->render.pipeline_states->tilemap.RawPtr();
 
     // Setup uniform params
     gpu_.shader_binding.u_transform->Set(world_binding);
@@ -1905,10 +1750,7 @@ void TilemapImpl::GPURenderGroundLayerInternal(
 
     // Apply vertex index, from this frame's own set when the ring is on (see
     // GPUData::batch_sets).
-    Diligent::IBuffer* const vertex_buffer =
-        TilemapRingEnabledInternal()
-            ? *gpu_.batch_sets[context()->sprite_batcher->FrameSetIndex()]
-            : *gpu_.batch;
+    Diligent::IBuffer* const vertex_buffer = *gpu_.batch;
     render_context->SetVertexBuffers(
         0, 1, &vertex_buffer, nullptr,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -1950,9 +1792,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     }
     render_context->DrawIndexed(draw_indexed_attribs);
 
-    // See TilemapDrawTwiceEnabledInternal(). Marker: URGE_DRAW2
-    if (TilemapDrawTwiceEnabledInternal())
-      render_context->DrawIndexed(draw_indexed_attribs);
   }
 }
 
@@ -1973,10 +1812,7 @@ void TilemapImpl::GPURenderAboveLayerInternal(
       for (int32_t i = 0; i < index; ++i)
         draw_offset += gpu_.above_draw_count[i];
 
-      auto* pipeline =
-          TilemapNoBlendEnabledInternal()
-              ? context()->render.pipeline_states->tilemap_noblend.RawPtr()
-              : context()->render.pipeline_states->tilemap.RawPtr();
+      auto* pipeline = context()->render.pipeline_states->tilemap.RawPtr();
 
       // See GPUData::above_binding: this draw owns its binding, and only falls back to the
       // one the ground draws through when urge_debug/tmsrbsplit.txt = 0.
@@ -2002,9 +1838,7 @@ void TilemapImpl::GPURenderAboveLayerInternal(
       // Apply vertex index, from this frame's own set when the ring is on (see
       // GPUData::batch_sets).
       Diligent::IBuffer* const vertex_buffer =
-          TilemapRingEnabledInternal()
-              ? *gpu_.batch_sets[context()->sprite_batcher->FrameSetIndex()]
-              : *gpu_.batch;
+*gpu_.batch;
       render_context->SetVertexBuffers(
           0, 1, &vertex_buffer, nullptr,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -2033,28 +1867,9 @@ void TilemapImpl::GPURenderAboveLayerInternal(
         sample.first_index = draw_indexed_attribs.FirstIndexLocation;
         AuditTilemapBindingInternal("above", index + 1, sample);
       }
-      if (TilemapSplitDrawEnabledInternal() && draw_count >= 4) {
-        // See TilemapSplitDrawEnabledInternal(). Marker: URGE_SPLIT4
-        const int32_t per = draw_count / 4;
-        for (int32_t part = 0; part < 4; ++part) {
-          const int32_t first = part * per;
-          const int32_t count = (part == 3) ? (draw_count - first) : per;
-          Diligent::DrawIndexedAttribs split_attribs = draw_indexed_attribs;
-          split_attribs.NumIndices = 6 * count;
-          split_attribs.FirstIndexLocation = draw_offset * 6 + 6 * first;
-          render_context->DrawIndexed(split_attribs);
-        }
-      } else {
-        render_context->DrawIndexed(draw_indexed_attribs);
-      }
+      render_context->DrawIndexed(draw_indexed_attribs);
 
-      // See TilemapDrawTwiceEnabledInternal(). Marker: URGE_DRAW2
-      if (TilemapDrawTwiceEnabledInternal())
-        render_context->DrawIndexed(draw_indexed_attribs);
 
-      // See TilemapFlushPerLayerEnabledInternal(). Marker: URGE_FLUSH
-      if (TilemapFlushPerLayerEnabledInternal())
-        render_context->Flush();
     }
   }
 }
