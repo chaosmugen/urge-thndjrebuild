@@ -38,196 +38,11 @@
 #include "renderer/utils/texture_utils.h"
 #include "renderer/device/gpu_driver.h"
 
-// TEMPORARY A/B. Marker: URGE_DIRECTSWAP
-//
-// Every repair that measured anything was aimed at the same shape: the frame is rendered into an
-// offscreen buffer which is then read - by the probe, by the effects, and by the step that puts it on
-// the screen. Drawing the affected layers a second time did not help, and neither did draining the
-// queues in six different places, which is what would be expected if the writes themselves were going
-// missing. This arm removes the shape instead: the frame is rendered straight into the swap chain
-// image, so it is read exactly once, by the presentation, and there is no earlier copy of it to be
-// one frame behind. Default off, so the two can be compared; the probe reads the offscreen buffer and
-// therefore says nothing while this is on - the comparison has to be made by eye.
-static bool DirectSwapEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "directswap.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/directswap.txt");
-      LOG(INFO) << "[DirectSwap] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
-}
-
-
 // Defined further down. Marker: URGE_DIAG_GATE
 extern "C" bool UrgeDiagEnabled();
 
 
 // TEMPORARY offscreen-then-copy experiment. Marker: URGE_OFFSCREEN
-//
-// The one-frame region loss is a rectangle of the map that the tilemap's draw does not cover, and
-// every input to that draw has been measured now and is correct - the parameters, the bindings, the
-// scissor rectangle, the node order, both matrices and the per-fragment clip position - while
-// redrawing it, splitting it, changing the swap chain length, the drains, and limiting the frames
-// in flight all left it untouched. What has not been varied is where the layers land: they are
-// drawn straight onto the shared screen target, twenty-odd above layers deep. This moves the frame's
-// rendering onto a dedicated target of the same size and format and copies the result into the
-// screen buffer at the end of the frame, so that target is no longer the one being layered into.
-static bool ScreenOffscreenEnabledInternal() {
-  static int32_t offscreen_poll = 0;
-  static bool offscreen_enabled = false;
-  if (++offscreen_poll >= 30) {
-    offscreen_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmoffscreen.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        offscreen_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmoffscreen.txt");
-    }
-  }
-  return offscreen_enabled;
-}
-
-static Diligent::ITexture*& ScreenOffscreenTextureRef() {
-  static Diligent::ITexture* texture = nullptr;
-  return texture;
-}
-
-static Diligent::ITexture*& ScreenOffscreenDepthRef() {
-  static Diligent::ITexture* depth = nullptr;
-  return depth;
-}
-
-// Kept even though the final arm renders into the engine's own second screen buffer instead: the
-// arms that used this helper are what established that the loss follows the target rather than the
-// pass configuration, and this is where a fifth arm would start. Marker: URGE_OFFSCREEN
-[[maybe_unused]] static Diligent::ITexture* ScreenOffscreenTargetInternal(
-    Diligent::IRenderDevice* device,
-    Diligent::ITexture* screen_target,
-    Diligent::ITexture* screen_depth) {
-  Diligent::ITexture*& offscreen = ScreenOffscreenTextureRef();
-  if (offscreen || !device || !screen_target)
-    return offscreen;
-  Diligent::TextureDesc offscreen_desc = screen_target->GetDesc();
-  offscreen_desc.Name = "screen.offscreen";
-  offscreen_desc.BindFlags =
-      Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE;
-  device->CreateTexture(offscreen_desc, nullptr, &offscreen);
-
-  // The first offscreen arm bound the screen's own depth-stencil to this colour target and lost a
-  // region on nearly every frame (303), and the second arm bound none at all and still lost on
-  // nearly every frame (226) - so the amplification is not the pairing. This arm gives the offscreen
-  // target a depth-stencil of its own, identical in size and format to the screen's, to find out
-  // whether a *matching* attachment is what keeps the loss down to the usual once a minute.
-  Diligent::ITexture*& offscreen_depth = ScreenOffscreenDepthRef();
-  if (!offscreen_depth && screen_depth) {
-    Diligent::TextureDesc depth_desc = screen_depth->GetDesc();
-    depth_desc.Name = "screen.offscreen.depth_stencil";
-    depth_desc.BindFlags = Diligent::BIND_DEPTH_STENCIL;
-    device->CreateTexture(depth_desc, nullptr, &offscreen_depth);
-  }
-  return offscreen;
-}
-
-static void ScreenOffscreenCopyInternal(Diligent::IDeviceContext* render_context,
-                                        Diligent::ITexture* source,
-                                        Diligent::ITexture* destination) {
-  if (!source || !destination || !render_context)
-    return;
-  Diligent::CopyTextureAttribs attribs;
-  attribs.pSrcTexture = source;
-  attribs.SrcTextureTransitionMode =
-      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-  attribs.pDstTexture = destination;
-  attribs.DstTextureTransitionMode =
-      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-  render_context->CopyTexture(attribs);
-}
-
-
-// TEMPORARY frame pacer. Marker: URGE_FRAMEPACE
-//
-// Limits how many frames can be in flight: a fence is signalled at the end of each frame and the
-// next frame waits for it before encoding, so the GPU is never reading frame N while the CPU is
-// writing frame N + 1. This is aimed at the one-frame region loss, whose rate moves with system
-// load and which arrives in bursts - the signature of a race - and which nothing on the input side
-// of the draw has touched: the parameters, the bindings, the scissor rectangle, the node order,
-// drawing the same geometry twice, splitting the range, the swap chain length and the drains were
-// all measured and none of them changed it. Strictest version first: at most one frame in flight.
-// If it removes the loss, relax to two frames and re-test before paying the cost.
-static bool FramePaceEnabledInternal() {
-  static int32_t pace_poll = 0;
-  static bool pace_enabled = false;
-  if (++pace_poll >= 30) {
-    pace_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmframepace.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        pace_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmframepace.txt");
-    }
-  }
-  return pace_enabled;
-}
-
-struct FramePaceState {
-  Diligent::IFence* fence = nullptr;
-  Diligent::Uint64 signaled = 0;
-};
-
-static FramePaceState& FramePaceStateRef() {
-  static FramePaceState state;
-  return state;
-}
-
-static void FramePaceWaitInternal(Diligent::IRenderDevice* device,
-                                  Diligent::IDeviceContext* immediate) {
-  FramePaceState& state = FramePaceStateRef();
-  if (!state.fence) {
-    Diligent::FenceDesc fence_desc;
-    fence_desc.Type = Diligent::FENCE_TYPE_GENERAL;
-    device->CreateFence(fence_desc, &state.fence);
-    return;
-  }
-  if (state.signaled == 0)
-    return;
-  // DeviceWaitForFence is immediate-context only, hence the explicit context here.
-  immediate->DeviceWaitForFence(state.fence, state.signaled);
-}
-
-static void FramePaceSignalInternal(Diligent::IDeviceContext* immediate) {
-  FramePaceState& state = FramePaceStateRef();
-  if (!state.fence)
-    return;
-  ++state.signaled;
-  immediate->EnqueueSignal(state.fence, state.signaled);
-}
-
-
 namespace content {
 
 
@@ -394,40 +209,16 @@ void RenderScreenImpl::Update(ExceptionState& exception_state) {
   if (!frozen_render && !need_skip_frame) {
     // Render a frame and push into render queue
     // This function only encodes the render commands
-    if (FramePaceEnabledInternal() && context()->render_device &&
-        context()->primary_render_context)
-      FramePaceWaitInternal(**context()->render_device,
-                            context()->primary_render_context);
-    // See DirectSwapEnabledInternal. Marker: URGE_DIRECTSWAP
-    Diligent::ITexture* frame_target = gpu_.screen_buffer;
-    if (DirectSwapEnabledInternal() && context()->render_device) {
-      auto* swapchain = context()->render_device->GetSwapChain();
-      Diligent::ITextureView* back_view =
-          swapchain ? swapchain->GetCurrentBackBufferRTV() : nullptr;
-      Diligent::ITexture* back_texture = back_view ? back_view->GetTexture() : nullptr;
-      if (back_texture && back_texture->GetDesc().Width > 0)
-        frame_target = back_texture;
-    }
-    RenderFrameInternal(frame_target, gpu_.screen_depth_stencil);
+    RenderFrameInternal(gpu_.screen_buffer, gpu_.screen_depth_stencil);
   }
 
   if (need_skip_frame)
     limiter_.Reset();
 
-  // See ScreenOffscreenTargetInternal: bring the offscreen frame back before it is
-  // presented. Marker: URGE_OFFSCREEN
-  if (ScreenOffscreenEnabledInternal() && context()->primary_render_context &&
-      gpu_.screen_buffer_prev)
-    ScreenOffscreenCopyInternal(context()->primary_render_context,
-                                gpu_.screen_buffer_prev, gpu_.screen_buffer);
-
   // Process frame delay
   // This calling will yield to event coroutine and present
   FrameProcessInternal(gpu_.screen_buffer);
 
-  // See FramePaceWaitInternal. Marker: URGE_FRAMEPACE
-  if (FramePaceEnabledInternal() && context()->primary_render_context)
-    FramePaceSignalInternal(context()->primary_render_context);
 
 #if defined(OS_ANDROID)
   if (traced)
@@ -936,84 +727,6 @@ void RenderScreenImpl::FrameProcessInternal(
   renderer::NotifyFramePresented();
 }
 
-// TEMPORARY: force extra passes over the finished frame, without redrawing anything.
-// Marker: URGE_EXTRABOUNDARY
-//
-// The one-frame region loss behaves like a tile write-back that goes missing when a render pass
-// ends - the region keeps the memory contents from before that pass, which is why the layer below
-// shows through, and why re-drawing inside the same pass cannot repair it. What is read by the
-// present path is whatever the *last* store left in memory, so storing the same, already rendered
-// content a second time gives that content another chance to reach memory: if the final store is
-// the one that is lost, the store before it has already written the correct tiles. Both passes here
-// load and store the same target with the same configuration and draw nothing, so unlike repeating
-// the draws - which re-blends translucent content and changed the picture - this cannot alter the
-// frame's appearance. It covers the whole frame rather than one layer, so the window skins and
-// anything else drawn in an unlucky pass are protected too.
-static bool ExtraBoundaryEnabledInternal() {
-  static int32_t s_poll = 0;
-  // Uncertain fix: measured on the device and did NOT remove the loss, so it is off by
-  // default and left reachable through its switch file. Marker: URGE_DEFAULTS
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmstore.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmstore.txt");
-    }
-  }
-  // Log the resolved value once, so the switch can be confirmed from the log instead of being
-  // inferred from the pass count, which varies with the frame's content anyway. Marker:
-  // URGE_EXTRABOUNDARY
-  static bool s_logged = false;
-  if (!s_logged) {
-    s_logged = true;
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[ExtraStore] active=" << s_enabled
-              << " (Mali default; urge_debug/tmstore.txt overrides)";
-  }
-  return s_enabled;
-}
-
-// TEMPORARY: how often the extra stores have run, checked once per frame so the log stays silent
-// while it is steady. Marker: URGE_EXTRABOUNDARY
-static int32_t g_urge_extra_store_calls = 0;
-
-// See ExtraBoundaryEnabledInternal. Lands two pass boundaries on the finished content without
-// drawing anything: the first end stores it, the second stores it again, so a store lost in the
-// second still leaves the first one's tiles in memory. Marker: URGE_EXTRABOUNDARY
-static void ForceExtraStoreInternal(Diligent::IDeviceContext* render_context,
-                                   Diligent::ITexture* render_target,
-                                   Diligent::ITexture* depth_stencil) {
-  if (!ExtraBoundaryEnabledInternal() || !render_context || !render_target ||
-      !depth_stencil)
-    return;
-  auto* store_rtv =
-      render_target->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-  auto* store_dsv =
-      depth_stencil->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
-  // Each cycle contributes one real store: SetRenderTargets(0, ...) ends the pass that is currently
-  // open, and Diligent defers opening the next one until a draw, so the second cycle inside a single
-  // call has nothing to end. Two calls per frame therefore give two stores, which is what is wanted
-  // - one right after the drawables, one right after the after-render effect.
-  for (int32_t i = 0; i < 2; ++i) {
-    render_context->SetRenderTargets(
-        0, nullptr, nullptr,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    render_context->SetRenderTargets(
-        1, &store_rtv, store_dsv,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    ++g_urge_extra_store_calls;  // TEMPORARY, see the audit below. Marker: URGE_EXTRABOUNDARY
-  }
-}
-
 // TEMPORARY: the frame's render target views, recorded so other translation units can force a pass
 // boundary without threading the textures through. Marker: URGE_FRAME_RTV
 static Diligent::ITextureView* g_urge_frame_rtv = nullptr;
@@ -1098,43 +811,6 @@ extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context) 
   render_context->SetRenderTargets(
       1, &g_urge_frame_rtv, g_urge_frame_dsv,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-}
-
-// Extra depth clear before the draw stage. Marker: URGE_DSRECLEAR
-//
-// The sprite pipeline keeps the depth test on: the per-sprite sort key rides in the vertex z, and a
-// previous attempt to switch the test off made a transition flash for one frame (see the note in
-// pipeline_collection.cc). That gives the depth buffer a say in what is written: if its contents are
-// stale for a frame, every sprite - and anything else drawn through that pipeline - is rejected over
-// whatever region the stale values cover, the older contents stay on screen, and drawing the layer a
-// second time changes nothing because the same stale depth rejects it again. The frame issues exactly
-// one depth clear, which is a single point of failure. This adds a second one, at a different moment
-// in the frame, so a lost or mistimed first clear has a fallback. The window and tilemap pipelines do
-// not write depth at all, and the sprites still order among themselves through the z they write, so
-// the picture should be unchanged - which the screenshots are used to confirm.
-static bool ExtraDepthClearEnabledInternal() {
-  static int32_t s_poll = 0;
-  // Uncertain fix: measured on the device and did NOT remove the loss, so it is off by
-  // default and left reachable through its switch file. Marker: URGE_DEFAULTS
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "dsreclear.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/dsreclear.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[DsReClear] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
 }
 
 void RenderScreenImpl::RenderFrameInternal(
@@ -1358,11 +1034,6 @@ void RenderScreenImpl::RenderFrameInternal(
   GPUFrameBeginRenderPassInternal(controller_params.context, render_target,
                                   depth_stencil);
 
-  // See ExtraDepthClearEnabledInternal. Marker: URGE_DSRECLEAR
-  if (ExtraDepthClearEnabledInternal() && g_urge_frame_dsv)
-    controller_params.context->ClearDepthStencil(
-        g_urge_frame_dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
   // 3) Notify render a frame
   ScissorStack scissor_stack(controller_params.context, context()->resolution);
@@ -1375,10 +1046,6 @@ void RenderScreenImpl::RenderFrameInternal(
   // 3.5) Emit anything the draw stage left queued, while still inside the pass.
   FlushSpriteQueueInternal(controller_params.context);
 
-  // See ExtraBoundaryEnabledInternal. Marker: URGE_EXTRABOUNDARY
-  //
-  // First of two places: everything the drawables produced is on the target now.
-  ForceExtraStoreInternal(controller_params.context, render_target, depth_stencil);
 
   // TEMPORARY sprite-batch audit. Marker: URGE_SPRAUDIT
   //
@@ -1397,20 +1064,6 @@ void RenderScreenImpl::RenderFrameInternal(
       LOG(INFO) << "[SprAudit] f=" << context()->sprite_batcher->FrameCount()
                 << " drawn=" << drawn << " fallbackRuns=" << fallback
                 << " nullTexture=" << null_tex;
-    }
-  }
-
-  // TEMPORARY audit, see g_urge_extra_store_calls. Marker: URGE_EXTRABOUNDARY
-  {
-    static int32_t s_last_extra[2] = {0, 0};
-    const int32_t extra_delta = g_urge_extra_store_calls - s_last_extra[0];
-    const int32_t extra_active = ExtraBoundaryEnabledInternal() ? 1 : 0;
-    s_last_extra[0] = g_urge_extra_store_calls;
-    if (UrgeDiagEnabled() && extra_delta != s_last_extra[1]) {
-      s_last_extra[1] = extra_delta;
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[ExtraStore] stores in the previous frame=" << extra_delta
-                << " active=" << extra_active;
     }
   }
 
@@ -1459,14 +1112,6 @@ void RenderScreenImpl::RenderFrameInternal(
   // 4) End render pass and process after-render effect
   GPUFrameEndRenderPassInternal(controller_params.context);
 
-  // See ExtraBoundaryEnabledInternal. Marker: URGE_EXTRABOUNDARY
-  //
-  // Second, and the important one: the after-render effect (the brightness pass) draws a full-screen
-  // quad *after* the first call, so its store has to be duplicated too - otherwise a lost store
-  // there would leave the effect missing over a region, which is exactly what "the darkened part
-  // flashes brighter" looks like. This is the last content written before the frame is read.
-  ForceExtraStoreInternal(controller_params.context, render_target, depth_stencil);
-  // TEMP: the probe used to sample in the middle of the frame, where it cannot see what the
   // window and canvas stages draw afterwards - and a loss caused by one of those later stages is
   // exactly what it then reports as "steady". Sampled here instead: after the pass ended and after
   // the after-render effect wrote the last full-screen quad, i.e. the image about to be presented.
@@ -1705,20 +1350,6 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
       Diligent::USAGE_DEFAULT,
       Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
 
-  // TEMPORARY, see ScreenOffscreenTargetInternal. Marker: URGE_OFFSCREEN
-  //
-  // The offscreen arm loses a region on nearly every frame while the same draws into the screen
-  // buffer lose one about once a minute - 30x - and that gap survived a matching depth-stencil, a
-  // proper clear, and the removal of every copy from a normal frame. One difference left between
-  // the two targets is when they are created: this one was allocated on first use, halfway through
-  // a session, while the screen buffer is allocated here at start-up. Both are the same size,
-  // format and bind flags. Creating it here removes that difference, and if the loss drops back to
-  // the usual rate then *when* a render target is allocated is what the driver cares about.
-  renderer::CreateTexture2D(
-      **context()->render_device, &ScreenOffscreenTextureRef(),
-      "screen.offscreen.atstartup", context()->resolution,
-      Diligent::USAGE_DEFAULT,
-      Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.frozen_buffer, "screen.frozen.buffer",
       context()->resolution, Diligent::USAGE_DEFAULT,
@@ -1820,39 +1451,6 @@ static bool CellProbeEnabledInternal() {
   return s_enabled;
 }
 
-// Barrier arm for the presentation composite. Marker: URGE_PRESENT_BARRIER
-//
-// The frame is drawn into the offscreen screen buffer and then read - sampled - to get onto the
-// screen. On a tile-based GPU that read is only correct if the tiles holding the frame have been
-// written back to memory first, and a render pass boundary is what makes that happen: ending the
-// pass stores the tiles, beginning it again loads them. This arm puts a boundary on the screen
-// buffer immediately before the composite reads it, so the write and the read are separated by a
-// store the driver has to perform rather than by nothing at all.
-//
-// It reuses the existing forced-boundary helper. Default off; urge_debug/presentbarrier.txt turns it
-// on for a session.
-static bool PresentBarrierEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 60) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "presentbarrier.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/presentbarrier.txt");
-      LOG(INFO) << "[PresentBarrier] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
-}
-
 void RenderScreenImpl::GPUPresentScreenBufferInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::ImGuiDiligentRenderer* gui_renderer) {
@@ -1869,20 +1467,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   }
 
   auto* render_target_view = swapchain->GetCurrentBackBufferRTV();
-  // See PresentBarrierEnabledInternal. Marker: URGE_PRESENT_BARRIER
-  if (PresentBarrierEnabledInternal())
-    UrgeForcePassBoundary(render_context);
-  // TEMPORARY, see DirectSwapEnabledInternal: the frame is already in this image. Marker:
-  // URGE_DIRECTSWAP
-  if (DirectSwapEnabledInternal() && render_target_view) {
-    // See ScreenVsyncOverrideInternal. Marker: URGE_SWEXPERIMENT
-  {
-    const int32_t vsync_override = ScreenVsyncOverrideInternal();
-    swapchain->Present(vsync_override >= 0 ? vsync_override
-                                          : context()->engine_profile->vsync);
-  }
-    return;
-  }
   URGE_GPU_AUDIT("present:get-rtv", render_target_view != nullptr);
   if (!render_target_view)
     return;
@@ -2463,55 +2047,12 @@ void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
   auto* depth_stencil_view =
       depth_stencil->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
 
-  // See ScreenOffscreenTargetInternal. Marker: URGE_OFFSCREEN
-  //
-  // When the frame goes to the offscreen target, no depth-stencil is bound: pairing the offscreen
-  // colour target with the *screen's* depth-stencil made the defect fire on nearly every frame
-  // (303 events in 4.3 minutes against 7 and 9 in the arms around it), and a cross-texture pairing
-  // like that is a known way to make a tile-based driver misbehave - so that amplification may have
-  // been this pairing rather than the target change. This arm exists to tell the two apart.
   Diligent::ITextureView* pass_target_view = render_target_view;
   Diligent::ITextureView* pass_depth_view = depth_stencil_view;
-  if (ScreenOffscreenEnabledInternal() && gpu_.screen_buffer_prev &&
-      gpu_.screen_buffer_prev.RawPtr() != render_target) {
-    // TEMPORARY final arm. Marker: URGE_OFFSCREEN
-    //
-    // The previous arms rendered the frame into a texture this code created, and lost a region on
-    // nearly every frame - 30x the rate of the same draws into the screen buffer - no matter how the
-    // pass was configured (screen depth, a matching depth, no depth), whether the target was cleared,
-    // or when the texture was allocated. The last difference left is where the texture comes from, so
-    // this arm renders into the engine's own second screen buffer: same size, same format, same bind
-    // flags, created by the same call at the same time as the one that works. If the loss drops to the
-    // usual rate here, the trigger is what is done to a target *after* it is created; if it stays at
-    // fifty a minute, the frame simply cannot be assembled anywhere but in the buffer it will be
-    // sampled from.
-    //
-    // Note: this borrowed buffer is also what urge_debug/screenbuf2.txt swaps with, so the two
-    // switches must not be on at the same time.
-    pass_target_view =
-        gpu_.screen_buffer_prev->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-    pass_depth_view = depth_stencil_view;
-  }
   render_context->SetRenderTargets(
       1, &pass_target_view, pass_depth_view,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-  // See ScreenOffscreenTargetInternal. Marker: URGE_OFFSCREEN
-  // The clear has to name the view the pass actually bound: with the offscreen arm this used to
-  // clear the screen buffer while drawing into the offscreen one, which left the offscreen target
-  // holding whatever it held before - including frames from before the map was drawn - and that
-  // alone can produce the region deviations the probe counts. Every offscreen arm before this fix
-  // is therefore suspect, and the arm is being re-run.
-  // The full-target scissor has to be in force *before* the clear, not after.
-  //
-  // A clear is clipped by the scissor test: on Vulkan the engine clears through
-  // vkCmdClearAttachments, which honours the current scissor rect. Issued under whatever
-  // rectangle the previous pass left behind, it only clears that rectangle - the rest of the
-  // target keeps the previous frame's colour *and depth*. The stale depth is the one that shows:
-  // the sprite pipelines keep the depth test on, so every sprite over the stale values is
-  // rejected, and a sprite - the compass in the corner, for instance - disappears for exactly one
-  // frame while everything the frame submitted is correct (measured: 17 of 296 frames before this
-  // change, 3 of 297 with the sprite depth test switched off).
   Diligent::Rect render_scissor(0, 0, render_target->GetDesc().Width,
                                 render_target->GetDesc().Height);
   render_context->SetScissorRects(1, &render_scissor, UINT32_MAX, UINT32_MAX);
