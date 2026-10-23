@@ -698,40 +698,6 @@ static bool ViewportEffectKeepDepthInternal() {
   return s_enabled;
 }
 
-// TEMPORARY A/B. Marker: URGE_VPCOPYDRAW
-//
-// This pass is the only thing in a normal frame that copies rather than draws: it stages the effect
-// region into an intermediate layer with CopyTexture, then draws that layer back over the screen with
-// the tone applied. Copies are exactly the path that measured worst in this investigation - rendering
-// the same geometry into a texture of the engine's own and copying it back lost a region thirty times
-// as often as drawing straight into the frame - and a lost region in this copy shows up as the region
-// keeping its previous contents for one frame, which is what the reported flicker looks like. It is
-// also why redrawing the layers never helped: the layers are fine, the staging copy is what goes
-// missing. This arm stages with a draw instead: the region's own transform, a quad over the region,
-// and the screen buffer sampled as a texture. Content, order and the draw-back that follows are
-// unchanged, so the picture should be identical.
-static bool ViewportStagingDrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "vpcopydraw.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/vpcopydraw.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[VpCopyDraw] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
-}
 
 void ViewportImpl::GPUApplyViewportEffect(
     Diligent::IDeviceContext* render_context,
@@ -763,33 +729,8 @@ void ViewportImpl::GPUApplyViewportEffect(
               << " custom=" << (custom_pipeline_ ? 1 : 0);
   }
 
-  // TEMPORARY: stage by draw or by copy, see ViewportStagingDrawEnabledInternal.
-  // Marker: URGE_VPCOPYDRAW
-  const bool staging_by_draw = ViewportStagingDrawEnabledInternal();
   int32_t draw_back_first_index = 0;
 
-  if (staging_by_draw) {
-    // Neutral colour and tone: this quad is a transfer, not a tint.
-    renderer::Binding_Flat::Params neutral_uniform;
-    neutral_uniform.Color = base::Vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    neutral_uniform.Tone = base::Vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    render_context->UpdateBuffer(
-        gpu_.effect.uniform_buffer, 0, sizeof(neutral_uniform), &neutral_uniform,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-    // The region's own transform, so a quad over the region lands correctly in the layer.
-    GPUUpdateViewportTransform(render_context, effect_region);
-
-    renderer::Quad staging_quad;
-    renderer::Quad::SetPositionRect(&staging_quad, effect_region);
-    const base::Rect screen_rect(
-        0, 0, static_cast<int32_t>(screen_buffer->GetDesc().Width),
-        static_cast<int32_t>(screen_buffer->GetDesc().Height));
-    renderer::Quad::SetTexCoordRect(&staging_quad, effect_region,
-                                    screen_rect.Size().Recast<float>());
-    gpu_.effect.quads.QueueWrite(render_context, &staging_quad);
-    draw_back_first_index = 6;
-  } else {
     // Copy "screen" buffer desired region data to stage intermediate texture
     render_context->SetRenderTargets(
         0, nullptr, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -809,7 +750,6 @@ void ViewportImpl::GPUApplyViewportEffect(
     copy_texture_attribs.DstTextureTransitionMode =
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     render_context->CopyTexture(copy_texture_attribs);
-  }
 
   // Make effect transient vertices
   renderer::Quad transient_quad;
@@ -874,45 +814,6 @@ void ViewportImpl::GPUApplyViewportEffect(
       **context()->render.quad_index, 0,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-  // TEMPORARY: the staging draw. Target is the layer, the sampled texture is the screen, and the
-  // transform was built for the region. Marker: URGE_VPCOPYDRAW
-  if (staging_by_draw) {
-    auto* layer_target_view = gpu_.effect.intermediate_layer->GetDefaultView(
-        Diligent::TEXTURE_VIEW_RENDER_TARGET);
-    render_context->SetRenderTargets(
-        1, &layer_target_view, nullptr,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-    auto* staging_pipeline =
-        custom_pipeline_
-            ? custom_pipeline_->AsRawPtr()
-            : context()->render.pipeline_states->viewport_flat.RawPtr();
-    effect_binding->u_transform->Set(gpu_.world_uniform);
-    effect_binding->u_texture->Set(screen_buffer->GetDefaultView(
-        Diligent::TEXTURE_VIEW_SHADER_RESOURCE));
-    effect_binding->u_params->Set(gpu_.effect.uniform_buffer);
-    render_context->SetPipelineState(staging_pipeline);
-    render_context->CommitShaderResources(
-        **effect_binding, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-    Diligent::DrawIndexedAttribs staging_draw;
-    staging_draw.NumIndices = 6;
-    staging_draw.IndexType = context()->render.quad_index->GetIndexType();
-    staging_draw.FirstIndexLocation = 0;
-    render_context->DrawIndexed(staging_draw);
-
-    // Back to the screen for the draw-back that follows.
-    render_context->SetRenderTargets(
-        1, &render_target_view, effect_depth_view,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    effect_binding->u_transform->Set(root_world);
-    effect_binding->u_texture->Set(gpu_.effect.intermediate_layer->GetDefaultView(
-        Diligent::TEXTURE_VIEW_SHADER_RESOURCE));
-    effect_binding->u_params->Set(gpu_.effect.uniform_buffer);
-    render_context->SetPipelineState(pipeline);
-    render_context->CommitShaderResources(
-        **effect_binding, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-  }
 
   // Execute render command
   Diligent::DrawIndexedAttribs draw_indexed_attribs;
