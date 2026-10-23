@@ -426,68 +426,7 @@ BitmapTexture* WindowImpl::ResolveContentsInternal() {
   return nullptr;
 }
 
-// TEMPORARY class-skip switch. Marker: URGE_SKIPDRAW
-//
-// The one-frame loss was measured to be a large region getting *brighter*, and the pipeline tags put
-// that region on the basic/window-bitmap layer rather than on the tilemap - so the victim is some
-// drawable of one of these classes and not the map at all. Skipping a whole class one at a time and
-// looking at the screen says which class owns the room picture and which owns the dark overlay, far
-// more reliably than an opaque tag does (a tag shows coverage, a skip shows visibility).
-// 0 skips the class, 1 restores it.
-static bool SkipDrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_skipped = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/skip_window.txt",
-        "r");
-    if (file) {
-      int32_t value = 1;
-      if (fscanf(file, "%d", &value) == 1)
-        s_skipped = value == 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/skip_window.txt");
-    }
-  }
-  return s_skipped;
-}
 
-// TEMPORARY A/B. Marker: URGE_WNDREDRAW
-//
-// The victim of the one-frame loss has finally been named: skipping this class makes the whole room
-// picture disappear, which is exactly what a defect frame looks like - the map below shows through,
-// brighter, and the window's 5x5 skin frame goes with it. Everything measured for twelve days was
-// aimed at the tilemap, which was never the layer that goes missing.
-//
-// This redraws the background layer once more, in a render pass of its own: if what goes missing is
-// this layer's writes for a pass, a second, independent pass over the same quads puts them back.
-// The background is the room bitmap and is opaque over the area it covers, so drawing it twice
-// should be invisible - unlike repeating a translucent overlay, which is why the earlier attempt on
-// the tilemap had to be withdrawn. The switch exists so the two can be compared in one session.
-static bool WindowRedrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = renderer::IsMaliGpu();  // TEMPORARY A/B, default on for Mali. Marker: URGE_DEFAULTS
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "wndredraw.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/wndredraw.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WndRedraw] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
-}
 
 // See WindowRedrawEnabledInternal: end the pass, reopen it on the frame's target, draw nothing else
 // in between. Marker: URGE_WNDREDRAW
@@ -557,7 +496,6 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     GPUCompositeBackgroundLayerInternal(params->context, windowskin_agent);
     RegisterLayerInternal(this, params->world_binding, /*background=*/true);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
     // TEMPORARY. Marker: URGE_FRAMESET
     // The write side resolved this index earlier in the frame. If it moved since, the layers
     // below read a different rotating set - one holding an earlier round's vertices.
@@ -585,8 +523,11 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     // screen tile, including the ones holding the two overlapping translucent edges that form the
     // seam. The second submission is what a layer that lost its draw stage actually needs, and
     // keeping it is what the system menu's contents depend on.
-    // See WindowRedrawEnabledInternal. Marker: URGE_WNDREDRAW
-    if (WindowRedrawEnabledInternal() && params->screen_buffer &&
+    // Marker: URGE_WNDREDRAW
+    // The background layer is redrawn once in a pass of its own; on Mali a single submission of it
+    // was measured to go missing, and this second pass is what the system menu's contents depend on.
+    // The background is opaque over the area it covers, so drawing it twice is invisible.
+    if (renderer::IsMaliGpu() && params->screen_buffer &&
         params->screen_depth_stencil &&
         WindowForcePassBoundaryInternal(params->context, params->screen_buffer,
                                         params->screen_depth_stencil))
@@ -825,7 +766,6 @@ void WindowImpl::ControlNodeHandlerInternal(
         s_diag.push_back(state);
     }
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
     // TEMPORARY. Marker: URGE_FRAMESET
     // The write side resolved this index earlier in the frame. If it moved since, the layers
     // below read a different rotating set - one holding an earlier round's vertices.

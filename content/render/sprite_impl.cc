@@ -441,33 +441,6 @@ void SpriteImpl::OnObjectDisposed() {
   std::swap(gpu_, empty_data);
 }
 
-// TEMPORARY class-skip switch. Marker: URGE_SKIPDRAW
-//
-// The one-frame loss was measured to be a large region getting *brighter*, and the pipeline tags put
-// that region on the basic/window-bitmap layer rather than on the tilemap - so the victim is some
-// drawable of one of these classes and not the map at all. Skipping a whole class one at a time and
-// looking at the screen says which class owns the room picture and which owns the dark overlay, far
-// more reliably than an opaque tag does (a tag shows coverage, a skip shows visibility).
-// 0 skips the class, 1 restores it.
-static bool SkipDrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_skipped = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/skip_sprite.txt",
-        "r");
-    if (file) {
-      int32_t value = 1;
-      if (fscanf(file, "%d", &value) == 1)
-        s_skipped = value == 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/skip_sprite.txt");
-    }
-  }
-  return s_skipped;
-}
 
 
 
@@ -529,7 +502,6 @@ void SpriteImpl::DrawableNodeHandlerInternal(
     wave_.dirty = false;
     src_rect_dirty_ = false;
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    if (SkipDrawEnabledInternal()) return;  // TEMPORARY, see above
     GPUOnSpriteRenderingInternal(params->context, params->world_binding,
                                  current_texture);
   }
