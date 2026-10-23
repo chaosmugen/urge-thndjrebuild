@@ -1592,21 +1592,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
     // Previous frame, full size: used for the per-pixel maximum difference (see the mx field).
     static std::vector<uint8_t> s_prev_pixels;
 
-    // Rolling recorder. Marker: URGE_RINGDUMP
-    //
-    // Keeps the last kRingFrames presented frames at 1/4 resolution in memory, and writes them out
-    // as one file when urge_debug/ringdump.txt appears. This exists because every measurement so
-    // far sampled a window chosen by the tool, not the instant the defect was on screen: the
-    // developer watches the TV, says "now", the trigger lands within a second, and the buffer
-    // still holds the preceding two seconds frame by frame.
-    constexpr int32_t kRingW = 480;
-    constexpr int32_t kRingH = 270;
-    constexpr int32_t kRingFrames = 120;
-    constexpr size_t kRingStride = static_cast<size_t>(kRingW) * 3;
-    static std::vector<uint8_t> s_ring;
-    static int32_t s_ring_pos = 0;
-    static bool s_ring_ready = false;
-    static int32_t s_ring_poll = 0;
     static int32_t s_dump_count = 0;
     static uint32_t s_last_dump_frame = 0;
 
@@ -1734,57 +1719,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
             std::memcpy(s_prev_pixels.data() + static_cast<size_t>(y) * row_bytes,
                         staged + static_cast<size_t>(y) * mapped.Stride, row_bytes);
 
-          // See the rolling recorder note. Marker: URGE_RINGDUMP
-          {
-            if (!s_ring_ready) {
-              s_ring.assign(static_cast<size_t>(kRingFrames) * kRingH * kRingStride, 0);
-              s_ring_ready = true;
-            }
-            uint8_t* dst =
-                s_ring.data() + static_cast<size_t>(s_ring_pos) * kRingH * kRingStride;
-            const int32_t step_x = w / kRingW;
-            const int32_t step_y = h / kRingH;
-            for (int32_t ry = 0; ry < kRingH; ++ry) {
-              const uint8_t* line =
-                  staged + static_cast<size_t>(ry * step_y) * mapped.Stride;
-              uint8_t* out = dst + static_cast<size_t>(ry) * kRingStride;
-              for (int32_t rx = 0; rx < kRingW; ++rx) {
-                const uint8_t* p = line + static_cast<size_t>(rx * step_x) * 4;
-                out[rx * 3 + 0] = p[0];
-                out[rx * 3 + 1] = p[1];
-                out[rx * 3 + 2] = p[2];
-              }
-            }
-            s_ring_pos = (s_ring_pos + 1) % kRingFrames;
-
-            if (++s_ring_poll >= 5) {
-              s_ring_poll = 0;
-              const char* trigger =
-                  "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-                  "ringdump.txt";
-              FILE* trigger_file = fopen(trigger, "r");
-              if (trigger_file) {
-                fclose(trigger_file);
-                remove(trigger);
-                FILE* out_file = fopen(
-                    "/storage/emulated/0/Android/data/com.admenri.urge/files/"
-                    "urge_debug/ring.bin",
-                    "wb");
-                if (out_file) {
-                  const int32_t head[3] = {kRingW, kRingH, kRingFrames};
-                  fwrite(head, sizeof(head), 1, out_file);
-                  for (int32_t i = 0; i < kRingFrames; ++i) {
-                    const int32_t idx = (s_ring_pos + i) % kRingFrames;
-                    fwrite(s_ring.data() +
-                               static_cast<size_t>(idx) * kRingH * kRingStride,
-                           kRingH * kRingStride, 1, out_file);
-                  }
-                  fclose(out_file);
-                  LOG(INFO) << "[RingDump] wrote " << kRingFrames << " frames";
-                }
-              }
-            }
-          }
 
           // Presence metric. Marker: URGE_PRESENCE
           //
