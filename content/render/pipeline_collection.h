@@ -49,6 +49,25 @@ struct PipelineCollection {
   // built with the test off, so the two can be compared on the device in one session.
   std::array<PipelineObject, BLEND_TYPE_NUMS> sprite_nodepth;
 
+  // TEMPORARY A/B. Marker: URGE_STENCILFILL
+  //
+  // Stencil double-draw: |sprite_mark| draws the run normally and stamps stencil=1 where it wrote;
+  // |sprite_fill| draws the same run again with the test "stencil == 0", i.e. only where the first
+  // draw did not land. A lost draw loses its stencil write too, so this repairs exactly the missing
+  // fragments and blends them once - unlike the plain redraw, which re-blended the whole sprite.
+  std::array<PipelineObject, BLEND_TYPE_NUMS> sprite_mark;
+  std::array<PipelineObject, BLEND_TYPE_NUMS> sprite_fill;
+
+  // TEMPORARY A/B. Marker: URGE_DEPTHFILL
+  //
+  // Repair a lost draw using the DEPTH buffer as a per-fragment "this run already wrote here" mask,
+  // which is the one thing stencil could not do on this device (its test had no effect at all).
+  // Per run: clear depth (clipped to the run's scissor), draw normally with depth write, then draw
+  // again with this pipeline - depth test strict LESS, depth write off - so it only passes where
+  // the stored depth is still the clear value, i.e. exactly the fragments the first pass lost.
+  // That repairs the hole and blends it exactly once, which is what the plain redraw could not do.
+  std::array<PipelineObject, BLEND_TYPE_NUMS> sprite_repair;
+
   PipelineObject viewport_flat;
   PipelineObject brightness;
 

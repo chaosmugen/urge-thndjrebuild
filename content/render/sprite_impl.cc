@@ -18,6 +18,69 @@ extern "C" bool UrgeSpriteRedrawEnabled();
 extern "C" bool UrgeSpriteRedrawBreakEnabled();
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 
+// TEMPORARY A/B. Marker: URGE_PBND
+//
+// Content-independent pass split every N sprite runs. The question this answers: when the split
+// moves, does the lost region move with it? If yes, the loss belongs to the draws that follow a
+// split, which is what decides whether a safe general insertion point can exist at all.
+// pbnd.txt: 0 = off, N>0 = split before every Nth run.
+static int32_t PeriodicBoundaryIntervalInternal() {
+  static int32_t s_poll = 0;
+  // OFF by default. The periodic split was measured to remove the compass loss but to leave the
+  // right-hand UI text column missing entirely (215/215 frames with the split, 0/213 without), so
+  // it must never be on by default. Kept only as an experiment behind the switch file.
+  // Marker: URGE_PBND
+  static int32_t s_period = 0;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "pbnd.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_period = value;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/pbnd.txt");
+      LOG(INFO) << "[PBnd] period=" << s_period;
+    }
+  }
+  return s_period;
+}
+
+static bool PeriodicBoundaryDueInternal(uint64_t frame, int32_t period) {
+  if (period <= 0)
+    return false;
+  static int32_t s_count = 0;
+  static uint64_t s_frame = ~0ull;
+  if (frame != s_frame) {
+    s_frame = frame;
+    s_count = 0;
+  }
+  return (++s_count % period) == 0;
+}
+// See sprite_batch.cc. Marker: URGE_STENCILFILL
+extern "C" void UrgeClearStencil(Diligent::IDeviceContext* render_context);
+// See DepthFillEnabledInternal (sprite_batch.cc). Marker: URGE_DEPTHFILL
+extern "C" void UrgeClearDepthForRepair(Diligent::IDeviceContext* render_context);
+extern "C" void UrgeSetRunDepth(Diligent::IDeviceContext* render_context, float depth);
+// See UrgePublishWorldTransform (sprite_batch.cc). Marker: URGE_DEPTHFILL
+struct UrgeWorldTransformLocal {
+  float projection[16];
+  float transform[16];
+};
+extern "C" bool UrgeFetchWorldTransform(void* out);
+extern "C" bool DepthFillEnabledInternal();
+// See UrgeSetInFramePass (renderscreen_impl.cc). Marker: URGE_FRAMEPASS
+extern "C" bool UrgeInFramePass();
+// See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
+extern "C" bool UrgeQuadClippedByTarget(float x0, float y0, float x1, float y1);
+extern "C" bool ClipRedrawEnabledInternal();
+extern "C" bool StencilFillEnabledInternal();
+
+
 // TEMPORARY A/B switch, see PipelineCollection::sprite_nodepth. Marker: URGE_SPRNODEPTH
 //
 // 1 uses the sprite pipelines with the depth test off; 0 (the default) keeps the test on.
@@ -492,6 +555,8 @@ static bool SkipDrawEnabledInternal() {
   return s_skipped;
 }
 
+
+
 void SpriteImpl::DrawableNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
@@ -694,6 +759,7 @@ void SpriteImpl::GPUUpdateBatchSpriteInternal(
     render_context->UpdateBuffer(
         gpu_.single_uniform, 0, sizeof(uniform_params_), &uniform_params_,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
 }
 
 void SpriteImpl::GPUOnSpriteRenderingInternal(
@@ -757,10 +823,102 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
       draw_indexed_attribs.IndexType =
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
-      render_context->DrawIndexed(draw_indexed_attribs);
+      // See PeriodicBoundaryDueInternal. Marker: URGE_PBND
+      // -1 = a single split per frame, right before the compass run; N>0 = every Nth run.
+      {
+        const int32_t pb_mode = PeriodicBoundaryIntervalInternal();
+        const bool due =
+            pb_mode == -1
+                ? (texture && texture->name.find("compass") != std::string::npos)
+                : PeriodicBoundaryDueInternal(context()->sprite_batcher->FrameCount(), pb_mode);
+        // Marker: URGE_FRAMEPASS
+        // A boundary only repairs the loss if the draw lands in a new pass; but a boundary opened
+        // inside a viewport/window pass reopens the frame target instead of the pass that is
+        // actually open, which is what made the right-hand text column vanish. Limiting it to the
+        // frame pass keeps the repair and drops the side effect.
+        if (due && UrgeInFramePass())
+          UrgeForcePassBoundary(render_context);
+      }
+      // See DepthFillEnabledInternal. Marker: URGE_DEPTHFILL
+      if (DepthFillEnabledInternal()) {
+        { static bool s_once = false;
+          if (!s_once) { s_once = true; std::fprintf(stderr, "[DepthFill] node path active\n"); } }
+        auto& states = context()->render.pipeline_states;
+        // One depth per sprite run: the projection matrix's z translation is the only place the
+        // quad depth comes from (the quad's own z is 0), so shifting it here gives this run a
+        // depth nothing else in the pass shares. The first draw then leaves that depth behind,
+        // and the repair draw - strict LESS, depth write off - can only pass where it is absent,
+        // i.e. exactly the fragments the first draw lost. No clear, so no pass restart.
+        static int32_t s_run = 0;
+        static uint64_t s_frame = ~0ull;
+        const uint64_t frame = context()->sprite_batcher->FrameCount();
+        if (frame != s_frame) {
+          s_frame = frame;
+          s_run = 0;
+        }
+        // TEMPORARY: how many runs actually take this path per frame, and is the repair PSO real.
+        static int32_t s_dbg_runs = 0;
+        static int32_t s_dbg_null = 0;
+        static uint64_t s_dbg_frame = ~0ull;
+        if (frame != s_dbg_frame) {
+          if (s_dbg_frame != ~0ull)
+            LOG(INFO) << "[DepthFill] runs=" << s_dbg_runs << " null_pso=" << s_dbg_null;
+          s_dbg_frame = frame;
+          s_dbg_runs = 0;
+          s_dbg_null = 0;
+        }
+        ++s_dbg_runs;
+        if (!states->sprite_repair[blend_type_])
+          ++s_dbg_null;
+        UrgeSetRunDepth(render_context, 0.5f - 0.0005f * static_cast<float>(s_run % 900));
+        ++s_run;
+        render_context->DrawIndexed(draw_indexed_attribs);  // writes this run's depth
+        render_context->SetPipelineState(states->sprite_repair[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);  // only where that depth is absent
+        render_context->SetPipelineState(pipeline);
+        UrgeSetRunDepth(render_context, 0.5f);  // back to the depth every sprite used before
+      } else if (StencilFillEnabledInternal()) {
+        { static bool s_once = false;
+          if (!s_once) { s_once = true; std::fprintf(stderr, "[StencilFill] node path active\n"); } }
+        auto& states = context()->render.pipeline_states;
+        UrgeClearStencil(render_context);
+        render_context->SetStencilRef(1);
+        render_context->SetPipelineState(states->sprite_mark[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);
+        render_context->SetStencilRef(1);  // probe: EQUAL 1 = only where the mark landed
+        render_context->SetPipelineState(states->sprite_fill[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);
+        render_context->SetStencilRef(0);
+        render_context->SetPipelineState(pipeline);
+      } else {
+        render_context->DrawIndexed(draw_indexed_attribs);
+      }
       // See UrgeSpriteRedrawEnabled: draw the same run again in a render pass of its own, so a lost
       // write in one pass is covered by the other. Marker: URGE_SPRREDRAW
-      if (UrgeSpriteRedrawEnabled()) {
+      // Marker: URGE_CLIPREDRAW
+      // The redraw re-blends translucent content, which is what deepens the seam. It is therefore
+      // limited to the only kind of run measured to lose fragments: the one whose quad sticks out
+      // of the screen the sprites are laid out in (the compass is 210x245 at (620,434) on an
+      // 800x608 screen). Everything else keeps the single, unchanged draw.
+      bool clip_redraw = false;
+      if (ClipRedrawEnabledInternal()) {
+        float lx0 = 1e9f, ly0 = 1e9f, lx1 = -1e9f, ly1 = -1e9f;
+        for (int32_t i = 0; i < 4; ++i) {
+          const auto& pos = gpu_.quad.vertices[i].position;
+          lx0 = std::min(lx0, pos.x);
+          ly0 = std::min(ly0, pos.y);
+          lx1 = std::max(lx1, pos.x);
+          ly1 = std::max(ly1, pos.y);
+        }
+        const float sx = uniform_params_.Scale.x;
+        const float sy = uniform_params_.Scale.y;
+        const float x0 = uniform_params_.Position.x + (lx0 - uniform_params_.Origin.x) * sx;
+        const float y0 = uniform_params_.Position.y + (ly0 - uniform_params_.Origin.y) * sy;
+        const float x1 = uniform_params_.Position.x + (lx1 - uniform_params_.Origin.x) * sx;
+        const float y1 = uniform_params_.Position.y + (ly1 - uniform_params_.Origin.y) * sy;
+        clip_redraw = UrgeQuadClippedByTarget(x0, y0, x1, y1);
+      }
+      if (UrgeSpriteRedrawEnabled() || clip_redraw) {
         if (UrgeSpriteRedrawBreakEnabled())
           UrgeForcePassBoundary(render_context);
         render_context->DrawIndexed(draw_indexed_attribs);
@@ -807,10 +965,102 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
       draw_indexed_attribs.IndexType =
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
-      render_context->DrawIndexed(draw_indexed_attribs);
+      // See PeriodicBoundaryDueInternal. Marker: URGE_PBND
+      // -1 = a single split per frame, right before the compass run; N>0 = every Nth run.
+      {
+        const int32_t pb_mode = PeriodicBoundaryIntervalInternal();
+        const bool due =
+            pb_mode == -1
+                ? (texture && texture->name.find("compass") != std::string::npos)
+                : PeriodicBoundaryDueInternal(context()->sprite_batcher->FrameCount(), pb_mode);
+        // Marker: URGE_FRAMEPASS
+        // A boundary only repairs the loss if the draw lands in a new pass; but a boundary opened
+        // inside a viewport/window pass reopens the frame target instead of the pass that is
+        // actually open, which is what made the right-hand text column vanish. Limiting it to the
+        // frame pass keeps the repair and drops the side effect.
+        if (due && UrgeInFramePass())
+          UrgeForcePassBoundary(render_context);
+      }
+      // See DepthFillEnabledInternal. Marker: URGE_DEPTHFILL
+      if (DepthFillEnabledInternal()) {
+        { static bool s_once = false;
+          if (!s_once) { s_once = true; std::fprintf(stderr, "[DepthFill] node path active\n"); } }
+        auto& states = context()->render.pipeline_states;
+        // One depth per sprite run: the projection matrix's z translation is the only place the
+        // quad depth comes from (the quad's own z is 0), so shifting it here gives this run a
+        // depth nothing else in the pass shares. The first draw then leaves that depth behind,
+        // and the repair draw - strict LESS, depth write off - can only pass where it is absent,
+        // i.e. exactly the fragments the first draw lost. No clear, so no pass restart.
+        static int32_t s_run = 0;
+        static uint64_t s_frame = ~0ull;
+        const uint64_t frame = context()->sprite_batcher->FrameCount();
+        if (frame != s_frame) {
+          s_frame = frame;
+          s_run = 0;
+        }
+        // TEMPORARY: how many runs actually take this path per frame, and is the repair PSO real.
+        static int32_t s_dbg_runs = 0;
+        static int32_t s_dbg_null = 0;
+        static uint64_t s_dbg_frame = ~0ull;
+        if (frame != s_dbg_frame) {
+          if (s_dbg_frame != ~0ull)
+            LOG(INFO) << "[DepthFill] runs=" << s_dbg_runs << " null_pso=" << s_dbg_null;
+          s_dbg_frame = frame;
+          s_dbg_runs = 0;
+          s_dbg_null = 0;
+        }
+        ++s_dbg_runs;
+        if (!states->sprite_repair[blend_type_])
+          ++s_dbg_null;
+        UrgeSetRunDepth(render_context, 0.5f - 0.0005f * static_cast<float>(s_run % 900));
+        ++s_run;
+        render_context->DrawIndexed(draw_indexed_attribs);  // writes this run's depth
+        render_context->SetPipelineState(states->sprite_repair[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);  // only where that depth is absent
+        render_context->SetPipelineState(pipeline);
+        UrgeSetRunDepth(render_context, 0.5f);  // back to the depth every sprite used before
+      } else if (StencilFillEnabledInternal()) {
+        { static bool s_once = false;
+          if (!s_once) { s_once = true; std::fprintf(stderr, "[StencilFill] node path active\n"); } }
+        auto& states = context()->render.pipeline_states;
+        UrgeClearStencil(render_context);
+        render_context->SetStencilRef(1);
+        render_context->SetPipelineState(states->sprite_mark[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);
+        render_context->SetStencilRef(1);  // probe: EQUAL 1 = only where the mark landed
+        render_context->SetPipelineState(states->sprite_fill[blend_type_].RawPtr());
+        render_context->DrawIndexed(draw_indexed_attribs);
+        render_context->SetStencilRef(0);
+        render_context->SetPipelineState(pipeline);
+      } else {
+        render_context->DrawIndexed(draw_indexed_attribs);
+      }
       // See UrgeSpriteRedrawEnabled: draw the same run again in a render pass of its own, so a lost
       // write in one pass is covered by the other. Marker: URGE_SPRREDRAW
-      if (UrgeSpriteRedrawEnabled()) {
+      // Marker: URGE_CLIPREDRAW
+      // The redraw re-blends translucent content, which is what deepens the seam. It is therefore
+      // limited to the only kind of run measured to lose fragments: the one whose quad sticks out
+      // of the screen the sprites are laid out in (the compass is 210x245 at (620,434) on an
+      // 800x608 screen). Everything else keeps the single, unchanged draw.
+      bool clip_redraw = false;
+      if (ClipRedrawEnabledInternal()) {
+        float lx0 = 1e9f, ly0 = 1e9f, lx1 = -1e9f, ly1 = -1e9f;
+        for (int32_t i = 0; i < 4; ++i) {
+          const auto& pos = gpu_.quad.vertices[i].position;
+          lx0 = std::min(lx0, pos.x);
+          ly0 = std::min(ly0, pos.y);
+          lx1 = std::max(lx1, pos.x);
+          ly1 = std::max(ly1, pos.y);
+        }
+        const float sx = uniform_params_.Scale.x;
+        const float sy = uniform_params_.Scale.y;
+        const float x0 = uniform_params_.Position.x + (lx0 - uniform_params_.Origin.x) * sx;
+        const float y0 = uniform_params_.Position.y + (ly0 - uniform_params_.Origin.y) * sy;
+        const float x1 = uniform_params_.Position.x + (lx1 - uniform_params_.Origin.x) * sx;
+        const float y1 = uniform_params_.Position.y + (ly1 - uniform_params_.Origin.y) * sy;
+        clip_redraw = UrgeQuadClippedByTarget(x0, y0, x1, y1);
+      }
+      if (UrgeSpriteRedrawEnabled() || clip_redraw) {
         if (UrgeSpriteRedrawBreakEnabled())
           UrgeForcePassBoundary(render_context);
         render_context->DrawIndexed(draw_indexed_attribs);

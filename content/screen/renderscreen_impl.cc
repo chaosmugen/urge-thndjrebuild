@@ -1045,10 +1045,126 @@ extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil) {
   g_urge_frame_rtv = render_target;
   g_urge_frame_dsv = depth_stencil;
+  // Marker: URGE_STENCILFILL - one line per distinct (colour, depth-stencil) format pair, so it is
+  // visible which pass the sprites actually draw into and whether that pass carries a stencil
+  // aspect at all. Without this the DSV read at clear time may belong to a different pass.
+  static int32_t s_seen = 0;
+  if (s_seen < 12) {
+    const char* rtv_name = "null";
+    const char* dsv_name = "null";
+    // The *view* format is what the render pass is built from: a D24S8 texture can be exposed as a
+    // depth-only view, and in that case every stencil write is silently dropped.
+    if (render_target)
+      rtv_name = Diligent::GetTextureFormatAttribs(render_target->GetDesc().Format).Name;
+    if (depth_stencil)
+      dsv_name = Diligent::GetTextureFormatAttribs(depth_stencil->GetDesc().Format).Name;
+    static std::string s_last;
+    std::string key = std::string(rtv_name) + "|" + dsv_name;
+    if (key != s_last) {
+      s_last = key;
+      ++s_seen;
+      LOG(INFO) << "[PassFmt] rtv=" << rtv_name << " dsv=" << dsv_name;
+    }
+  }
 }
 
 // TEMPORARY: end the current pass and reopen the one that was just interrupted, drawing nothing in
 // between. Marker: URGE_FRAME_RTV
+// See sprite_batch.cc. Marker: URGE_STENCILFILL
+extern "C" void UrgeClearStencil(Diligent::IDeviceContext* render_context) {
+  if (!render_context || !g_urge_frame_dsv)
+    return;
+  // One-shot diagnostic: whether the depth-stencil view the sprites render into actually carries a
+  // stencil aspect. Without it every stencil write is silently dropped and the fill pass draws the
+  // whole sprite again - which is exactly the double blend the seam metric reported.
+  static bool s_logged = false;
+  if (!s_logged) {
+    s_logged = true;
+    auto* dsv_texture = g_urge_frame_dsv->GetTexture();
+    const auto& dsv_desc = dsv_texture->GetDesc();
+    LOG(INFO) << "[StencilFill] dsv format="
+              << Diligent::GetTextureFormatAttribs(dsv_desc.Format).Name;
+  }
+  render_context->ClearDepthStencil(
+      g_urge_frame_dsv, Diligent::CLEAR_STENCIL_FLAG, 1.0f, 0,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+}
+
+// See DepthFillEnabledInternal (sprite_batch.cc). Marker: URGE_DEPTHFILL
+//
+// Clears the depth of the pass that is currently open. The engine sets a scissor per sprite run,
+// and a depth clear is clipped by it (vkCmdClearAttachments honours the scissor), so this only
+// resets the run's own bounding box - the depth the rest of the pass may care about is untouched.
+// See DepthFillEnabledInternal (sprite_batch.cc). Marker: URGE_DEPTHFILL
+//
+// Gives the sprite run about to be drawn a depth of its own by collapsing the viewport's depth
+// range to a single value. A viewport is dynamic state, so unlike a buffer update or a clear this
+// does not end the render pass - which is what made the earlier attempts collapse into the
+// "pass boundary before every run" behaviour (passes 23 -> 31, seam 0.098 -> 0.210).
+// See FramePassBoundaryDueInternal (sprite_batch.cc). Marker: URGE_FRAMEPASS
+//
+// A pass boundary repairs the loss only when the offending draw lands in a NEW pass, but a boundary
+// opened from inside a viewport/window pass reopens the FRAME target (UrgeForcePassBoundary always
+// reopens g_urge_frame_rtv), which is how the right-hand text column went missing. This flag marks
+// whether the pass that is currently open is the frame pass, so the boundary can be limited to it.
+static bool g_urge_in_frame_pass = false;
+
+// See UrgeQuadClippedByTarget. Marker: URGE_CLIPREDRAW
+//
+// The region the sprites are laid out in (the game screen, in game coordinates). A run whose quad
+// sticks out of it is the only kind measured to lose its fragments, so re-drawing exactly those
+// keeps the repair where it is needed and keeps the double-blend off the large translucent panels
+// that form the seam.
+static int32_t g_urge_viewport_w = 0;
+static int32_t g_urge_viewport_h = 0;
+
+extern "C" void UrgePublishViewportRegion(int32_t x, int32_t y, int32_t w, int32_t h) {
+  (void)x;
+  (void)y;
+  g_urge_viewport_w = w;
+  g_urge_viewport_h = h;
+}
+
+extern "C" bool UrgeQuadClippedByTarget(float x0, float y0, float x1, float y1) {
+  if (g_urge_viewport_w <= 0 || g_urge_viewport_h <= 0)
+    return false;
+  return x0 < 0.f || y0 < 0.f || x1 > static_cast<float>(g_urge_viewport_w) ||
+         y1 > static_cast<float>(g_urge_viewport_h);
+}
+
+extern "C" void UrgeSetInFramePass(bool inside) {
+  g_urge_in_frame_pass = inside;
+}
+
+extern "C" bool UrgeInFramePass() {
+  return g_urge_in_frame_pass;
+}
+
+extern "C" void UrgeSetRunDepth(Diligent::IDeviceContext* render_context, float depth) {
+  if (!render_context || !g_urge_frame_rtv)
+    return;
+  auto* texture = g_urge_frame_rtv->GetTexture();
+  if (!texture)
+    return;
+  const auto& desc = texture->GetDesc();
+  Diligent::Viewport viewport;
+  viewport.TopLeftX = 0.f;
+  viewport.TopLeftY = 0.f;
+  viewport.Width = static_cast<float>(desc.Width);
+  viewport.Height = static_cast<float>(desc.Height);
+  viewport.MinDepth = depth;
+  viewport.MaxDepth = depth;
+  render_context->SetViewports(1, &viewport, desc.Width, desc.Height);
+}
+
+extern "C" void UrgeClearDepthForRepair(Diligent::IDeviceContext* render_context) {
+  if (!render_context || !g_urge_frame_dsv)
+    return;
+  render_context->ClearDepthStencil(
+      g_urge_frame_dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+}
+
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context) {
   if (!render_context || !g_urge_frame_rtv)
     return;
@@ -1731,6 +1847,31 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
 // behaviour, so it is now opt-in: write a nonzero value into urge_debug/cellprobe.txt to arm it for an
 // investigation, and it stays off in normal play. Everything downstream of it ([CellAll], [CellUI],
 // the frame dumps) is driven from this same readback, so this one switch covers them all.
+// See the mx field of [CellProbe]. Marker: URGE_UIWATCH
+// Limits the per-pixel difference to the right-hand UI strip so that map scrolling does not
+// saturate it; the text there is static, so any missing row shows up as a spike.
+static int32_t UiWatchEnabledInternal() {
+  static int32_t s_poll = 0;
+  static int32_t s_mode = 0;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "uiwatch.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_mode = value;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/uiwatch.txt");
+      LOG(INFO) << "[UiWatch] mode=" << s_mode;
+    }
+  }
+  return s_mode;
+}
+
 static bool CellProbeEnabledInternal() {
   static int32_t s_poll = 0;
   static bool s_enabled = false;
@@ -1940,6 +2081,24 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
     static uint32_t s_hist_label[3] = {0, 0, 0};
     static std::vector<uint32_t> s_hist_value[3];
     static std::vector<uint8_t> s_hist_pixels[3];
+    // Previous frame, full size: used for the per-pixel maximum difference (see the mx field).
+    static std::vector<uint8_t> s_prev_pixels;
+
+    // Rolling recorder. Marker: URGE_RINGDUMP
+    //
+    // Keeps the last kRingFrames presented frames at 1/4 resolution in memory, and writes them out
+    // as one file when urge_debug/ringdump.txt appears. This exists because every measurement so
+    // far sampled a window chosen by the tool, not the instant the defect was on screen: the
+    // developer watches the TV, says "now", the trigger lands within a second, and the buffer
+    // still holds the preceding two seconds frame by frame.
+    constexpr int32_t kRingW = 480;
+    constexpr int32_t kRingH = 270;
+    constexpr int32_t kRingFrames = 120;
+    constexpr size_t kRingStride = static_cast<size_t>(kRingW) * 3;
+    static std::vector<uint8_t> s_ring;
+    static int32_t s_ring_pos = 0;
+    static bool s_ring_ready = false;
+    static int32_t s_ring_poll = 0;
     static int32_t s_dump_count = 0;
     static uint32_t s_last_dump_frame = 0;
 
@@ -1954,7 +2113,7 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
         s_stage.Release();
         renderer::CreateTexture2D(
             **context()->render_device, &s_stage, "present.cell.stage",
-            base::Vec2i(kStageW, kCells * kBlock), Diligent::USAGE_STAGING,
+            base::Vec2i(w, h), Diligent::USAGE_STAGING,
             Diligent::BIND_NONE, Diligent::CPU_ACCESS_READ,
             Diligent::TEX_FORMAT_RGBA8_UNORM);
         s_stage_w = w;
@@ -1972,20 +2131,34 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
           char line_buffer[kCount * 8 + 1];
           size_t written = 0;
           for (int32_t cell = 0; cell < kCount; ++cell) {
-            const int32_t cell_x = (cell % kCells) * kBlock;
-            const int32_t cell_y = (cell / kCells) * kBlock;
+            const int32_t cx = cell % kCells;
+            const int32_t cy = cell / kCells;
+            // Average over the WHOLE cell, sampling every 4th pixel in both axes.
+            //
+            // The previous version read a single 16x16 block at the cell centre, i.e. 256 of the
+            // 2,073,600 pixels of the frame (3.2%). After the pass-boundary change the defect
+            // stopped taking out a whole sprite and started taking out a patch spanning two
+            // panels, so the probe reported 0.000% while the flicker was still on screen - a
+            // false negative caused by the instrument, not by the fix.
+            const int32_t x0 = cx * w / kCells;
+            const int32_t x1 = (cx + 1) * w / kCells;
+            const int32_t y0 = cy * h / kCells;
+            const int32_t y1 = (cy + 1) * h / kCells;
             uint64_t sum[3] = {0, 0, 0};
-            for (int32_t row = 0; row < kBlock; ++row) {
+            uint64_t pixels = 0;
+            for (int32_t row = y0; row < y1; row += 4) {
               const uint8_t* line =
                   static_cast<const uint8_t*>(mapped.pData) +
-                  (cell_y + row) * mapped.Stride + cell_x * 4;
-              for (int32_t col = 0; col < kBlock; ++col) {
+                  static_cast<size_t>(row) * mapped.Stride;
+              for (int32_t col = x0; col < x1; col += 4) {
                 sum[0] += line[col * 4 + 0];
                 sum[1] += line[col * 4 + 1];
                 sum[2] += line[col * 4 + 2];
+                ++pixels;
               }
             }
-            const uint64_t pixels = kBlock * kBlock;
+            if (!pixels)
+              pixels = 1;
             cells[cell] = static_cast<uint32_t>(sum[0] / pixels) << 16 |
                           static_cast<uint32_t>(sum[1] / pixels) << 8 |
                           static_cast<uint32_t>(sum[2] / pixels);
@@ -1996,9 +2169,145 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
           // sf= is the sprite batcher's own frame counter. The draw probes below log it, the
           // [PresentPath] line logs frame_count_; this line carries both, so an anomaly frame
           // can be matched to what the draws submitted for it.
+          // Per-pixel maximum difference against the previous frame. The cell averages above
+          // cannot see a small patch: a 30x30 px loss inside a 120x67 cell moves the average by
+          // only a few levels. The maximum difference is the full contrast of the patch, so any
+          // localized change shows up as a spike in mx regardless of its size. mc names the cell
+          // it happened in.
+          int32_t mx = 0;
+          int32_t mc = -1;
+          const uint8_t* staged = static_cast<const uint8_t*>(mapped.pData);
+          const size_t row_bytes = static_cast<size_t>(w) * 4;
+          // With uiwatch on, the difference is taken only inside the right-hand UI strip, so the
+          // map scrolling under the character cannot drown out a flicker in the text itself.
+          // 0 = whole frame, 1 = the compass block (bottom-right), 2 = the right-hand text strip.
+          const int32_t ui_mode = UiWatchEnabledInternal();
+          const int32_t ux0 = ui_mode == 1 ? 1380 : (ui_mode == 2 ? 1340 : 0);
+          const int32_t ux1 = ui_mode == 1 ? 1720 : (ui_mode == 2 ? 1620 : w);
+          const int32_t uy0 = ui_mode == 1 ? 740 : (ui_mode == 2 ? 240 : 0);
+          const int32_t uy1 = ui_mode == 1 ? 1080 : (ui_mode == 2 ? 880 : h);
+          // How many pixels changed, and where. A text row going missing is a wide, tall cluster
+          // of changed pixels; a blinking cursor is a small box. The max alone cannot tell them
+          // apart, which is why this was invisible before.
+          int32_t changed = 0;
+          int32_t bx0 = w;
+          int32_t by0 = h;
+          int32_t bx1 = -1;
+          int32_t by1 = -1;
+          if (s_prev_pixels.size() == static_cast<size_t>(h) * row_bytes) {
+            for (int32_t y = uy0; y < uy1; ++y) {
+              const uint8_t* cur = staged + static_cast<size_t>(y) * mapped.Stride;
+              const uint8_t* prv =
+                  s_prev_pixels.data() + static_cast<size_t>(y) * row_bytes;
+              for (int32_t x = ux0; x < ux1; ++x) {
+                int32_t pixel_dev = 0;
+                for (int32_t ch = 0; ch < 3; ++ch) {
+                  const int32_t d = std::abs(static_cast<int32_t>(cur[x * 4 + ch]) -
+                                             static_cast<int32_t>(prv[x * 4 + ch]));
+                  if (d > pixel_dev)
+                    pixel_dev = d;
+                }
+                if (pixel_dev > mx) {
+                  mx = pixel_dev;
+                  mc = (y * kCells / h) * kCells + (x * kCells / w);
+                }
+                if (pixel_dev > 40) {
+                  ++changed;
+                  if (x < bx0) bx0 = x;
+                  if (x > bx1) bx1 = x;
+                  if (y < by0) by0 = y;
+                  if (y > by1) by1 = y;
+                }
+              }
+            }
+          }
+          s_prev_pixels.resize(static_cast<size_t>(h) * row_bytes);
+          for (int32_t y = 0; y < h; ++y)
+            std::memcpy(s_prev_pixels.data() + static_cast<size_t>(y) * row_bytes,
+                        staged + static_cast<size_t>(y) * mapped.Stride, row_bytes);
+
+          // See the rolling recorder note. Marker: URGE_RINGDUMP
+          {
+            if (!s_ring_ready) {
+              s_ring.assign(static_cast<size_t>(kRingFrames) * kRingH * kRingStride, 0);
+              s_ring_ready = true;
+            }
+            uint8_t* dst =
+                s_ring.data() + static_cast<size_t>(s_ring_pos) * kRingH * kRingStride;
+            const int32_t step_x = w / kRingW;
+            const int32_t step_y = h / kRingH;
+            for (int32_t ry = 0; ry < kRingH; ++ry) {
+              const uint8_t* line =
+                  staged + static_cast<size_t>(ry * step_y) * mapped.Stride;
+              uint8_t* out = dst + static_cast<size_t>(ry) * kRingStride;
+              for (int32_t rx = 0; rx < kRingW; ++rx) {
+                const uint8_t* p = line + static_cast<size_t>(rx * step_x) * 4;
+                out[rx * 3 + 0] = p[0];
+                out[rx * 3 + 1] = p[1];
+                out[rx * 3 + 2] = p[2];
+              }
+            }
+            s_ring_pos = (s_ring_pos + 1) % kRingFrames;
+
+            if (++s_ring_poll >= 5) {
+              s_ring_poll = 0;
+              const char* trigger =
+                  "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+                  "ringdump.txt";
+              FILE* trigger_file = fopen(trigger, "r");
+              if (trigger_file) {
+                fclose(trigger_file);
+                remove(trigger);
+                FILE* out_file = fopen(
+                    "/storage/emulated/0/Android/data/com.admenri.urge/files/"
+                    "urge_debug/ring.bin",
+                    "wb");
+                if (out_file) {
+                  const int32_t head[3] = {kRingW, kRingH, kRingFrames};
+                  fwrite(head, sizeof(head), 1, out_file);
+                  for (int32_t i = 0; i < kRingFrames; ++i) {
+                    const int32_t idx = (s_ring_pos + i) % kRingFrames;
+                    fwrite(s_ring.data() +
+                               static_cast<size_t>(idx) * kRingH * kRingStride,
+                           kRingH * kRingStride, 1, out_file);
+                  }
+                  fclose(out_file);
+                  LOG(INFO) << "[RingDump] wrote " << kRingFrames << " frames";
+                }
+              }
+            }
+          }
+
+          // Presence metric. Marker: URGE_PRESENCE
+          //
+          // Every metric above compares one frame with another, so a region that is missing in
+          // *every* frame reads as "nothing changed" - which is exactly how the right-hand text
+          // column's disappearance went unnoticed. This counts the bright pixels in that column
+          // each frame, so absence is visible whether it lasts one frame or a hundred.
+          int32_t bright_text = 0;
+          {
+            const int32_t px0 = std::min(1450, w - 1);
+            const int32_t px1 = std::min(1700, w);
+            const int32_t py0 = std::min(300, h - 1);
+            const int32_t py1 = std::min(830, h);
+            for (int32_t y = py0; y < py1; ++y) {
+              const uint8_t* line = staged + static_cast<size_t>(y) * mapped.Stride;
+              for (int32_t x = px0; x < px1; ++x) {
+                const int32_t r = line[x * 4 + 0];
+                const int32_t g = line[x * 4 + 1];
+                const int32_t b = line[x * 4 + 2];
+                if (std::max(r, std::max(g, b)) > 200)
+                  ++bright_text;
+              }
+            }
+          }
+
           if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
           LOG(INFO) << "[CellProbe] f=" << s_prev_frame
                     << " sf=" << context()->sprite_batcher->FrameCount()
+                    << " mx=" << mx << " mc=" << mc << " n=" << changed
+                    << " box=" << bx0 << "," << by0 << "-" << bx1 << "," << by1
+                    << " bl=" << bright_text
                     << " c=" << line_buffer << " ok=" << s_ok << " busy=" << s_busy;
 
           // Roll the three-frame history and judge it with the criterion the offline analysis
@@ -2017,12 +2326,21 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
           s_hist_label[2] = s_prev_frame;
           s_hist_value[2].assign(cells, cells + kCount);
           s_hist_pixels[2].resize(static_cast<size_t>(kStageW) * kCells * kBlock * 4);
+          // The staging texture is now full size, so the dump image is a strided sample of it
+          // rather than a straight copy: 256x256 covering the whole frame.
           for (int32_t row = 0; row < kCells * kBlock; ++row) {
-            std::memcpy(
-                s_hist_pixels[2].data() + static_cast<size_t>(row) * kStageW * 4,
+            const uint8_t* src =
                 static_cast<const uint8_t*>(mapped.pData) +
-                    static_cast<size_t>(row) * mapped.Stride,
-                kStageW * 4);
+                static_cast<size_t>(row * h / (kCells * kBlock)) * mapped.Stride;
+            uint8_t* dst =
+                s_hist_pixels[2].data() + static_cast<size_t>(row) * kStageW * 4;
+            for (int32_t col = 0; col < kStageW; ++col) {
+              const uint8_t* p = src + (col * w / kStageW) * 4;
+              dst[col * 4 + 0] = p[0];
+              dst[col * 4 + 1] = p[1];
+              dst[col * 4 + 2] = p[2];
+              dst[col * 4 + 3] = 255;
+            }
           }
 
           if (s_hist_label[1] == s_hist_label[0] + 1 &&
@@ -2136,34 +2454,18 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
           ++s_busy;
         }
 
-        // Submit this frame's cells: one 16x16 block at each grid cell's centre.
-        for (int32_t cy = 0; cy < kCells; ++cy) {
-          for (int32_t cx = 0; cx < kCells; ++cx) {
-            const int32_t x =
-                std::min(w * (2 * cx + 1) / (2 * kCells) - kBlock / 2,
-                         w - kBlock);
-            const int32_t y =
-                std::min(h * (2 * cy + 1) / (2 * kCells) - kBlock / 2,
-                         h - kBlock);
-            if (x < 0 || y < 0)
-              continue;
-            Diligent::Box region;
-            region.MinX = x;
-            region.MaxX = x + kBlock;
-            region.MinY = y;
-            region.MaxY = y + kBlock;
-            Diligent::CopyTextureAttribs attribs;
-            attribs.pSrcTexture = backbuffer;
-            attribs.pSrcBox = &region;
-            attribs.SrcTextureTransitionMode =
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-            attribs.pDstTexture = s_stage;
-            attribs.DstTextureTransitionMode =
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-            attribs.DstX = cx * kBlock;
-            attribs.DstY = cy * kBlock;
-            render_context->CopyTexture(attribs);
-          }
+        // Submit the whole back buffer; the cell averages are taken on the CPU over each cell's
+        // full area. Copying 256 centre blocks (the old way) covered 3.2% of the frame and could
+        // not see a partial region flicker.
+        {
+          Diligent::CopyTextureAttribs attribs;
+          attribs.pSrcTexture = backbuffer;
+          attribs.SrcTextureTransitionMode =
+              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+          attribs.pDstTexture = s_stage;
+          attribs.DstTextureTransitionMode =
+              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+          render_context->CopyTexture(attribs);
         }
         s_prev_frame = frame_count_;
       }
@@ -2258,6 +2560,7 @@ void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::ITexture* render_target,
     Diligent::ITexture* depth_stencil) {
+  UrgeSetInFramePass(true);  // Marker: URGE_FRAMEPASS
   // TEMPORARY pass-boundary audit, see g_urge_pass_breaks. Marker: URGE_PASS_AUDIT
     // See UrgeDiagEnabled. Marker: URGE_DIAG_GATE
     if (UrgeDiagEnabled())

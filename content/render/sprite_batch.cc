@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <cstring>
+
 #include "content/render/sprite_batch.h"
 
 #include <cstdio>
@@ -33,6 +35,38 @@ extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 //     against 0.105 on the reference device).
 // This switch keeps the second draw and drops the boundary. sprbreak.txt = 0 selects it.
 extern "C" bool UrgeSpriteRedrawBreakEnabled();
+
+// TEMPORARY A/B. Marker: URGE_STENCILFILL
+//
+// Repair a lost sprite draw without re-blending the whole sprite: the first pass writes stencil=1
+// where it lands, the second pass draws the same run with the test "stencil == 0" - i.e. only the
+// fragments that never landed. The stencil is cleared per run, so the test means "this run has not
+// written here", not "nothing has written here".
+// 0 = off, 1 = on.
+extern "C" void UrgeClearStencil(Diligent::IDeviceContext* render_context);
+
+extern "C" bool StencilFillEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_enabled = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "stencilfill.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_enabled = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/stencilfill.txt");
+      LOG(INFO) << "[StencilFill] enabled=" << s_enabled;
+    }
+  }
+  return s_enabled;
+}
+
 
 extern "C" bool UrgeSpriteRedrawEnabled() {
   static int32_t s_poll = 0;
@@ -82,6 +116,89 @@ extern "C" bool UrgeSpriteRedrawBreakEnabled() {
       fclose(file);
       remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
              "urge_debug/sprbreak.txt");
+    }
+  }
+  return s_enabled;
+}
+
+// TEMPORARY A/B. Marker: URGE_DEPTHFILL
+//
+// Repair a lost sprite draw without re-blending the ones that landed: per run, clear the depth
+// (clipped to the run's scissor), draw normally, then draw again through |sprite_repair| whose
+// depth test is strict LESS with depth write off - it passes only where the run's own depth was
+// never written, i.e. exactly the fragments that were lost. 1 = on, 0 = off.
+extern "C" bool DepthFillEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_enabled = false;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "depthfill.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_enabled = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/depthfill.txt");
+      LOG(INFO) << "[DepthFill] enabled=" << s_enabled;
+    }
+  }
+  return s_enabled;
+}
+
+// TEMPORARY A/B. Marker: URGE_DEPTHFILL
+//
+// The viewport publishes its CPU copy of the world transform here so the sprite path can shift the
+// projection matrix's z translation per run (one uniform write per run) instead of clearing depth,
+// which forced a render-pass restart per run - 23 -> 31 passes a frame - and brought the seam
+// regression back.
+struct UrgeWorldTransform {
+  float projection[16];
+  float transform[16];
+};
+static UrgeWorldTransform g_urge_world_transform;
+static Diligent::IBuffer* g_urge_world_buffer = nullptr;
+
+extern "C" void UrgePublishWorldTransform(const void* world, Diligent::IBuffer* buffer) {
+  if (!world)
+    return;
+  const auto* src = static_cast<const UrgeWorldTransform*>(world);
+  g_urge_world_transform = *src;
+  g_urge_world_buffer = buffer;
+}
+
+extern "C" bool UrgeFetchWorldTransform(void* out) {
+  if (!g_urge_world_buffer || !out)
+    return false;
+  std::memcpy(out, &g_urge_world_transform, sizeof(UrgeWorldTransform));
+  return true;
+}
+
+// TEMPORARY A/B. Marker: URGE_CLIPREDRAW
+//
+// Redraw only the runs whose quad sticks out of the sprite screen - the one class measured to lose
+// fragments. This gets the repair without re-blending the big translucent panels, which is what the
+// seam metric reports. 1 = on (default), 0 = off.
+extern "C" bool ClipRedrawEnabledInternal() {
+  static int32_t s_poll = 0;
+  static bool s_enabled = true;
+  if (++s_poll >= 30) {
+    s_poll = 0;
+    FILE* file = fopen(
+        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
+        "clipredraw.txt",
+        "r");
+    if (file) {
+      int32_t value = 0;
+      if (fscanf(file, "%d", &value) == 1)
+        s_enabled = value != 0;
+      fclose(file);
+      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
+             "urge_debug/clipredraw.txt");
+      LOG(INFO) << "[ClipRedraw] enabled=" << s_enabled;
     }
   }
   return s_enabled;
@@ -431,9 +548,30 @@ void SpriteBatch::FlushPass(Diligent::IDeviceContext* context,
     draw.NumIndices = 6 * run.count;
     draw.IndexType = quad_index->GetIndexType();
     draw.FirstIndexLocation = 6 * run.start;
-    context->DrawIndexed(draw);
+    // See StencilFillEnabledInternal. Marker: URGE_STENCILFILL
+    if (StencilFillEnabledInternal()) {
+      { static bool s_once = false;
+        if (!s_once) { s_once = true; std::fprintf(stderr, "[StencilFill] batch path active\n"); } }
+      // Clear the stencil for this run only, so "0" means "this run has not written here yet".
+      UrgeClearStencil(context);
+      context->SetStencilRef(1);
+      context->SetPipelineState(pipelines->sprite_mark[run.blend].RawPtr());
+      context->CommitShaderResources(
+          *binding_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+      context->DrawIndexed(draw);
+      // Second pass: only the fragments the first one did not land, blended once.
+      context->SetStencilRef(1);  // probe: EQUAL 1 = only where the mark landed
+      context->SetPipelineState(pipelines->sprite_fill[run.blend].RawPtr());
+      context->DrawIndexed(draw);
+      context->SetStencilRef(0);
+      context->SetPipelineState(pipelines->sprite[run.blend].RawPtr());
+    } else {
+      context->DrawIndexed(draw);
+    }
 
-    // See UrgeSpriteRedrawEnabled. Marker: URGE_SPRREDRAW
+    
+
+// See UrgeSpriteRedrawEnabled. Marker: URGE_SPRREDRAW
     if (UrgeSpriteRedrawEnabled()) {
       if (UrgeSpriteRedrawBreakEnabled())
         UrgeForcePassBoundary(context);
