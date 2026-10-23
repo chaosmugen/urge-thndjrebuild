@@ -22,11 +22,6 @@ extern "C" void UrgeTagRtSwitch(int32_t index);
 extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil);
 
-// See UrgePublishWorldTransform (sprite_batch.cc). Marker: URGE_DEPTHFILL
-extern "C" void UrgePublishWorldTransform(const void* world,
-                                          Diligent::IBuffer* buffer);
-// See UrgeSetInFramePass (renderscreen_impl.cc). Marker: URGE_FRAMEPASS
-extern "C" void UrgeSetInFramePass(bool inside);
 // See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
 extern "C" void UrgePublishViewportRegion(int32_t x, int32_t y, int32_t w, int32_t h);
 
@@ -658,11 +653,6 @@ void ViewportImpl::GPUUpdateViewportTransform(
       gpu_.world_uniform, 0, sizeof(world_matrix), &world_matrix,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-  // See UrgePublishWorldTransform (sprite_batch.cc). Marker: URGE_DEPTHFILL
-  // The sprite path needs the projection matrix to give each run a depth of its own, which is what
-  // turns the depth buffer into a per-run "already written" mask. Publishing the CPU copy here
-  // costs nothing and keeps the sprite code from having to re-derive the matrix.
-  UrgePublishWorldTransform(&world_matrix, gpu_.world_uniform);
 }
 
 void ViewportImpl::GPUResetIntermediateLayer(const base::Vec2i& effect_size) {
@@ -980,7 +970,6 @@ void ViewportImpl::GPUFrameBeginRenderPassInternal(
     Diligent::ITextureView* render_target_view,
     Diligent::ITextureView* depth_stencil_view,
     bool clear_target) {
-  UrgeSetInFramePass(false);  // Marker: URGE_FRAMEPASS
   UrgeTagRtSwitch(7);  // TEMPORARY, see render screen audit
   // See UrgeSetPassTarget: Viewport#render opens a pass on the bitmap it was given, and a forced
   // boundary inside it must reopen *that* bitmap - not the frame, which would put the viewport's

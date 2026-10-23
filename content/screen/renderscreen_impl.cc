@@ -1029,9 +1029,10 @@ static Diligent::ITextureView* g_urge_frame_dsv = nullptr;
 // rendered into a bitmap, and the bitmap is masked before anything reaches the screen. Reopening the
 // frame's target in the middle of that pass sends the second copy of the sprite to the screen instead,
 // and because the pass's scissor is the viewport rect the raw animation appears on the left half of
-// the screen for exactly one frame. That is the flash reported on the title screen, and it is caused by
-// the sprite redraw: with sprredraw.txt off it does not happen, with it on it happens on every entry
-// into a title sub-scene.
+// the screen for exactly one frame. That is the flash reported on the title screen, and it was caused
+// by the old unconditional sprite redraw: it does not happen with the redraw off, and it happened on
+// every entry into a title sub-scene with it on. The repair that ships now only redraws runs whose
+// quad is clipped by the sprite screen, which is why it does not reopen this path - keep it that way.
 // TEMP: pixel probe geometry - file scope so the probe can be called at the end of the
 // frame as well as during it. Marker: URGE_PROBEEND
 // TEMP: pixel probe state, at file scope so the probe can run at the end of the frame too.
@@ -1068,47 +1069,6 @@ extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
   }
 }
 
-// TEMPORARY: end the current pass and reopen the one that was just interrupted, drawing nothing in
-// between. Marker: URGE_FRAME_RTV
-// See sprite_batch.cc. Marker: URGE_STENCILFILL
-extern "C" void UrgeClearStencil(Diligent::IDeviceContext* render_context) {
-  if (!render_context || !g_urge_frame_dsv)
-    return;
-  // One-shot diagnostic: whether the depth-stencil view the sprites render into actually carries a
-  // stencil aspect. Without it every stencil write is silently dropped and the fill pass draws the
-  // whole sprite again - which is exactly the double blend the seam metric reported.
-  static bool s_logged = false;
-  if (!s_logged) {
-    s_logged = true;
-    auto* dsv_texture = g_urge_frame_dsv->GetTexture();
-    const auto& dsv_desc = dsv_texture->GetDesc();
-    LOG(INFO) << "[StencilFill] dsv format="
-              << Diligent::GetTextureFormatAttribs(dsv_desc.Format).Name;
-  }
-  render_context->ClearDepthStencil(
-      g_urge_frame_dsv, Diligent::CLEAR_STENCIL_FLAG, 1.0f, 0,
-      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-}
-
-// See DepthFillEnabledInternal (sprite_batch.cc). Marker: URGE_DEPTHFILL
-//
-// Clears the depth of the pass that is currently open. The engine sets a scissor per sprite run,
-// and a depth clear is clipped by it (vkCmdClearAttachments honours the scissor), so this only
-// resets the run's own bounding box - the depth the rest of the pass may care about is untouched.
-// See DepthFillEnabledInternal (sprite_batch.cc). Marker: URGE_DEPTHFILL
-//
-// Gives the sprite run about to be drawn a depth of its own by collapsing the viewport's depth
-// range to a single value. A viewport is dynamic state, so unlike a buffer update or a clear this
-// does not end the render pass - which is what made the earlier attempts collapse into the
-// "pass boundary before every run" behaviour (passes 23 -> 31, seam 0.098 -> 0.210).
-// See FramePassBoundaryDueInternal (sprite_batch.cc). Marker: URGE_FRAMEPASS
-//
-// A pass boundary repairs the loss only when the offending draw lands in a NEW pass, but a boundary
-// opened from inside a viewport/window pass reopens the FRAME target (UrgeForcePassBoundary always
-// reopens g_urge_frame_rtv), which is how the right-hand text column went missing. This flag marks
-// whether the pass that is currently open is the frame pass, so the boundary can be limited to it.
-static bool g_urge_in_frame_pass = false;
-
 // See UrgeQuadClippedByTarget. Marker: URGE_CLIPREDRAW
 //
 // The region the sprites are laid out in (the game screen, in game coordinates). A run whose quad
@@ -1130,39 +1090,6 @@ extern "C" bool UrgeQuadClippedByTarget(float x0, float y0, float x1, float y1) 
     return false;
   return x0 < 0.f || y0 < 0.f || x1 > static_cast<float>(g_urge_viewport_w) ||
          y1 > static_cast<float>(g_urge_viewport_h);
-}
-
-extern "C" void UrgeSetInFramePass(bool inside) {
-  g_urge_in_frame_pass = inside;
-}
-
-extern "C" bool UrgeInFramePass() {
-  return g_urge_in_frame_pass;
-}
-
-extern "C" void UrgeSetRunDepth(Diligent::IDeviceContext* render_context, float depth) {
-  if (!render_context || !g_urge_frame_rtv)
-    return;
-  auto* texture = g_urge_frame_rtv->GetTexture();
-  if (!texture)
-    return;
-  const auto& desc = texture->GetDesc();
-  Diligent::Viewport viewport;
-  viewport.TopLeftX = 0.f;
-  viewport.TopLeftY = 0.f;
-  viewport.Width = static_cast<float>(desc.Width);
-  viewport.Height = static_cast<float>(desc.Height);
-  viewport.MinDepth = depth;
-  viewport.MaxDepth = depth;
-  render_context->SetViewports(1, &viewport, desc.Width, desc.Height);
-}
-
-extern "C" void UrgeClearDepthForRepair(Diligent::IDeviceContext* render_context) {
-  if (!render_context || !g_urge_frame_dsv)
-    return;
-  render_context->ClearDepthStencil(
-      g_urge_frame_dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0,
-      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context) {
@@ -2560,7 +2487,6 @@ void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::ITexture* render_target,
     Diligent::ITexture* depth_stencil) {
-  UrgeSetInFramePass(true);  // Marker: URGE_FRAMEPASS
   // TEMPORARY pass-boundary audit, see g_urge_pass_breaks. Marker: URGE_PASS_AUDIT
     // See UrgeDiagEnabled. Marker: URGE_DIAG_GATE
     if (UrgeDiagEnabled())
