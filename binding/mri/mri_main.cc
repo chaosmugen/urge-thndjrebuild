@@ -139,6 +139,14 @@ void MriProcessReset() {
   MriProcessException(exception_state);
 }
 
+// The script-eval wrapper (ScriptMain) reports every exception that escapes a
+// script as "Script eval failed". An exception raised by the game loop is
+// already reported in MRI_RGSSMain under a label that matches a runtime
+// failure, and the same object is then re-raised into that wrapper — without
+// this marker every in-game error showed up twice in the console, once per
+// layer, with identical text.
+bool s_runtime_exception_reported = false;
+
 static VALUE RescueCallBlock(VALUE block) {
   return rb_funcall2(block, rb_intern("call"), 0, nullptr);
 };
@@ -182,6 +190,7 @@ MRI_METHOD(MRI_RGSSMain) {
       // place where the reason for an in-game quit becomes visible.
       LOG(ERROR) << "[Binding] Game loop exception: "
                  << ParseExeceptionInfo(exception);
+      s_runtime_exception_reported = true;
       rb_exc_raise(exception);
     }
   }
@@ -577,8 +586,14 @@ void BindingEngineMri::LoadPackedScripts(
           LOG(INFO) << "[Binding] Game exited (SystemExit)";
           break;
         }
-        LOG(ERROR) << "[Binding] Script eval failed: "
-                   << ParseExeceptionInfo(rb_errinfo());
+        if (s_runtime_exception_reported) {
+          // Already logged by the game loop; only clear the marker so a later
+          // load-time failure is still reported.
+          s_runtime_exception_reported = false;
+        } else {
+          LOG(ERROR) << "[Binding] Script eval failed: "
+                     << ParseExeceptionInfo(rb_errinfo());
+        }
         break;
       }
     }
