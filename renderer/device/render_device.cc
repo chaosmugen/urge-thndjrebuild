@@ -7,6 +7,10 @@
 #include <cstring>
 #include <exception>
 
+#if defined(OS_ANDROID)
+#include <sys/system_properties.h>
+#endif
+
 #include "renderer/device/gpu_driver.h"
 
 #include "SDL3/SDL_hints.h"
@@ -177,7 +181,28 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
     case DriverType::VULKAN:
       break;
     default:
-      driver_type = DriverType::OPENGL;
+      // An unset backend follows the GPU family: Qualcomm Adreno handles the Vulkan path
+      // (and is the one family the one-frame region loss has never been reproduced on),
+      // while the others - Mali on the target TV above all - stay on GLES, whose driver
+      // has no render scopes to lose writes from. The GLES driver name is read from the
+      // system properties, which is the only vendor signal available before a device
+      // exists to query.
+      {
+        char egl_driver[92] = {};
+        __system_property_get("ro.hardware.egl", egl_driver);
+        char soc_maker[92] = {};
+        __system_property_get("ro.soc.manufacturer", soc_maker);
+        const bool qualcomm =
+            std::strstr(egl_driver, "adreno") != nullptr ||
+            std::strstr(soc_maker, "QTI") != nullptr ||
+            std::strstr(soc_maker, "qualcomm") != nullptr;
+        driver_type =
+            qualcomm ? DriverType::VULKAN : DriverType::OPENGL;
+        LOG(INFO) << "[Renderer] Backend unset: qualcomm=" << qualcomm
+                  << " (ro.hardware.egl='" << egl_driver
+                  << "' ro.soc.manufacturer='" << soc_maker << "') -> "
+                  << (qualcomm ? "VULKAN" : "OPENGL");
+      }
       break;
   }
 #elif defined(OS_EMSCRIPTEN)
