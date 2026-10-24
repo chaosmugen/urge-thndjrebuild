@@ -15,30 +15,15 @@
 
 // Fix for the one-frame loss on the sprite layer, same shape as the map's.
 //
-// TEMPORARY A/B. Marker: URGE_SPRITEREDRAW
+// Marker: URGE_SPRITEREDRAW
 //
-// Redraw every sprite run in a pass of its own (the repair for the one-frame region loss). 1 = on
-// (default), 0 = off, via urge_debug/spriteredraw.txt.
+// Redraw every sprite run in a pass of its own: the repair for the one-frame region loss. Like the
+// tilemap second pass and the window redraw above, this is a workaround measured on the Mali TV the
+// project targets - a run that one pass loses is covered by the redraw, which is only ever needed
+// where a pass can lose writes at all. No switch: the file polling this used to carry cost a dozen
+// failed fopens a second for a knob that has a single useful value.
 extern "C" bool SpriteRedrawEnabledInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = true;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "spriteredraw.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/spriteredraw.txt");
-      LOG(INFO) << "[SpriteRedraw] enabled=" << s_enabled;
-    }
-  }
-  return s_enabled;
+  return renderer::IsMaliGpu();
 }
 
 namespace content {
