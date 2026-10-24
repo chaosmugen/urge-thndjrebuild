@@ -162,10 +162,6 @@ void RenderScreenImpl::Update(ExceptionState& exception_state) {
   SDL_PumpEvents();
 
   // Traced only while the surface is gone (see PollEventQueueInternal).
-  const bool traced = !context()->render_device->IsSurfaceValid();
-  if (traced)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[Graphics] update enter (surface invalid)";
 #endif  //! OS_ANDROID
 
   const bool frozen_render = frozen_;
@@ -220,11 +216,6 @@ void RenderScreenImpl::Update(ExceptionState& exception_state) {
   FrameProcessInternal(gpu_.screen_buffer);
 
 
-#if defined(OS_ANDROID)
-  if (traced)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[Graphics] update leave (surface invalid)";
-#endif  //! OS_ANDROID
 }
 
 void RenderScreenImpl::Wait(uint32_t duration,
@@ -392,16 +383,9 @@ void RenderScreenImpl::ResizeScreen(uint32_t width,
   // frame (the GPU audit shows ~22 rebuilds/s), which shreds the driver's
   // memory manager and eventually crashes it. Same size = no-op.
   if (context()->resolution == base::Vec2i(width, height)) {
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[Graphics] resize_screen(" << width << ", " << height
-              << ") ignored: resolution unchanged.";
     return;
   }
 
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[Graphics] resize_screen(" << width << ", " << height
-            << ") from " << context()->resolution.x << "x"
-            << context()->resolution.y;
 
   context()->resolution = base::Vec2i(width, height);
   GPUResetScreenBufferInternal();
@@ -583,26 +567,6 @@ void RenderScreenImpl::FrameProcessInternal(
   ++frame_count_;
 
   // TEMPORARY: which screen buffer this frame presents, and with what brightness. The
-  // engine keeps a main, a frozen (snapshot) and a transition buffer; a one-frame pixel
-  // change that leaves the draw data identical is exactly what presenting / compositing a
-  // different buffer for a single frame looks like, so every frame records its source.
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[PresentPath] f=" << frame_count_ << " src="
-            << (present_target == gpu_.screen_buffer.RawPtr()
-                    ? "main"
-                    : present_target == gpu_.frozen_buffer.RawPtr()
-                          ? "frozen"
-                          : present_target == gpu_.transition_buffer.RawPtr()
-                                ? "transition"
-                                : "other")
-            << " brightness=" << brightness_
-            // Whether the deferred-release graveyard is on (renderer::DeferredTextureRelease),
-            // so a session played by hand can be split by it afterwards without the host
-            // having to flip switches in step with it. The rotating arms are gone: every file
-            // computed its own arm from the frame count and mapped it to its own measure, so
-            // several of them ran at once and the numbers could not be read - a keep-alive
-            // arm, for instance, also carried the canvas and present drains.
-            << " ring=" << (renderer::DeferredReleaseEnabled() ? 1 : 0);
 
   // TEMPORARY pixel probe. Every flicker this project has recorded shows one frame in
   // which a large region of the picture is missing while every CPU-side counter stays
@@ -643,13 +607,6 @@ void RenderScreenImpl::FrameProcessInternal(
   }
 
 
-  // Diagnostics: how many scene renders happened since the previous present. Normal play
-  // renders once per presented frame; a freeze or transition snapshot renders the scene
-  // a second time inside the same frame, rotating the sprite set again.
-  const uint32_t renders = context()->sprite_batcher->TakeRenderTicks();
-  if (renders > 1)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[FrameRotate] frame=" << frame_count_ << " renders=" << renders;
 
   // Determine wait delay time
   limiter_.Delay();
@@ -703,26 +660,6 @@ void RenderScreenImpl::FrameProcessInternal(
   // of normal play by relying on exactly this boundary.
   //
   // Temporary probe. Every per-frame vertex and parameter buffer lives in kFrameSets
-  // sets rotating once per frame, so the CPU must never get further ahead of the GPU
-  // than that: a longer stretch means this frame wrote into a set the GPU may still be
-  // reading, and one element of that frame then comes out drawn from another frame's
-  // data (invisible or misplaced) while every CPU-side counter still reads perfect.
-  // The frames elapsed between two presents measure that margin directly.
-  {
-    static uint64_t s_last_present_ms = 0;
-    static uint64_t s_last_frame = 0;
-    static uint64_t s_presents = 0;
-    const uint64_t now = SDL_GetTicks();
-    const uint64_t elapsed_ms = s_last_present_ms ? now - s_last_present_ms : 0;
-    const uint64_t frames = frame_count_ - s_last_frame;
-    if (s_last_present_ms && (elapsed_ms > 50 || ++s_presents % 300 == 0))
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PresentAudit] n=" << s_presents << " interval=" << elapsed_ms
-                << "ms frames_since_last_present=" << frames
-                << " frame=" << frame_count_;
-    s_last_present_ms = now;
-    s_last_frame = frame_count_;
-  }
 
   renderer::NotifyFramePresented();
 }
@@ -1047,25 +984,6 @@ void RenderScreenImpl::RenderFrameInternal(
   FlushSpriteQueueInternal(controller_params.context);
 
 
-  // TEMPORARY sprite-batch audit. Marker: URGE_SPRAUDIT
-  //
-  // The UI strips are drawn through the batcher; if a frame's submission differs, these numbers say
-  // so. Printed only when one of them changes, so a steady frame stays silent.
-  {
-    static uint32_t s_last_spr[3] = {0, 0, 0};
-    uint32_t drawn = 0, fallback = 0, null_tex = 0;
-    context()->sprite_batcher->UrgeAuditCounters(drawn, fallback, null_tex);
-    if (UrgeDiagEnabled() && (drawn != s_last_spr[0] || fallback != s_last_spr[1] ||
-        null_tex != s_last_spr[2])) {
-      s_last_spr[0] = drawn;
-      s_last_spr[1] = fallback;
-      s_last_spr[2] = null_tex;
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[SprAudit] f=" << context()->sprite_batcher->FrameCount()
-                << " drawn=" << drawn << " fallbackRuns=" << fallback
-                << " nullTexture=" << null_tex;
-    }
-  }
 
   // TEMPORARY A/B. Marker: URGE_SCREENSTORE
   //
@@ -1216,13 +1134,6 @@ void RenderScreenImpl::RenderFrameInternal(
             written += snprintf(line_buffer + written,
                                 sizeof(line_buffer) - written, "%s%06x",
                                 i ? "," : "", values[i]);
-          if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-          LOG(INFO) << "[PixelProbe] f="
-                    << context()->sprite_batcher->FrameCount()
-                    << " buf=" << w << "x" << h
-                    << " space=" << (probe_screen_space ? "screen" : "internal")
-                    << " g=" << line_buffer << " ok=" << s_probe_ok
-                    << " busy=" << s_probe_busy;
           render_context->UnmapTextureSubresource(s_probe_stage[1 - s_probe_index],
                                                   0, 0);
         } else {
@@ -1444,8 +1355,6 @@ static bool CellProbeEnabledInternal() {
       fclose(file);
       remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
              "urge_debug/cellprobe.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[CellProbeGate] enabled=" << s_enabled;
     }
   }
   return s_enabled;
@@ -1744,7 +1653,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
             }
           }
 
-          if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
           LOG(INFO) << "[CellProbe] f=" << s_prev_frame
                     << " sf=" << context()->sprite_batcher->FrameCount()
                     << " mx=" << mx << " mc=" << mc << " n=" << changed
@@ -1814,56 +1722,8 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
             // cover this line as well, so a session that had seen 32 events went silent and
             // read as "the defect stopped" - it had not, the probe had. Marker for checking
             // that a build carries this: URGE_PROBE_ALLEVENTS.
-            // TEMPORARY UI-strip detector. Marker: URGE_UIPROBE
-            //
-            // The remaining flicker is small and sits on the bottom and right strips - the system
-            // frame panels - and the wide-screen detector above misses it: its floor is eight levels
-            // per channel over at least one whole sixteen-pixel cell, and the strips are drawn from
-            // cached bitmaps that change by less than that. This looks only at the cells in the
-            // bottom quarter and the right quarter of the frame, with a much lower floor, and logs
-            // which cells moved. It fires on its own, so the moment the user sees the flicker is in
-            // the log without anyone having to note the time.
-            {
-              int32_t ui_deviation = 0;
-              int32_t ui_cells = 0;
-              char ui_list[256];
-              ui_list[0] = '\0';
-              size_t ui_written = 0;
-              for (int32_t cell = 0; cell < kCount; ++cell) {
-                const int32_t cell_x = cell % kCells;
-                const int32_t cell_y = cell / kCells;
-                if (cell_x < kCells * 3 / 4 && cell_y < kCells * 3 / 4)
-                  continue;
-                int32_t cell_dev = 0;
-                for (int32_t shift = 16; shift >= 0; shift -= 8) {
-                  const int32_t prev = (s_hist_value[0][cell] >> shift) & 0xFF;
-                  const int32_t cur = (s_hist_value[1][cell] >> shift) & 0xFF;
-                  const int32_t next = (s_hist_value[2][cell] >> shift) & 0xFF;
-                  const int32_t back = prev > next ? prev - next : next - prev;
-                  const int32_t diff = cur > prev ? cur - prev : prev - cur;
-                  if (diff > back)
-                    cell_dev += diff - back;
-                }
-                if (cell_dev >= 6) {
-                  ui_deviation += cell_dev;
-                  ++ui_cells;
-                  if (ui_written < sizeof(ui_list) - 8)
-                    ui_written += snprintf(ui_list + ui_written,
-                                           sizeof(ui_list) - ui_written, "%s%d",
-                                           ui_written ? "," : "", cell);
-                }
-              }
-              if (ui_cells >= 1 && ui_deviation >= 6)
-                if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-                LOG(INFO) << "[CellUI] f=" << s_hist_label[1] << " dev=" << ui_deviation
-                          << " cells=" << ui_cells << " list=" << ui_list;
-            }
 
             if (deviation >= 20 && qualifying >= 1) {  // TEMPORARY, see above
-              if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-              LOG(INFO) << "[CellAll] cellprobe_" << s_hist_label[1] << ".dat f="
-                        << s_hist_label[1] << " dev=" << deviation
-                        << " blocks=" << qualifying << " dumps=" << s_dump_count;
               if (s_dump_count < 2000 &&
                   (s_last_dump_frame == 0 ||
                    s_hist_label[2] - s_last_dump_frame > 60)) {
@@ -1952,8 +1812,6 @@ extern "C" bool UrgeDiagEnabled() {
       fclose(file);
       remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
              "urge_debug/diag.txt");
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[Diag] enabled=" << s_enabled;
     }
   }
   return s_enabled;
