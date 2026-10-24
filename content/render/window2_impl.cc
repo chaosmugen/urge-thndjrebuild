@@ -990,20 +990,6 @@ void Window2Impl::GPURenderWindowQuadsInternal(
   // The two panels whose seam flickers were only ever counted on the WindowImpl path. This is the
   // other possible owner, and it had no counter at all. Count every object once per frame; report
   // any object drawn twice, and also report every 191x98 object so the owner class is settled.
-  {
-    static uint32_t s_frame = 0;
-    static std::unordered_map<const void*, int32_t> s_counts;
-    const uint32_t frame_count = context()->sprite_batcher->FrameCount();
-    if (frame_count != s_frame) {
-      s_frame = frame_count;
-      s_counts.clear();
-    }
-    const int32_t draws = ++s_counts[this];
-    if (draws >= 2 || (bound_.width == 191 && bound_.height == 98))
-      LOG(INFO) << "[W2Dup] f=" << frame_count << " win=" << static_cast<const void*>(this)
-                << " bound=" << bound_.width << "x" << bound_.height
-                << " draws=" << draws;
-  }
   // Diagnosis, see the note in window_impl.cc: the composite stage is skipped as well, but
   // the draw has to be blocked too or an earlier frame's quads would still reach it.
   {
