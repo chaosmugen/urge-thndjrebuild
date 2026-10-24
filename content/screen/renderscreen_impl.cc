@@ -655,18 +655,6 @@ void RenderScreenImpl::RenderFrameInternal(
   FlushSpriteQueueInternal(controller_params.context);
 
 
-
-  {
-
-      Diligent::StateTransitionDesc transitions[1];
-      transitions[0].pResource = gpu_.screen_buffer.RawPtr();
-      transitions[0].OldState = Diligent::RESOURCE_STATE_RENDER_TARGET;
-      transitions[0].NewState = Diligent::RESOURCE_STATE_SHADER_RESOURCE;
-      transitions[0].TransitionType = Diligent::STATE_TRANSITION_TYPE_IMMEDIATE;
-      transitions[0].Flags = Diligent::STATE_TRANSITION_FLAG_NONE;
-    controller_params.context->TransitionResourceStates(1, transitions);
-  }
-
   // 4) End render pass and process after-render effect
   GPUFrameEndRenderPassInternal(controller_params.context);
 
