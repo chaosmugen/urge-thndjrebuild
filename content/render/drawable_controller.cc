@@ -325,7 +325,6 @@ void DrawNodeController::BroadCastNotification(
 
 
   for (auto* node : snapshot) {
-    const int64_t z0 = node->GetSortKeys()->weight[0];
     const bool tone_skipped =
         blend_filter >= 0 && node->IsToneExempt() != (blend_filter == 1);
     if (tone_skipped)

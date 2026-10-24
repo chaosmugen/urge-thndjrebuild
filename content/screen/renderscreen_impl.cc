@@ -785,6 +785,7 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
 static int32_t UiWatchEnabledInternal() {
   static int32_t s_poll = 0;
   static int32_t s_mode = 0;
+#if !defined(NDEBUG)
   if (++s_poll >= 30) {
     s_poll = 0;
     FILE* file = fopen(
@@ -801,12 +802,16 @@ static int32_t UiWatchEnabledInternal() {
       LOG(INFO) << "[UiWatch] mode=" << s_mode;
     }
   }
+#endif  // !defined(NDEBUG)
   return s_mode;
 }
 
 static bool CellProbeEnabledInternal() {
   static int32_t s_poll = 0;
   static bool s_enabled = false;
+#if !defined(NDEBUG)
+  // Debug builds only: the file switch is how a session arms or disarms the probe. A release
+  // build never touches the filesystem here - the probe stays off and costs one branch a frame.
   if (++s_poll >= 60) {
     s_poll = 0;
     FILE* file = fopen(
@@ -822,6 +827,7 @@ static bool CellProbeEnabledInternal() {
              "urge_debug/cellprobe.txt");
     }
   }
+#endif  // !defined(NDEBUG)
   return s_enabled;
 }
 

@@ -404,11 +404,6 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     DrawableNode::RenderStage stage,
     DrawableNode::RenderControllerParams* params) {
   if (bound_.width <= 4 || bound_.height <= 4) {
-    // Temporary probe: this guard drops the whole window - frame and contents - before
-    // any layer is composed, so the layer counters shown above cannot see it. A burst
-    // of these is an open/close animation; an isolated one is a window that vanished
-    // for a single frame.
-    static int64_t s_skips = 0;
     return;
   }
 
@@ -543,10 +538,6 @@ struct PendingWindowLayer {
 };
 
 static std::vector<PendingWindowLayer> g_pending_layers;
-static int64_t g_window_layer_composites = 0;
-static int64_t g_window_layer_draws = 0;
-static int64_t g_window_layer_fallback = 0;
-static int64_t g_window_layer_registered = 0;
 
 static void RegisterLayerInternal(WindowImpl* window,
                                   Diligent::IBuffer* world,
@@ -618,7 +609,6 @@ void WindowImpl::FlushPendingLayers(Diligent::IDeviceContext* context,
         Disposable::IsValid(window->contents_.get()) ? **window->contents_ : nullptr;
 
     if (it.background) {
-      ++g_window_layer_fallback;
       window->GPURenderBackgroundLayerInternal(context, world, windowskin_agent);
     }
     if (it.control)
@@ -634,7 +624,6 @@ void WindowImpl::FlushPendingLayers(Diligent::IDeviceContext* context,
 void WindowImpl::GPUCompositeBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin) {
-  ++g_window_layer_composites;
 
   // Temporary probe: the background layer builds no quad at all without a windowskin
   // (see the "if (windowskin)" below), so a frame where the skin bitmap is invalid
@@ -783,7 +772,6 @@ void WindowImpl::GPUCompositeControlLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin,
     BitmapTexture* contents) {
-  ++g_window_layer_composites;
 
   const float contents_opacity_norm = contents_opacity_ / 255.0f;
   const float cursor_opacity_norm = cursor_opacity_ / 255.0f;
@@ -973,7 +961,6 @@ void WindowImpl::GPURenderBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding,
     BitmapTexture* windowskin) {
-  ++g_window_layer_draws;
 
   // The window draws with the shared quad index buffer, whose size is otherwise decided
   // by this frame's sprite count (SubmitBatchDataAndResetCache allocates for the sprite
@@ -1022,7 +1009,6 @@ void WindowImpl::GPURenderControlLayerInternal(
     BitmapTexture* windowskin,
     BitmapTexture* contents,
     ScissorStack* scissor_stack) {
-  ++g_window_layer_draws;
 
   // Same index-buffer reservation as the background layer above: this layer queues the
   // frame, the cursor and the contents into one buffer, so its index needs are the
@@ -1042,15 +1028,6 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      bound_.width, bound_.height);
 
     const bool frame_pushed = scissor_stack->Push(clipping_region);
-    if (!frame_pushed) {
-      // The border layer draws nothing at all when its clip region does not intersect the
-      // scissor in force. This was invisible in every earlier trace because those were
-      // placed after the call: the draw is simply skipped. The parent viewport's rect and
-      // origin are the inputs that decide it, and they are the ones never inspected.
-      static int64_t s_frame_clip_fails = 0;
-      auto* parent_viewport = background_node_.GetParentViewport();
-    }
-
     if (frame_pushed) {
       auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
@@ -1093,12 +1070,6 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      bound_.height - 16 * scale_);
 
     const bool contents_pushed = scissor_stack->Push(clipping_region);
-
-    if (!contents_pushed) {
-      // See the border layer above: a refused clip silently skips the contents.
-      static int64_t s_contents_clip_fails = 0;
-      auto* parent_viewport = background_node_.GetParentViewport();
-    }
 
     if (contents_pushed) {
       auto* pipeline = context()->render.pipeline_states->window.RawPtr();

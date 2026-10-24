@@ -192,10 +192,6 @@ void ViewportImpl::Render(scoped_refptr<Bitmap> target,
   WindowImpl::FlushPendingLayers(controller_params.context, gpu_.world_uniform,
                                  viewport_rect);
 
-  {
-    static int64_t s_viewport_passes = 0;
-  }
-
 
   // End render pass and process after-render effect
   base::Vec4 composite_color = color_->AsNormColor();
@@ -492,15 +488,6 @@ void ViewportImpl::DrawableNodeHandlerInternal(
     // Temporary probe: Push() refuses an empty intersection, and when it refuses the
     // whole subtree below - every window of this viewport - is skipped for the frame.
     // A menu viewport holds only windows, which is why the sprite counters stayed clean.
-    {
-      const base::Rect viewport_bound = controller_.CurrentViewport().bound;
-      const base::Rect current = params->scissors->Current();
-      const base::Rect intersect = base::MakeIntersect(current, viewport_bound);
-      if (!intersect.width || !intersect.height) {
-        static int64_t s_viewport_skips = 0;
-      }
-    }
-
     // Real scissor region in "screen"
     if (params->scissors->Push(controller_.CurrentViewport().bound)) {
       // Setup new render params at current node
