@@ -553,43 +553,6 @@ void WindowImpl::ControlNodeHandlerInternal(
       }
 
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
-    // Candidate fix, switched together with the plane drain
-    // rotates the arms; urge_debug/windowsync.txt overrides it by hand). A battle session
-    // that flickered was, by its own log, a session doing Window work: the game replaces a
-    // window's contents bitmap continuously while the window keeps drawing, and this
-    // composite is where that bitmap gets sampled. That is the same wait-then-sample shape
-    // as the plane draw, which is the one place a drain has ever removed the region loss -
-    // and the plane drain alone left the flicker in battles, so the window needs its own.
-    {
-      static int32_t s_window_sync_poll = 0;
-      static bool s_window_sync = false;
-      static uint32_t s_window_sync_frame = 0;
-      if (++s_window_sync_poll >= 30) {
-        s_window_sync_poll = 0;
-        FILE* file = fopen(
-            "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-            "windowsync.txt",
-            "r");
-        if (file) {
-          int32_t value = 0;
-          if (fscanf(file, "%d", &value) == 1)
-            s_window_sync = value != 0;
-          fclose(file);
-          remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-                 "urge_debug/windowsync.txt");
-        }
-      }
-      const uint32_t window_frame = context()->sprite_batcher->FrameCount();
-      // Off by default: in a real battle this drain measured 0.085% of frames losing a
-      // region against 0.100% without it, i.e. nothing. The rotating arm now drives the
-      // keep-alive ring in the sprite batch, which covers this path as well.
-      const bool want_drain = s_window_sync;
-      if (want_drain && window_frame != s_window_sync_frame && params->context) {
-        s_window_sync_frame = window_frame;
-        params->context->Flush();
-        params->context->WaitForIdle();
-      }
-    }
 
     GPUCompositeControlLayerInternal(params->context, windowskin_agent,
                                      contents_agent);

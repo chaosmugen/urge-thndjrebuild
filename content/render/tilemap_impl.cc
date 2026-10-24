@@ -1218,37 +1218,6 @@ void TilemapImpl::GPUMakeAtlasInternal(
     render_context->CopyTexture(copy_attribs);
   }
 
-  // Candidate fix for the one-frame region loss, gated on urge_debug/atlasdrain.txt for
-  // A/B testing. Everything above runs in the enqueue stage; the ground and the above
-  // layers sample the atlas in the draw stage of the same frame. The comment at the top of
-  // this function already worries about draws reading the atlas before the copies land -
-  // the ground then shows unrelated, bright parts of the atlas for exactly one frame,
-  // which is what the movement-only reproduction records. Draining here retires the copies
-  // before anything samples them. Only dirty frames reach this point, so the sync cost is
-  // paid when the map scrolls onto new tiles, not every frame.
-  {
-    static int32_t s_atlas_drain_poll = 0;
-    static bool s_atlas_drain = false;
-    if (++s_atlas_drain_poll >= 30) {
-      s_atlas_drain_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "atlasdrain.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_atlas_drain = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/atlasdrain.txt");
-      }
-    }
-    if (s_atlas_drain) {
-      render_context->Flush();
-      render_context->WaitForIdle();
-    }
-  }
 }
 
 
@@ -1332,59 +1301,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
   if (!gpu_.atlas_texture)
     return;
 
-  // Reproduction stress, gated on urge_debug/tmstress.txt (level = extra accesses per frame).
-  // The one-frame ground loss is intermittent: the same build has measured 0.4 and 2.5 events
-  // per minute in two nearby windows of one session, so a fix that halves it cannot be told
-  // apart from that drift. What raised the plane's numbers was exactly this shape - extra GPU
-  // accesses to the texture the draw samples, pure copies with no read-back and no waiting.
-  // Same here, on the atlas the ground samples. It is an amplifier for comparing candidates
-  // inside one session, not evidence about the mechanism.
-  {
-    static int32_t s_stress_poll = 0;
-    static int32_t s_stress_level = 0;
-    if (++s_stress_poll >= 30) {
-      s_stress_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "tmstress.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_stress_level = value > 0 ? value : 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/tmstress.txt");
-      }
-    }
-
-    if (s_stress_level > 0) {
-      static RRefPtr<Diligent::ITexture> s_stress_tex;
-      const auto& atlas_desc = gpu_.atlas_texture->GetDesc();
-      if (!s_stress_tex ||
-          s_stress_tex->GetDesc().Width != atlas_desc.Width ||
-          s_stress_tex->GetDesc().Height != atlas_desc.Height)
-        renderer::CreateTexture2D(
-            **context()->render_device, &s_stress_tex, "tilemap.stress",
-            base::Vec2i(static_cast<int32_t>(atlas_desc.Width),
-                        static_cast<int32_t>(atlas_desc.Height)),
-            Diligent::USAGE_DEFAULT, Diligent::BIND_SHADER_RESOURCE,
-            Diligent::CPU_ACCESS_NONE, atlas_desc.Format);
-
-      if (s_stress_tex) {
-        for (int32_t i = 0; i < s_stress_level; ++i) {
-          Diligent::CopyTextureAttribs attribs;
-          attribs.pSrcTexture = gpu_.atlas_texture;
-          attribs.SrcTextureTransitionMode =
-              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-          attribs.pDstTexture = s_stress_tex;
-          attribs.DstTextureTransitionMode =
-              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-          render_context->CopyTexture(attribs);
-        }
-      }
-    }
-  }
 
 
   if (gpu_.ground_draw_count) {

@@ -1397,42 +1397,6 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-  // Every text draw uploads its glyphs into the shared text cache texture and then, a dozen
-  // lines below, binds that same texture to draw with - a write followed immediately by a
-  // read of one texture, which is the shape that reads stale tiles on this driver. It is
-  // also the shape that matches the reported reproduction exactly: entering battle, using
-  // skills (skill names, damage numbers - a burst of text) and watching the bottom of the
-  // picture, where the message and status windows live. None of the drains added elsewhere
-  // covered this pair; it happens on the canvas scheduler's own context.
-  // urge_debug/textsync.txt = 0 turns it off.
-  {
-    static int32_t s_text_sync_poll = 0;
-    // Off by default: this is a drain, and the drain line is closed. The builds the
-    // developer played had this drain, the canvas drain and the present drain (which also
-    // drains the canvas context) all on by default, and the flicker still happened; the
-    // four-arm comparison in a real battle measured 0.100% of frames losing a region with a
-    // drain against 0.100% without. Kept as a switch, off.
-    static bool s_text_sync = false;
-    if (++s_text_sync_poll >= 60) {
-      s_text_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "textsync.txt",
-          "r");
-      if (file) {
-        int32_t value = 1;
-        if (fscanf(file, "%d", &value) == 1)
-          s_text_sync = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/textsync.txt");
-      }
-    }
-    if (s_text_sync) {
-      render_context->Flush();
-      render_context->WaitForIdle();
-    }
-  }
 
   // Render text stage data to current texture
   base::Vec4 blend_alpha;

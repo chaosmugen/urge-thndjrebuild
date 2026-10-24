@@ -641,39 +641,6 @@ void RenderScreenImpl::RenderFrameInternal(
   // Submit pending canvas commands
   context()->canvas_scheduler->SubmitPendingPaintCommands();
 
-  // Candidate fix for the one-frame region loss, gated on urge_debug/paintdrain.txt so it
-  // can be A/B tested without a rebuild. The canvas commands above are texture updates
-  // recorded at the head of this frame - script-side blits into the layer textures the
-  // scene samples a few instructions later. Everything is on one queue, so correctness is
-  // the driver's job, and this mt5895 Mali driver does not always give it: the frame shows
-  // the background replaced by bright garbage while sprites on the same pass are fine.
-  // Reproduced deterministically with a movement-only session (same script, same frame
-  // numbers every run), which is what makes this measurable: with the drain off, eight
-  // frames per 150 s lose a region; the drain completes the updates before anything
-  // samples them.
-  {
-    static int32_t s_drain_poll = 0;
-    static bool s_drain_enabled = false;
-    if (++s_drain_poll >= 30) {
-      s_drain_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "paintdrain.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_drain_enabled = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/paintdrain.txt");
-      }
-    }
-    if (s_drain_enabled && context()->primary_render_context) {
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-    }
-  }
 
   // Setup viewport
   controller_.CurrentViewport().bound = context()->resolution;
@@ -697,73 +664,7 @@ void RenderScreenImpl::RenderFrameInternal(
   context()->sprite_batcher->SubmitBatchDataAndResetCache(
       context()->render.quad_index.get(), controller_params.context);
 
-  // Candidate fix for the one-frame region loss, gated on urge_debug/invalidatestate.txt for
-  // A/B testing. A layer of the map view - the Plane that draws the game's 670x402 map
-  // bitmap - is rendered with somebody else's pixels for exactly one frame, while its
-  // parameters, its place in the submission order, and even the contents of the texture it
-  // samples are byte-identical to the frames around it (all three were measured). With the
-  // engine's side of the contract demonstrably correct, what is left is the driver not
-  // making this frame's earlier writes to that texture visible to this draw. Invalidating
-  // Diligent's resource state on the boundary between every upload of this frame and its
-  // draws makes it re-insert the full set of barriers, which is the Vulkan-side way to give
-  // the driver no room to get that wrong. Costs a barrier per resource per frame; only
-  // worth keeping if it removes the region loss.
-  {
-    static int32_t s_invalidate_poll = 0;
-    static bool s_invalidate = false;
-    if (++s_invalidate_poll >= 30) {
-      s_invalidate_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "invalidatestate.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_invalidate = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/invalidatestate.txt");
-      }
-    }
-    if (s_invalidate && context()->primary_render_context)
-      context()->primary_render_context->InvalidateState();
-  }
 
-  // Candidate fix for the one-frame region loss, gated on urge_debug/rendersync.txt. This
-  // is the boundary between every enqueue-stage upload of the frame - canvas blits into the
-  // game's bitmaps, tilemap atlas copies, plane and window composition - and any draw that
-  // samples their results. The measured evidence points here rather than earlier: draining
-  // right after the canvas commands (urge_debug/paintdrain.txt) changes nothing at all
-  // (83.9% of frames lost a region against 84.5% with it), while draining next to the
-  // sampling plane removes almost all of it (89.3% against 4.4%), so what matters is
-  // retiring the writes of this frame before the first draw reads them, not the writes
-  // earlier in the pipe. Only worth shipping if it holds up in a within-session A/B: this
-  // metric varies so much between runs that the same build scored 0 and 37 events in two
-  // sessions, so cross-session comparison proves nothing.
-  {
-    static int32_t s_render_sync_poll = 0;
-    static bool s_render_sync = false;
-    if (++s_render_sync_poll >= 30) {
-      s_render_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "rendersync.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_render_sync = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/rendersync.txt");
-      }
-    }
-    if (s_render_sync && context()->primary_render_context) {
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-    }
-  }
 
   // See UrgeSetPassTarget: a forced boundary reopens this target, so the frame pass has to publish
   // it. Marker: URGE_FRAME_RTV
