@@ -1299,8 +1299,7 @@ void TilemapImpl::GPURenderAboveLayerInternal(
 
       auto* pipeline = context()->render.pipeline_states->tilemap.RawPtr();
 
-      // See GPUData::above_binding: this draw owns its binding, and only falls back to the
-      // one the ground draws through when urge_debug/tmsrbsplit.txt = 0.
+      // See GPUData::above_binding: this draw owns its binding.
       renderer::Binding_Tilemap& layer_binding = gpu_.above_binding;
 
       // Setup uniform params

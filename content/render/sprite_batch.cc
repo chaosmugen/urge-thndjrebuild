@@ -49,26 +49,6 @@ namespace content {
 
 namespace {
 
-// TEMPORARY A/B switch. With the storage-buffer batch on, every sprite of a run reads
-// its parameters from one shared array, and the element index has to be carried in the
-// vertex colour because the Mali driver on the target TV hands the same vertex index to
-// every draw of a frame (see kHLSL_SpriteRender_Vertex). If that index resolves wrongly
-// for a frame, the run's elements are all drawn with somebody else's parameters - which
-// looks exactly like a region vanishing for one frame while every CPU-side counter stays
-// correct. Setting urge_debug/nobatch.txt to 1 forces the fallback path, where each
-// sprite is drawn with its own constant parameter block and that mechanism cannot apply.
-bool BatchingDisabledByProbe() {
-  FILE* file = fopen(
-      "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/nobatch.txt",
-      "r");
-  if (!file)
-    return false;
-  int32_t value = 0;
-  const bool read = fscanf(file, "%d", &value) == 1;
-  fclose(file);
-  return read && value != 0;
-}
-
 }  // namespace
 
 SpriteBatch::SpriteBatch(renderer::RenderDevice* device,
@@ -76,7 +56,7 @@ SpriteBatch::SpriteBatch(renderer::RenderDevice* device,
     : current_texture_(TextureID()),
       last_batch_index_(-1),
       support_storage_buffer_batch_(loader->sprite.storage_buffer_support &&
-                                    !BatchingDisabledByProbe()),
+                                    true),
       binding_(loader->sprite.CreateBinding()),
       device_(device) {
   for (auto& batch : vertex_batch_)
