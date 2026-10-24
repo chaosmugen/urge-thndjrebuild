@@ -403,7 +403,6 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
 
   // Frames spent holding a batch that only clears, waiting for the redraw commands the
   // game queues right after. See SubmitQueuedCommands.
-  int32_t pending_clear_frames_ = 0;
   Command* last_command_ = nullptr;
   std::vector<CommandBlock> blocks_;
   uint32_t current_block_ = 0;

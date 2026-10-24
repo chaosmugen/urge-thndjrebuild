@@ -366,50 +366,6 @@ void CanvasImpl::SubmitQueuedCommands(bool at_frame_boundary) {
   // game (clear, then redraw) and applied here; the window samples the texture. If a
   // window draws before the paint commands of that frame are applied it shows the cleared
   // - but not yet redrawn - contents, i.e. an empty window for exactly one frame.
-  if (commands_) {
-    // A batch that only clears has no content yet: the game's redraw commands have not
-    // been queued at this point (the script yields between "clear" and "redraw"). Drawing
-    // it now would show the cleared surface - the map background loses its content for a
-    // frame. Wait for the redraw to join the same batch, and only give up after a few
-    // frames so a deliberate clear still takes effect.
-    bool clear_only = true;
-    for (Command* it = commands_; it; it = it->next) {
-      if (it->id != CommandID::CLEAR && it->id != CommandID::NONE) {
-        clear_only = false;
-        break;
-      }
-    }
-    // The cap below is what makes the map background lose its content for a frame: a clear
-    // that is still alone after that many frames is applied anyway, and whatever samples
-    // the canvas in that frame shows the cleared surface. Raise it with
-    // urge_debug/clearcap.txt to test whether that is the whole story - if the one-frame
-    // region loss disappears, the fix is to stop applying a clear before the redraw it
-    // belongs to, not to wait longer.
-    static int32_t s_clear_cap_poll = 0;
-    // Unverified, so off by default (0 = no holding); clearcap.txt sets a nonzero cap to test.
-    // Marker: URGE_DEFAULTS
-    static int32_t s_clear_cap = 0;
-    if (++s_clear_cap_poll >= 30) {
-      s_clear_cap_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "clearcap.txt",
-          "r");
-      if (file) {
-        int32_t value = 3;
-        if (fscanf(file, "%d", &value) == 1)
-          s_clear_cap = value >= 0 ? value : 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/clearcap.txt");
-      }
-    }
-    if (clear_only && at_frame_boundary && ++pending_clear_frames_ < s_clear_cap) {
-      return;
-    }
-
-    pending_clear_frames_ = 0;
-  }
   Command* command_sequence = commands_;
   // Execute pending commands,
   // encode draw command in wgpu encoder.

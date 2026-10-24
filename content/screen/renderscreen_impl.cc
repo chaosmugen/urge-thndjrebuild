@@ -167,39 +167,6 @@ void RenderScreenImpl::Update(ExceptionState& exception_state) {
   const bool need_skip_frame = limiter_.RequireFrameSkip() &&
                                context()->engine_profile->allow_skip_frame;
 
-  // Rotate the screen targets before rendering. After the swap the scene renders into the
-  // buffer that holds the frame before last, while the composite below samples the one
-  // rendered on the previous frame - so the frame being read is never the frame being
-  // written. The failure this addresses was measured as a frame that is part old and part
-  // new (the top 78% of the screen from one frame, the bottom from another, identical again
-  // on the next frame), which is exactly what compositing a target that is still being
-  // rendered produces, and which no amount of synchronisation on this driver removed.
-  // Gated and OFF by default: measured with the row probe it made things worse (14 events
-  // against 3 with the single buffer, four of them an identical 519-magnitude band on rows
-  // 33..39 - the bottom of the picture). The most likely reading is that this engine does
-  // not write every part of the screen target every frame, so alternating targets makes
-  // those parts alternate between two buffers instead of fixing anything.
-  {
-    static int32_t s_db_poll = 0;
-    static bool s_db_enabled = false;
-    if (++s_db_poll >= 30) {
-      s_db_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "screenbuf2.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_db_enabled = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/screenbuf2.txt");
-      }
-    }
-    if (s_db_enabled && gpu_.screen_buffer && gpu_.screen_buffer_prev)
-      std::swap(gpu_.screen_buffer, gpu_.screen_buffer_prev);
-  }
 
   if (!frozen_render && !need_skip_frame) {
     // Render a frame and push into render queue
@@ -553,12 +520,6 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
 
 // TEMP: pixel probe state at file scope, so the probe can be called at the end of the
 // frame as well. Marker: URGE_PROBEEND
-static int32_t s_probe_poll = 0;
-static bool s_probe_enabled = false;
-static Diligent::RefCntAutoPtr<Diligent::ITexture> s_probe_stage[2];
-static int32_t s_probe_index = 0;
-static uint32_t s_probe_ok = 0;
-static uint32_t s_probe_busy = 0;
 
 void RenderScreenImpl::FrameProcessInternal(
     Diligent::ITexture* present_target) {
@@ -567,43 +528,6 @@ void RenderScreenImpl::FrameProcessInternal(
 
   // TEMPORARY: which screen buffer this frame presents, and with what brightness. The
 
-  // TEMPORARY pixel probe. Every flicker this project has recorded shows one frame in
-  // which a large region of the picture is missing while every CPU-side counter stays
-  // correct, so the only thing that can tie the event to a frame number is the pixels the
-  // GPU actually produced. While urge_debug/pixprobe.txt is nonzero, a 6x4 grid of 16x16
-  // blocks covering the whole frame is averaged and logged on EVERY frame. Logging on
-  // change alone was wrong: the test that looked for a value returning on the next line
-  // can never fire while the scene is animating, which is exactly when the flicker
-  // happens. With one line per frame the event is found afterwards as a frame whose blocks
-  // jump away from their own neighbours and come straight back - an outlier, which needs
-  // no repetition and survives animation.
-  {
-    // On by default now. Arming this from the host required launching the game *after* the
-    // switch file was written, and a whole session of real play went by with the offscreen
-    // half of the evidence missing for that reason alone. urge_debug/pixprobe.txt = 0 turns
-    // it off.
-    // Two staging textures, because the copy submitted on one frame is read on the next. The
-    // single-texture version had to call WaitForIdle before reading, which cost a third of
-    // the frame rate and - worse for a probe - could hide a race between that copy and the
-    // draw that follows it.
-
-    if (++s_probe_poll >= 30) {
-      s_probe_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "pixprobe.txt",
-          "r");
-      if (file) {
-        int32_t value = 1;
-        if (fscanf(file, "%d", &value) == 1)
-          s_probe_enabled = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/pixprobe.txt");
-      }
-    }
-
-  }
 
 
 
@@ -613,42 +537,6 @@ void RenderScreenImpl::FrameProcessInternal(
   // Tick callback
   frame_tick_handler_.Run(present_target);
 
-  // Frame drain, on by default since the loss was localized outside the application's own
-  // output. It was first tried as a candidate fix for the one-frame
-  // region loss: the screen buffer is cleared outside a render pass every frame while the
-  // composite that samples it may still be in flight, and this drain removes that overlap.
-  // A cross-session comparison looked convincing (31 such frames in five minutes without it,
-  // 0 with it), but a within-session alternating A/B - the only method that survives the
-  // frame-to-frame variance of this metric, since the same build scored 0 and 37 in two
-  // different sessions - showed no improvement, so it is not shipped as a fix. Keep it here
-  // as a switch: urge_debug/framesync.txt, nonzero for on. NOTE: the events counted by the
-  // probes below at that time were later identified as present-side scaling noise (a few
-  // levels per block); the real loss is a large, region-local deviation.
-  {
-    static int32_t s_sync_poll = 0;
-    // Off again: the row probe later showed it made no difference, and a per-frame drain is
-    // the heaviest change this project carries.
-    static bool s_sync_enabled = false;
-    if (++s_sync_poll >= 30) {
-      s_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "framesync.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_sync_enabled = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/framesync.txt");
-      }
-    }
-    if (s_sync_enabled && context()->primary_render_context) {
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-    }
-  }
 
   // The frame is complete: rotate the per-frame buffer sets here, on the boundary the GPU
   // finishes on, so every render of the next frame shares one set instead of splitting it.
@@ -684,10 +572,6 @@ static Diligent::ITextureView* g_urge_frame_dsv = nullptr;
 // frame as well as during it. Marker: URGE_PROBEEND
 // TEMP: pixel probe state, at file scope so the probe can run at the end of the frame too.
 // Marker: URGE_PROBEEND
-static constexpr int32_t kProbeGridX = 25;
-static constexpr int32_t kProbeGridY = 19;
-static constexpr int32_t kProbeBlock = 32;
-static constexpr int32_t kProbeCount = kProbeGridX * kProbeGridY;
 
 extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil) {
@@ -921,150 +805,20 @@ void RenderScreenImpl::RenderFrameInternal(
   // render-scope boundary before presenting - a store is not a drain and is not a scope change.
   // Declaring the buffer as shader-readable is what makes the store necessary.
   //
-  // urge_debug/screenstore.txt = 0 turns it off again.
   {
-    static int32_t s_store_poll = 0;
-    static bool s_store_enabled = true;
-    if (++s_store_poll >= 30) {
-      s_store_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "screenstore.txt", "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_store_enabled = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/screenstore.txt");
-      }
-    }
-    if (s_store_enabled && gpu_.screen_buffer) {
+
       Diligent::StateTransitionDesc transitions[1];
       transitions[0].pResource = gpu_.screen_buffer.RawPtr();
       transitions[0].OldState = Diligent::RESOURCE_STATE_RENDER_TARGET;
       transitions[0].NewState = Diligent::RESOURCE_STATE_SHADER_RESOURCE;
       transitions[0].TransitionType = Diligent::STATE_TRANSITION_TYPE_IMMEDIATE;
       transitions[0].Flags = Diligent::STATE_TRANSITION_FLAG_NONE;
-      controller_params.context->TransitionResourceStates(1, transitions);
-    }
+    controller_params.context->TransitionResourceStates(1, transitions);
   }
 
   // 4) End render pass and process after-render effect
   GPUFrameEndRenderPassInternal(controller_params.context);
 
-  // window and canvas stages draw afterwards - and a loss caused by one of those later stages is
-  // exactly what it then reports as "steady". Sampled here instead: after the pass ended and after
-  // the after-render effect wrote the last full-screen quad, i.e. the image about to be presented.
-  // Marker: URGE_PROBEEND
-    if (s_probe_enabled && gpu_.screen_buffer &&
-        context()->primary_render_context) {
-      auto* render_context = context()->primary_render_context;
-      const auto& screen_desc = gpu_.screen_buffer->GetDesc();
-      const int32_t w = static_cast<int32_t>(screen_desc.Width);
-      const int32_t h = static_cast<int32_t>(screen_desc.Height);
-
-      if (!s_probe_stage[0] && w > 0 && h > 0) {
-        renderer::CreateTexture2D(
-            **context()->render_device, &s_probe_stage[0], "pixel.probe.stage0",
-            base::Vec2i(kProbeGridX * kProbeBlock, kProbeGridY * kProbeBlock),
-            Diligent::USAGE_STAGING, Diligent::BIND_NONE,
-            Diligent::CPU_ACCESS_READ, Diligent::TEX_FORMAT_RGBA8_UNORM);
-        renderer::CreateTexture2D(
-            **context()->render_device, &s_probe_stage[1], "pixel.probe.stage1",
-            base::Vec2i(kProbeGridX * kProbeBlock, kProbeGridY * kProbeBlock),
-            Diligent::USAGE_STAGING, Diligent::BIND_NONE,
-            Diligent::CPU_ACCESS_READ, Diligent::TEX_FORMAT_RGBA8_UNORM);
-      }
-
-      if (s_probe_stage[0] && s_probe_stage[1] && w >= kProbeBlock &&
-          h >= kProbeBlock) {
-        // Which coordinate space the anchor below is in - see the note there.
-        const bool probe_screen_space = (w >= 1600 && h >= 900);
-        bool copied = true;
-        for (int32_t gy = 0; gy < kProbeGridY && copied; ++gy) {
-          for (int32_t gx = 0; gx < kProbeGridX && copied; ++gx) {
-            // TEMP: the compass in the bottom-right corner, which drops out for a single frame now
-            // and then. Which coordinate space applies depends on what the screen buffer actually is
-            // - the game renders 800x600 but the buffer this copies from has been 1920x1080 in some
-            // builds - so the anchor follows the size and both are logged. Measuring it this way
-            // matters: reading the render target and the screen recording disagree (the recording
-            // goes through the display pipeline), and an anchor in the wrong space samples
-            // something else entirely, which is how an earlier round concluded "impossible to see".
-            const int32_t anchor_x = 0;
-            const int32_t anchor_y = 0;
-            const int32_t x = std::min(anchor_x + gx * kProbeBlock, w - kProbeBlock);
-            const int32_t y = std::min(anchor_y + gy * kProbeBlock, h - kProbeBlock);
-            if (x < 0 || y < 0) {
-              copied = false;
-              break;
-            }
-            Diligent::Box region;
-            region.MinX = x;
-            region.MaxX = x + kProbeBlock;
-            region.MinY = y;
-            region.MaxY = y + kProbeBlock;
-            Diligent::CopyTextureAttribs attribs;
-            attribs.pSrcTexture = gpu_.screen_buffer;
-            attribs.pSrcBox = &region;
-            attribs.SrcTextureTransitionMode =
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-            attribs.pDstTexture = s_probe_stage[s_probe_index];
-            attribs.DstTextureTransitionMode =
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-            attribs.DstX = gx * kProbeBlock;
-            attribs.DstY = gy * kProbeBlock;
-            render_context->CopyTexture(attribs);
-          }
-        }
-
-        // Read what the previous frame copied - never this frame's staging texture, which the
-        // copies just submitted are still writing - and do not wait for it.
-        Diligent::MappedTextureSubresource mapped;
-        if (copied)
-          render_context->MapTextureSubresource(
-              s_probe_stage[1 - s_probe_index], 0, 0, Diligent::MAP_READ,
-              Diligent::MAP_FLAG_DO_NOT_WAIT, nullptr, mapped);
-        if (copied && mapped.pData) {
-          ++s_probe_ok;
-          // Average each block: a region losing its overlay moves the average by tens of
-          // levels, while animation, dithering and single pixels only wobble it by a few.
-          uint32_t values[kProbeCount] = {};
-          for (int32_t gy = 0; gy < kProbeGridY; ++gy) {
-            for (int32_t gx = 0; gx < kProbeGridX; ++gx) {
-              uint32_t sum[3] = {0, 0, 0};
-              for (int32_t row = 0; row < kProbeBlock; ++row) {
-                const uint8_t* line =
-                    static_cast<const uint8_t*>(mapped.pData) +
-                    (gy * kProbeBlock + row) * mapped.Stride +
-                    gx * kProbeBlock * 4;
-                for (int32_t col = 0; col < kProbeBlock; ++col) {
-                  sum[0] += line[col * 4 + 0];
-                  sum[1] += line[col * 4 + 1];
-                  sum[2] += line[col * 4 + 2];
-                }
-              }
-              const uint32_t pixels = kProbeBlock * kProbeBlock;
-              values[gy * kProbeGridX + gx] = (sum[0] / pixels) << 16 |
-                                              (sum[1] / pixels) << 8 |
-                                              (sum[2] / pixels);
-            }
-          }
-
-          char line_buffer[kProbeCount * 8 + 1];
-          size_t written = 0;
-          for (int32_t i = 0; i < kProbeCount; ++i)
-            written += snprintf(line_buffer + written,
-                                sizeof(line_buffer) - written, "%s%06x",
-                                i ? "," : "", values[i]);
-          render_context->UnmapTextureSubresource(s_probe_stage[1 - s_probe_index],
-                                                  0, 0);
-        } else {
-          ++s_probe_busy;
-        }
-        s_probe_index = 1 - s_probe_index;
-      }
-    }
 
 }
 
@@ -1109,7 +863,6 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
   // graphics reset, and a frame the GPU is still executing can be drawing into, or
   // compositing from, the old buffers. See renderer::DeferredTextureRelease.
   renderer::DeferredTextureRelease(gpu_.screen_buffer);
-  renderer::DeferredTextureRelease(gpu_.screen_buffer_prev);
   renderer::DeferredTextureRelease(gpu_.screen_depth_stencil);
   renderer::DeferredTextureRelease(gpu_.frozen_buffer);
   renderer::DeferredTextureRelease(gpu_.frozen_depth_stencil);
@@ -1123,11 +876,6 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
       Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE,
       Diligent::CPU_ACCESS_NONE,
       Diligent::TEX_FORMAT_RGBA8_UNORM);
-  renderer::CreateTexture2D(
-      **context()->render_device, &gpu_.screen_buffer_prev,
-      "screen.main.buffer.prev", context()->resolution,
-      Diligent::USAGE_DEFAULT,
-      Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
 
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.frozen_buffer, "screen.frozen.buffer",

@@ -381,32 +381,6 @@ void PlaneImpl::GPUUpdatePlaneQuadArrayInternal(
 void PlaneImpl::GPUOnViewportRenderingInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding) {
-  // Diagnostic bisection, gated on urge_debug/noplane.txt. The map background turned out to
-  // be a Plane (see the [PlaneFp] line: a 670x402 game bitmap), the last drawable type
-  // whose draw has not been switched off yet, while the tilemap ground behind it was
-  // already ruled out. Turning the plane off tells whether the one-frame region loss lives
-  // in this path at all.
-  {
-    static int32_t s_no_plane_poll = 0;
-    static bool s_no_plane = false;
-    if (++s_no_plane_poll >= 30) {
-      s_no_plane_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "noplane.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_no_plane = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/noplane.txt");
-      }
-    }
-    if (s_no_plane)
-      return;
-  }
 
   // Source texture
   auto* texture = **bitmap_;

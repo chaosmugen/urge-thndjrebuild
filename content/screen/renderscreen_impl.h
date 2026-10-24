@@ -31,7 +31,6 @@ class RenderScreenImpl : public Graphics, public EngineObject {
     // frame that mixes two frames - the top 78% of the screen from one, the bottom from
     // another, and byte-identical again on the next frame, three times in twelve minutes -
     // which is what compositing a target that is still being rendered looks like.
-    RRefPtr<Diligent::ITexture> screen_buffer_prev;
     RRefPtr<Diligent::ITexture> frozen_buffer;
     RRefPtr<Diligent::ITexture> transition_buffer;
 

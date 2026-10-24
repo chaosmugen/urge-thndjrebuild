@@ -1386,32 +1386,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     }
   }
 
-  // Diagnostic bisection, gated on urge_debug/notilemap.txt. The one-frame region loss
-  // covers the map view while the UI panels on other pipelines stay pixel-identical, so
-  // the ground layer is a suspect. Skipping its draw (the tiles go black) and measuring
-  // whether the map area still deviates once per frame tells whether the corruption is
-  // inside this draw or behind it.
-  {
-    static int32_t s_no_tm_poll = 0;
-    static bool s_no_tm = false;
-    if (++s_no_tm_poll >= 30) {
-      s_no_tm_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "notilemap.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_no_tm = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/notilemap.txt");
-      }
-    }
-    if (s_no_tm)
-      return;
-  }
 
   if (gpu_.ground_draw_count) {
     auto* pipeline = context()->render.pipeline_states->tilemap.RawPtr();

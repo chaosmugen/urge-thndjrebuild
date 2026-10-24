@@ -478,28 +478,6 @@ void Window2Impl::GPUCompositeWindowQuadsInternal(
     BitmapTexture* contents,
     BitmapTexture* windowskin,
     const base::Rect& padding_rect) {
-  // Diagnostic bisection, see the note on AuditSkipWindowLayers() in window_impl.cc.
-  {
-    static int32_t s_poll = 0;
-    static bool s_skip = false;
-    if (++s_poll >= 30) {
-      s_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "nowindow.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_skip = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/nowindow.txt");
-      }
-    }
-    if (s_skip)
-      return;
-  }
 
   // Reset texture if size changed
   if (!gpu_.texture ||
@@ -990,29 +968,6 @@ void Window2Impl::GPURenderWindowQuadsInternal(
   // The two panels whose seam flickers were only ever counted on the WindowImpl path. This is the
   // other possible owner, and it had no counter at all. Count every object once per frame; report
   // any object drawn twice, and also report every 191x98 object so the owner class is settled.
-  // Diagnosis, see the note in window_impl.cc: the composite stage is skipped as well, but
-  // the draw has to be blocked too or an earlier frame's quads would still reach it.
-  {
-    static int32_t s_poll = 0;
-    static bool s_skip = false;
-    if (++s_poll >= 30) {
-      s_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "nowindow.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_skip = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/nowindow.txt");
-      }
-    }
-    if (s_skip)
-      return;
-  }
 
   auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 
