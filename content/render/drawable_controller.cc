@@ -133,15 +133,6 @@ static int32_t g_urge_probe_frame = 0;
 // frame now and then (110,70,3 <-> 181,133,48) with every submitted batch identical, which is what
 // a tone pass applied a different number of times looks like; these counters make that visible.
 
-// True for the nodes this investigation follows: the two stacked panels' background (150) and
-// contents (152) nodes. Their contents node is missing from the list on a good share of frames,
-// which is why the panel is not drawn at all on those frames.
-static bool UrgeProbeNode(DrawableNode* node) {
-  if (!node)
-    return false;
-  const int64_t z = node->GetSortKeys()->weight[0];
-  return z == 150 || z == 152;
-}
 
 void DrawableNode::SetToneExempt(bool value) {
   tone_exempt_ = value;
@@ -157,9 +148,6 @@ void DrawableNode::RebindController(DrawNodeController* controller) {
 
   // Setup new parent controller
   controller_ = controller;
-  if (UrgeProbeNode(this))
-    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " rebind n=" << static_cast<const void*>(this)
-              << " z0=" << GetSortKeys()->weight[0] << " to=" << static_cast<const void*>(controller);
 
   // Rebind orderly node link
   base::LinkNode<DrawableNode>::RemoveFromList();
@@ -167,9 +155,6 @@ void DrawableNode::RebindController(DrawNodeController* controller) {
 }
 
 void DrawableNode::DisposeNode() {
-  if (UrgeProbeNode(this))
-    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " dispose n=" << static_cast<const void*>(this)
-              << " z0=" << GetSortKeys()->weight[0];
   base::LinkNode<DrawableNode>::RemoveFromList();
   controller_ = nullptr;
 }
@@ -253,9 +238,6 @@ ViewportInfo* DrawableNode::GetParentViewport() {
 
 void DrawableNode::ReorderDrawableNodeInternal() {
   DCHECK(controller_);
-  if (UrgeProbeNode(this))
-    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " reorder n=" << static_cast<const void*>(this)
-              << " z0=" << GetSortKeys()->weight[0];
 
   // Fetch associate nodes
   auto* previous_node = GetPreviousNode();
@@ -272,9 +254,6 @@ void DrawableNode::ReorderDrawableNodeInternal() {
     // Ambiguous neighbors: both a forward and a backward walk look valid, so
     // fall back to a full remove + sorted re-insert instead of a local bubble
     // walk that can append the node to the wrong end of the list.
-    if (UrgeProbeNode(this))
-      LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " reorder_full n="
-                << static_cast<const void*>(this);
     base::LinkNode<DrawableNode>::RemoveFromList();
     controller_->InsertChildNodeInternal(this);
     return;
@@ -421,10 +400,6 @@ void DrawNodeController::BroadCastNotification(
     const bool tracked = (z0 == 150 || z0 == 152);
     const bool tone_skipped =
         blend_filter >= 0 && node->IsToneExempt() != (blend_filter == 1);
-    if (tracked && tone_skipped)
-      LOG(INFO) << "[Dispatch] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
-                << " n=" << static_cast<const void*>(node) << " z0=" << z0
-                << " skipped=tone_filter";
     if (tone_skipped)
       continue;
     // Broadcast render job notification
@@ -439,11 +414,6 @@ void DrawNodeController::BroadCastNotification(
       if (parent_viewport)
         visible = parent_viewport->visible;
     }
-    if (tracked)
-      LOG(INFO) << "[Dispatch] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
-                << " n=" << static_cast<const void*>(node) << " z0=" << z0
-                << " skipped=none vis=" << (visible ? 1 : 0)
-                << " calling=" << (visible ? 1 : 0);
     if (visible) {
       node->handler_.Run(nid, params);
     }
@@ -451,10 +421,6 @@ void DrawNodeController::BroadCastNotification(
 }
 
 void DrawNodeController::InsertChildNodeInternal(DrawableNode* node) {
-  if (UrgeProbeNode(node))
-    LOG(INFO) << "[Link] f=" << g_urge_probe_frame << " insert n=" << static_cast<const void*>(node)
-              << " z0=" << node->GetSortKeys()->weight[0]
-              << " into=" << static_cast<const void*>(this);
   // Defensive: make sure the node is not still linked into any list before
   // inserting (no-op when the node is already unlinked).
   node->RemoveFromList();

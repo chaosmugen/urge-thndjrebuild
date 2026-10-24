@@ -481,19 +481,10 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     // TEMPORARY. Marker: URGE_FRAMESET
     // The write side resolved this index earlier in the frame. If it moved since, the layers
     // below read a different rotating set - one holding an earlier round's vertices.
-    if (bound_.width == 191 && bound_.height == 98 &&
-        context()->sprite_batcher->FrameSetIndex() != gpu_.bg_write_set) {
-      LOG(INFO) << "[FrameSet] f=" << context()->sprite_batcher->FrameCount()
-                << " bg write=" << gpu_.bg_write_set
-                << " read=" << context()->sprite_batcher->FrameSetIndex() << " MISMATCH";
-    }
     // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
     {
       const uint32_t fc = context()->sprite_batcher->FrameCount();
       if (fc != gpu_.last_bg_frame) { gpu_.last_bg_frame = fc; gpu_.bg_draws = 0; }
-      if (++gpu_.bg_draws >= 2)
-        LOG(INFO) << "[WndDup] layer=bg frame=" << fc << " bound=" << bound_.width << "x"
-                  << bound_.height << " draws=" << gpu_.bg_draws;
     }
     GPURenderBackgroundLayerInternal(params->context, params->world_binding,
                                      windowskin_agent);
@@ -728,12 +719,6 @@ void WindowImpl::ControlNodeHandlerInternal(
     // TEMPORARY. Marker: URGE_FRAMESET
     // The write side resolved this index earlier in the frame. If it moved since, the layers
     // below read a different rotating set - one holding an earlier round's vertices.
-    if (bound_.width == 191 && bound_.height == 98 &&
-        context()->sprite_batcher->FrameSetIndex() != gpu_.ctrl_write_set) {
-      LOG(INFO) << "[FrameSet] f=" << context()->sprite_batcher->FrameCount()
-                << " ctrl write=" << gpu_.ctrl_write_set
-                << " read=" << context()->sprite_batcher->FrameSetIndex() << " MISMATCH";
-    }
     // TEMPORARY. Marker: URGE_TEXTWIN
     // Per-frame record of every window that draws inside the pixel probe's area (internal
     // 661..789, 219..251 - the right-hand text list), so the sampled pixels and the inputs that
@@ -773,24 +758,12 @@ void WindowImpl::ControlNodeHandlerInternal(
       const uint32_t fc = context()->sprite_batcher->FrameCount();
       if (fc != s_kind_frame) {
         s_kind_frame = fc;
-        if (s_kind_seen.insert(this).second)
-          LOG(INFO) << "[WinKind] win=" << static_cast<const void*>(this) << " rect=" << bound_.x
-                    << "," << bound_.y << " " << bound_.width << "x" << bound_.height
-                    << " skin=" << (windowskin_agent ? 1 : 0)
-                    << " contents=" << (contents_agent ? 1 : 0)
-                    // The controller's audit logs nodes by pointer; this is what turns those
-                    // pointers back into windows, so a window that stops appearing can be named.
-                    << " bg_node=" << static_cast<const void*>(&background_node_)
-                    << " ctrl_node=" << static_cast<const void*>(&control_node_);
       }
     }
     // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
     {
       const uint32_t fc = context()->sprite_batcher->FrameCount();
       if (fc != gpu_.last_ctrl_frame) { gpu_.last_ctrl_frame = fc; gpu_.ctrl_draws = 0; }
-      if (++gpu_.ctrl_draws >= 2)
-        LOG(INFO) << "[WndDup] layer=ctrl frame=" << fc << " bound=" << bound_.width << "x"
-                  << bound_.height << " draws=" << gpu_.ctrl_draws;
     }
     // TEMPORARY. Marker: URGE_CTRLDRAW
     // The panels' pixels come entirely from this layer (their background layer builds no quad at
@@ -1334,14 +1307,6 @@ void WindowImpl::GPURenderControlLayerInternal(
   // TEMPORARY. Marker: URGE_ENTRY
   // Which of the two draw branches this call will take. Neither logged anything for the two
   // panels, yet they are visible, so the branch that paints them is not the one assumed.
-  if (bound_.width == 191 && bound_.height == 98) {
-    LOG(INFO) << "[Entry] f=" << context()->sprite_batcher->FrameCount()
-              << " y=" << bound_.y << " skin=" << (windowskin ? 1 : 0)
-              << " contents=" << (contents ? 1 : 0) << " cache=" << gpu_.controls_cache.size()
-              << " ctrl_quads=" << gpu_.controls_draw_count
-              << " ctrl_offset=" << gpu_.contents_quad_offset
-              << " bg_quads=" << gpu_.background_draw_count;
-  }
 
   // TEMPORARY seam probe. Marker: URGE_QUADHASH
   // Hash the vertices this layer is about to submit. Frame-over-frame, the seam between the two
