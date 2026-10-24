@@ -136,11 +136,6 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
       if (converted || !value)
         windowskin_ = converted;
       // Probe kept for verification: object=0 means the window now has no skin at all.
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WindowAudit] windowskin set window="
-                << static_cast<const void*>(this) << " object="
-                << static_cast<const void*>(windowskin_.get())
-                << " requested=" << static_cast<const void*>(converted.get());
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
@@ -155,11 +150,6 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
       scoped_refptr<CanvasImpl> converted = CanvasImpl::FromBitmap(value);
       if (converted || !value)
         contents_ = converted;
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WindowAudit] contents set window="
-                << static_cast<const void*>(this) << " object="
-                << static_cast<const void*>(contents_.get())
-                << " requested=" << static_cast<const void*>(converted.get());
     });
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
@@ -365,8 +355,6 @@ static void ForgetLayersInternal(WindowImpl* window);
 void WindowImpl::OnObjectDisposed() {
   // Recorded so that "composed and then not drawn" can be told apart from "the window
   // was torn down between the two stages".
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[WinDiag] disposed w=" << static_cast<const void*>(this);
 
   // The fallback must never emit a window that is being torn down.
   ForgetLayersInternal(this);
@@ -453,11 +441,6 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     // of these is an open/close animation; an isolated one is a window that vanished
     // for a single frame.
     static int64_t s_skips = 0;
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[WindowAudit] window skipped #" << ++s_skips
-              << " window=" << static_cast<const void*>(this) << " bound="
-              << bound_.width << "x" << bound_.height
-              << " stage=" << static_cast<int32_t>(stage);
     return;
   }
 
@@ -591,19 +574,8 @@ void WindowImpl::ControlNodeHandlerInternal(
           {this, {static_cast<const void*>(windowskin_agent),
                   static_cast<const void*>(contents_agent)}});
       slot = &s_window_textures.back().second;
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WindowAudit] textures first seen window="
-                << static_cast<const void*>(this) << " skin="
-                << static_cast<const void*>(windowskin_agent) << " contents="
-                << static_cast<const void*>(contents_agent);
     } else if (slot->first != windowskin_agent ||
                slot->second != contents_agent) {
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WindowAudit] textures changed window="
-                << static_cast<const void*>(this) << " skin "
-                << slot->first << " -> " << static_cast<const void*>(windowskin_agent)
-                << " contents " << slot->second << " -> "
-                << static_cast<const void*>(contents_agent);
       slot->first = windowskin_agent;
       slot->second = contents_agent;
       }
@@ -746,18 +718,6 @@ void WindowImpl::ControlNodeHandlerInternal(
       // Only on change and periodically: the quad fields here are not the counts the
       // draws use (see the [WinDraw] trace for those), so this is the state baseline.
       if (changed || s_seq % 400 == 0) {
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[WinDiag] seq=" << state.seq
-                  << " w=" << state.window << " bound=" << state.bound_w << "x"
-                  << state.bound_h << " opacity=" << state.opacity << "/"
-                  << state.back_opacity << "/" << state.contents_opacity
-                  << " skin=" << state.skin << " skin_srv=" << state.skin_srv
-                  << " contents=" << state.contents
-                  << " contents_srv=" << state.contents_srv
-                  << " world=" << state.world << " scissor=" << state.scissor_w
-                  << "x" << state.scissor_h << " quads bg=" << state.bg_quads
-                  << " ctrl=" << state.ctrl_quads
-                  << (nothing_to_draw ? "  <== NOTHING TO DRAW" : "");
       }
 
       if (last)
@@ -781,17 +741,6 @@ void WindowImpl::ControlNodeHandlerInternal(
     // produced them sit in one log under the same frame number. Scoped to those windows on
     // purpose: the flicker is a fraction of a pixel of rasterisation, and a measurement that has to
     // share a clock with a screen capture cannot see it.
-    if (UrgeDiagEnabled() &&  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        bound_.x < 789 && bound_.x + bound_.width > 661 && bound_.y < 251 &&
-        bound_.y + bound_.height > 219) {
-      LOG(INFO) << "[TextWin] f=" << context()->sprite_batcher->FrameCount()
-                << " rect=" << bound_.x << "," << bound_.y << " " << bound_.width << "x"
-                << bound_.height << " skin=" << (windowskin_agent ? 1 : 0)
-                << " srv=" << static_cast<const void*>(
-                       contents_agent ? contents_agent->shader_resource_view : nullptr)
-                << " quads=" << gpu_.controls_cache.size()
-                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
-    }
 
     // TEMPORARY. Marker: URGE_PANEL
     // What the two stacked panels draw when they are walked. Joins with [CanvasCmd] by bitmap
@@ -900,11 +849,6 @@ static int64_t g_window_layer_registered = 0;
 static void RegisterLayerInternal(WindowImpl* window,
                                   Diligent::IBuffer* world,
                                   bool background) {
-  if (++g_window_layer_registered % 300 == 0)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[WindowAudit] composites=" << g_window_layer_composites
-              << " draws=" << g_window_layer_draws
-              << " fallback_layers=" << g_window_layer_fallback;
 
   for (auto& it : g_pending_layers) {
     if (it.window == window) {
@@ -950,21 +894,13 @@ void WindowImpl::FlushPendingLayers(Diligent::IDeviceContext* context,
   // Only this pass's level: a layer composed under another world belongs to that
   // level's pass, whose draw stage has not run yet at this point.
   std::vector<PendingWindowLayer> pending;
-  int32_t skipped = 0;
   for (const auto& it : g_pending_layers) {
     if (it.world == world)
       pending.push_back(it);
-    else
-      ++skipped;
   }
 
   // Report what this pass actually saw: entries left over (the fallback about to run)
   // or entries skipped because they belong to another level.
-  if (skipped || !pending.empty())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[WindowAudit] flush pending=" << pending.size()
-              << " skipped=" << skipped << " registered="
-              << g_pending_layers.size();
 
   if (pending.empty())
     return;
@@ -1024,10 +960,6 @@ void WindowImpl::GPUCompositeBackgroundLayerInternal(
   // (see the "if (windowskin)" below), so a frame where the skin bitmap is invalid
   // loses the entire frame border while the control layer keeps drawing the contents -
   // exactly "only the border disappears for a frame".
-  if (!windowskin && windowskin_)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[WindowAudit] background composed without a valid windowskin"
-              << " object_valid=" << Disposable::IsValid(windowskin_.get());
 
   // Temporary probe: the border layer is composed and drawn every frame (the layer
   // counters are paired), so a border that still disappears for a frame can only be
@@ -1379,21 +1311,6 @@ static void AuditWindowDrawInternal(int64_t frame, const char* kind,
   static int64_t s_frame = -1;
   static int32_t s_counts[4] = {0, 0, 0, 0};  // 0=bg calls, 1=bg quads, 2=ctrl calls, 3=ctrl quads
   if (frame != s_frame) {
-    if (s_frame >= 0) {
-      static int32_t s_prev[4] = {-1, -1, -1, -1};
-      bool changed = false;
-      for (int32_t i = 0; i < 4; ++i) {
-        if (s_counts[i] != s_prev[i]) {
-          s_prev[i] = s_counts[i];
-          changed = true;
-        }
-      }
-      if (changed)
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[WndAudit] f=" << s_frame << " bg_calls=" << s_counts[0]
-                  << " bg_quads=" << s_counts[1] << " ctrl_calls=" << s_counts[2]
-                  << " ctrl_quads=" << s_counts[3];
-    }
     s_counts[0] = s_counts[1] = s_counts[2] = s_counts[3] = 0;
     s_frame = frame;
   }
@@ -1537,17 +1454,6 @@ void WindowImpl::GPURenderControlLayerInternal(
       // origin are the inputs that decide it, and they are the ones never inspected.
       static int64_t s_frame_clip_fails = 0;
       auto* parent_viewport = background_node_.GetParentViewport();
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WinClip] window=" << static_cast<const void*>(this)
-                << " layer=frame fails=" << ++s_frame_clip_fails
-                << " clip=" << clipping_region.x << "," << clipping_region.y << " "
-                << clipping_region.width << "x" << clipping_region.height
-                << " viewport_pos=" << current_viewport.x << ","
-                << current_viewport.y << " viewport_origin="
-                << parent_viewport->origin.x << "," << parent_viewport->origin.y
-                << " viewport_bound=" << parent_viewport->bound.width << "x"
-                << parent_viewport->bound.height << " window_bound=" << bound_.x << ","
-                << bound_.y << " " << bound_.width << "x" << bound_.height;
     }
 
     if (frame_pushed) {
@@ -1601,17 +1507,6 @@ void WindowImpl::GPURenderControlLayerInternal(
       // See the border layer above: a refused clip silently skips the contents.
       static int64_t s_contents_clip_fails = 0;
       auto* parent_viewport = background_node_.GetParentViewport();
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[WinClip] window=" << static_cast<const void*>(this)
-                << " layer=contents fails=" << ++s_contents_clip_fails
-                << " clip=" << clipping_region.x << "," << clipping_region.y << " "
-                << clipping_region.width << "x" << clipping_region.height
-                << " viewport_pos=" << current_viewport.x << ","
-                << current_viewport.y << " viewport_origin="
-                << parent_viewport->origin.x << "," << parent_viewport->origin.y
-                << " viewport_bound=" << parent_viewport->bound.width << "x"
-                << parent_viewport->bound.height << " window_bound=" << bound_.x << ","
-                << bound_.y << " " << bound_.width << "x" << bound_.height;
     }
 
     if (contents_pushed) {
