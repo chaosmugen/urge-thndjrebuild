@@ -1213,26 +1213,6 @@ static Diligent::TEXTURE_FORMAT ScreenBufferFormatInternal() {
   return Diligent::TEX_FORMAT_RGBA8_UNORM;
 }
 
-static int32_t ScreenVsyncOverrideInternal() {
-  static const char kPath[] =
-      "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-      "swvsync.txt";
-  static int32_t s_poll = 0;
-  static int32_t s_override = -1;  // -1: leave the engine's own setting alone
-  if (++s_poll >= 60) {
-    s_poll = 0;
-    FILE* file = fopen(kPath, "r");
-    if (file) {
-      int32_t value = -1;
-      if (fscanf(file, "%d", &value) == 1)
-        s_override = (value == 0 || value == 1) ? value : -1;
-      fclose(file);
-      remove(kPath);
-      LOG(INFO) << "[SwVsync] override=" << s_override;
-    }
-  }
-  return s_override;
-}
 
 void RenderScreenImpl::GPUResetScreenBufferInternal() {
   // Reset original buffer. These are parked rather than destroyed: this runs on a resize or a
@@ -1775,12 +1755,7 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
 
   // Flush command buffer and present GPU surface
   URGE_GPU_AUDIT("present:before-present", true);
-  // See ScreenVsyncOverrideInternal. Marker: URGE_SWEXPERIMENT
-  {
-    const int32_t vsync_override = ScreenVsyncOverrideInternal();
-    swapchain->Present(vsync_override >= 0 ? vsync_override
-                                          : context()->engine_profile->vsync);
-  }
+  swapchain->Present(context()->engine_profile->vsync);
   URGE_GPU_AUDIT("present:after-present", true);
 }
 
@@ -1842,40 +1817,11 @@ void RenderScreenImpl::FlushSpriteQueueInternal(
   WindowImpl::FlushPendingLayers(render_context, gpu_.world_transform, scissor);
 }
 
-// TEMPORARY A/B. Marker: URGE_NOBRIGHT
-//
-// The one-frame loss was measured to be the frame getting *brighter*: with the map idle, the deviating
-// frame's differing area went from luminance 46 to 171 over 38% of the screen, and only that one
-// frame differed. That is the shape of this pass - a full-screen quad that darkens the frame while
-// the game's brightness is below maximum - losing its writes for one frame, so the frame keeps the
-// content from before the quad. Skipping the pass removes the quad and with it the thing that can go
-// missing; the picture then stays unshaded (measurably brighter), which is also the self-check that
-// the arm is really active.
-static bool BrightnessEffectSkippedInternal() {
-  static int32_t s_poll = 0;
-  static bool s_skipped = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmbright.txt",
-        "r");
-    if (file) {
-      int32_t value = 1;
-      if (fscanf(file, "%d", &value) == 1)
-        s_skipped = value == 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmbright.txt");
-    }
-  }
-  return s_skipped;
-}
 
 void RenderScreenImpl::GPUFrameEndRenderPassInternal(
     Diligent::IDeviceContext* render_context) {
   // Render screen effect if need
-  if (brightness_ < 255 && !BrightnessEffectSkippedInternal()) {
+  if (brightness_ < 255) {
     // Apply brightness effect
     auto* pipeline = context()->render.pipeline_states->brightness.RawPtr();
 

@@ -28,27 +28,6 @@ void CanvasScheduler::SubmitPendingPaintCommands() {
   }
 }
 
-// TEMPORARY A/B switch, see SetupRenderTarget. Marker: URGE_RTKEEP
-static bool CanvasKeepRenderTargetInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "rtkeep.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/rtkeep.txt");
-    }
-  }
-  return s_enabled;
-}
 
 // TEMPORARY canvas-target audit. Marker: URGE_CANVAS_RT
 //
@@ -68,27 +47,6 @@ extern "C" int g_urge_canvas_rt_seen_count = 0;
 extern "C" void* g_urge_canvas_rt_seq[16] = {};
 extern "C" int g_urge_canvas_rt_seq_count = 0;
 
-// TEMPORARY A/B switch, see SetupRenderTarget. Marker: URGE_RTNORM
-static bool CanvasNormalizeTargetInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "rtnorm.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/rtnorm.txt");
-    }
-  }
-  return s_enabled;
-}
 
 void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
                                         Diligent::ITextureView* depth_stencil,
@@ -125,13 +83,6 @@ void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
     // to Diligent, so every alternation costs a scope. This arm always binds it the same way, so a
     // frame can reuse one scope; it is deliberately blunt (no depth, no clear) because the point is
     // to see whether the boundary count collapses at all.
-    if (CanvasNormalizeTargetInternal()) {
-      context_->SetRenderTargets(
-          1, &render_target, nullptr,
-          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-      return;
-    }
-
     context_->SetRenderTargets(
         1, &render_target, depth_stencil,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -168,9 +119,8 @@ void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
   // target bound; the next SetupRenderTarget, or any draw that binds its own, still switches it
   // correctly. If the loss rate falls with this on, the boundaries are the mechanism and reducing
   // them is the evasion.
-  if (!CanvasKeepRenderTargetInternal())
-    context_->SetRenderTargets(
-        0, nullptr, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  context_->SetRenderTargets(0, nullptr, nullptr,
+                             Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
 Diligent::ITexture* CanvasScheduler::RequireBltCacheTexture(

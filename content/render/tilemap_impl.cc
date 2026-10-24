@@ -29,26 +29,6 @@ extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 // its own" is the difference between a design consequence and a bug. Marker: URGE_UPLOAD_AUDIT
 static const char* g_tm_dirty_source = "?";
 
-static bool TilemapAlwaysDirtyInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "oxalwaysdirty.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/oxalwaysdirty.txt");
-    }
-  }
-  return s_enabled;
-}
 
 namespace content {
 
@@ -572,7 +552,7 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
       DISPOSE_CHECK;
       // See TilemapAlwaysDirtyInternal. Only a real change may dirty the batch: rewriting it every
       // frame races the GPU's read of the previous frame. Marker: URGE_OXDIRTY
-      if (origin_.x != value || TilemapAlwaysDirtyInternal()) {
+      if (origin_.x != value) {
         origin_.x = value;
         map_buffer_dirty_ = true;
         g_tm_dirty_source = "ox";
@@ -590,7 +570,7 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     {
       DISPOSE_CHECK;
       // See TilemapAlwaysDirtyInternal. Marker: URGE_OXDIRTY
-      if (origin_.y != value || TilemapAlwaysDirtyInternal()) {
+      if (origin_.y != value) {
         origin_.y = value;
         map_buffer_dirty_ = true;
         g_tm_dirty_source = "oy";
@@ -657,124 +637,9 @@ static int64_t s_above_prev_frame = 0;
 static int64_t g_tm_second_pass = 0;
 
 
-// TEMPORARY binding audit, see the draw sites. Marker: URGE_BIND_AUDIT
-//
-// The probe has narrowed the defect to "in one frame the tilemap's draw does not cover part of the
-// map": the tinted pixels do not come out of this pipeline at all in that frame, the layer below
-// shows through, and neither the number of draws nor the submitted ranges change. What is left is
-// what that one draw was bound to. Every value below is constant while the map is idle (the vertex
-// ring and the params ring are off by default), so this prints only when one of them changes - and
-// mode 11, which binds the world matrix into the params slot, is on record as reproducing the same
-// picture, which is the shape of failure this looks for.
-struct TilemapBindingSample {
-  const void* pipeline = nullptr;
-  const void* srb = nullptr;
-  const void* vertex_buffer = nullptr;
-  const void* index_buffer = nullptr;
-  const void* params_binding = nullptr;
-  int32_t num_indices = 0;
-  int32_t first_index = 0;
-};
 
-static void AuditTilemapBindingInternal(const char* what, int32_t index,
-                                        const TilemapBindingSample& sample) {
-  // 0 = ground, 1..63 = above layers, 95 = anything else.
-  static TilemapBindingSample slots[96];
-  static bool used[96] = {};
-  const int32_t slot = (index >= 0 && index < 95) ? index : 95;
-  const TilemapBindingSample& prev = slots[slot];
-  const bool changed = used[slot] && (prev.pipeline != sample.pipeline ||
-                                      prev.srb != sample.srb ||
-                                      prev.vertex_buffer != sample.vertex_buffer ||
-                                      prev.index_buffer != sample.index_buffer ||
-                                      prev.params_binding != sample.params_binding ||
-                                      prev.num_indices != sample.num_indices ||
-                                      prev.first_index != sample.first_index);
-  slots[slot] = sample;
-  used[slot] = true;
-}
 
-// TEMPORARY binding audit, see GPURenderGroundLayerInternal / GPURenderAboveLayerInternal.
-// Marker: URGE_BIND_AUDIT
-//
-// The probe has narrowed the defect to "in one frame the tilemap's draw does not cover part of the
-// map": the tinted pixels do not come out of this pipeline at all in that frame, the layer below
-// shows through, the draw counts and submitted ranges never change, and the vertex data is written
-// once at map load. What is left is what the draw was bound to. Every one of these pointers is
-// constant while the map is idle (the vertex ring and the params ring are off by default), so this
-// prints only when one of them actually changes - and mode 11, which binds the world matrix into
-// the params slot, is on record as reproducing this same picture.
-// TEMPORARY mitigation switch: draw each tilemap layer twice per frame. Marker: URGE_DRAW2
-//
-// The one-frame region loss has survived every test that can be made from inside the application:
-// with the parameters, atlas, tint branch, draw counts, submitted ranges, bindings, vertex buffer
-// ownership, scissor stack, both matrices and the node walk order all verified unchanged, a frame
-// still comes out with a rectangle of the map missing and the layer below showing through. What is
-// left is that a single execution of the draw does not cover everything it should. The pipeline is
-// opaque, so drawing the same geometry a second time overwrites the first pixel for pixel and
-// costs only the rasterisation: if the loss is one execution going wrong, the second execution
-// fills it in. If it survives the duplicate, the draw's *state* is what is wrong and this will not
-// help. Shared by the ground and the above layers, because the affected region is the one the
-// above layers paint.
-// TEMPORARY mitigation switch: split each above-layer draw into four sub-draws. Marker:
-// URGE_SPLIT4
-//
-// Drawing the same geometry twice with an identical command did not fill the lost region, which
-// says the loss is not tied to one execution of one command. Splitting the range into four
-// commands with different offsets is the cheap next step: if the loss is per-command, the other
-// three commands still cover the region; if it is a property of the frame's rendering context,
-// this will not help either and the mitigation has to move above the draw call entirely.
-// TEMPORARY: pick the tilemap pipeline that does not write depth. Marker: URGE_NOWRITE
-//
-// The pipeline is built as "no depth test" but Diligent's default leaves DepthWriteEnable true, so
-// it asks to write a depth buffer it does not test against - a mismatch every driver implements
-// somewhere different. Everything else about this draw is verified constant, and the offscreen arm
-// showed this driver loses a region far more readily when the pass is configured differently (about
-// 50 losses a minute against 1.5), which puts the depth/stencil state of the pass in scope. The
-// scissor variant this slot used to hold was A/B'd and changed nothing (21 against 16 events over
-// 13.7 minutes each), so the slot is reused for this question.
-// TEMPORARY A/B. Marker: URGE_FLUSH
-//
-// Flush after every above-layer draw, so the command submission is split into one command buffer
-// per layer instead of one per frame. If the driver's one-frame coverage loss comes from how a
-// submission is built or retired, moving the boundary should show it; if the loss follows the layer
-// regardless of where the boundaries fall, it does not. Costs a submit per layer, so this is an
-// experiment rather than something to ship.
-// TEMPORARY: pick the tilemap pipeline that does not blend. Marker: URGE_NOBLEND
-//
-// See PipelineSet::tilemap_noblend. If the region loss is the blend's write-back going missing, the
-// frame's destination content - the base layer - is what stays behind, which is what the probe sees.
-// Turning blending off turns the draw into a plain write, so the loss should have nowhere to hide.
-// TEMPORARY: what rectangle the draw ran under. Marker: URGE_SCISSOR_AUDIT
-// See g_scissor_current in drawable_controller.h. The map viewport's rectangle is constant for a
-// session, so a frame in which the value seen here differs is the stale-scissor case - which would
-// clip one region for one frame and survive a duplicate draw of the same geometry.
-static void AuditScissorAtDrawInternal(const char* what) {
-  static int32_t s_last[4] = {-1, -1, -1, -1};
-  static bool s_any = false;
-  if (!s_any || s_last[0] != g_scissor_current[0] || s_last[1] != g_scissor_current[1] ||
-      s_last[2] != g_scissor_current[2] || s_last[3] != g_scissor_current[3]) {
-    for (int32_t i = 0; i < 4; ++i) s_last[i] = g_scissor_current[i];
-    s_any = true;
-  }
-}
 
-static void AuditBindingChangeInternal(const char* what, int32_t index,
-                                       const void* params,
-                                       const void* vertices,
-                                       const void* srb) {
-  static const void* s_params[64] = {};
-  static const void* s_vertices[64] = {};
-  static const void* s_srb[64] = {};
-  const int32_t slot = index & 63;
-  const bool first = !s_params[slot] && !s_vertices[slot] && !s_srb[slot];
-  if (s_params[slot] != params || s_vertices[slot] != vertices ||
-      s_srb[slot] != srb) {
-    s_params[slot] = params;
-    s_vertices[slot] = vertices;
-    s_srb[slot] = srb;
-  }
-}
 static int64_t g_tm_ground_empty = 0;
 
 void TilemapImpl::GroundNodeHandlerInternal(
@@ -1386,59 +1251,7 @@ void TilemapImpl::GPUMakeAtlasInternal(
   }
 }
 
-// urge_debug/tmuniring.txt, nonzero for on. See GPUData::batch_sets: with the ring on this
-// frame writes and reads its own batch and its own params buffer, so a draw can never read an
-// upload that belongs to another frame. Read about twice a second from every user below.
-// urge_debug/tmforce.txt, 0 = off, see the use in GPUUpdateTilemapUniformInternal. The
-// one-frame ground loss draws an image that is byte-identical in every session, so the bad
-// input that frame reads instead of the right one is a constant; forcing one candidate
-// constant at a time turns the loss's image into the steady-state image, whose 256 block
-// values can be compared with the recorded anomaly's.
-static int32_t TilemapForcedInputInternal() {
-  static int32_t s_force_poll = 0;
-  static int32_t s_force = 0;
-  if (++s_force_poll >= 30) {
-    s_force_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmforce.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_force = value;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmforce.txt");
-    }
-  }
-  return s_force;
-}
 
-// Whether the above layers draw through their own shader binding. On by default - it is the fix
-// for the params slot holding the world matrix buffer for one frame (see GPUData::above_binding);
-// urge_debug/tmsrbsplit.txt = 0 restores the shared binding, so the two can be compared inside
-// one session.
-static bool TilemapSrbSplitInternal() {
-  static int32_t s_split_poll = 0;
-  static bool s_split = true;
-  if (++s_split_poll >= 30) {
-    s_split_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "tmsrbsplit.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_split = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/tmsrbsplit.txt");
-    }
-  }
-  return s_split;
-}
 
 void TilemapImpl::GPUUploadTilesBatchInternal(
     Diligent::IDeviceContext* render_context,
@@ -1497,41 +1310,6 @@ void TilemapImpl::GPUUpdateTilemapUniformInternal(
   uniform.AnimateIndexAndTileSizeAndFlashAlpha.w =
       static_cast<float>(context()->sprite_batcher->FrameCount() % 300);
 
-  // See TilemapForcedInputInternal(). The value written here is what the ground shader reads;
-  // forcing one candidate bad input at a time and comparing the resulting block values with the
-  // recorded anomaly's says which one constant the loss is drawn from.
-  switch (TilemapForcedInputInternal()) {
-    case 1:  // next atlas animation row
-      uniform.AnimateIndexAndTileSizeAndFlashAlpha.x += 16.0f;
-      break;
-    case 2:  // atlas texel size zeroed
-      uniform.OffsetAndTexSize.z = 0.0f;
-      uniform.OffsetAndTexSize.w = 0.0f;
-      break;
-    case 4:  // map scroll dropped
-      uniform.OffsetAndTexSize.x = 0.0f;
-      uniform.OffsetAndTexSize.y = 0.0f;
-      break;
-    case 5:  // tile size zeroed
-      uniform.AnimateIndexAndTileSizeAndFlashAlpha.y = 0.0f;
-      break;
-    case 6:  // the whole offset-and-texel-size vector zeroed
-      uniform.OffsetAndTexSize = base::Vec4(0.0f);
-      break;
-    case 7:  // every field zeroed - what a params buffer reads as before it is ever written
-      uniform.OffsetAndTexSize = base::Vec4(0.0f);
-      uniform.AnimateIndexAndTileSizeAndFlashAlpha = base::Vec4(0.0f);
-      break;
-    case 8:  // only the horizontal texel size collapsed
-      uniform.OffsetAndTexSize.z = 0.0f;
-      break;
-    case 9:  // only the vertical texel size collapsed
-      uniform.OffsetAndTexSize.w = 0.0f;
-      break;
-    default:
-      break;
-  }
-
   // Candidate fix, see GPUData::batch_sets: with the ring on this frame's parameters go into
   // this frame's own buffer, picked by the same frame set the quads were uploaded to.
   Diligent::IBuffer* uniform_target = gpu_.uniform_buffer;
@@ -1552,12 +1330,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding) {
   if (!gpu_.atlas_texture)
-    return;
-
-  // See TilemapForcedInputInternal(): mode 12 drops the ground draw. It answers which of the
-  // two tilemap draws the floor on screen comes from - they share one params buffer, so a bad
-  // read of it shows through either, and that decides where the fix belongs.
-  if (TilemapForcedInputInternal() == 12)
     return;
 
   // Reproduction stress, gated on urge_debug/tmstress.txt (level = extra accesses per frame).
@@ -1647,14 +1419,8 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     // Setup uniform params
     gpu_.shader_binding.u_transform->Set(world_binding);
     gpu_.shader_binding.u_texture->Set(gpu_.atlas_binding);
-    // See TilemapForcedInputInternal(): mode 10 hands the world matrix buffer to the params
-    // slot - what a draw whose params binding landed on the other buffer of its signature
-    // reads. The matrix's leading floats are a zero texel size (the UV collapses to a constant)
-    // and a zero flash (no tint lerp), which is what the recorded anomaly's image shows.
     Diligent::IBuffer* params_binding =
         gpu_.uniform_in_use ? gpu_.uniform_in_use : gpu_.uniform_buffer;
-    if (TilemapForcedInputInternal() == 10)
-      params_binding = world_binding;
     gpu_.shader_binding.u_params->Set(params_binding);
 
     // Apply pipeline state
@@ -1669,9 +1435,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     render_context->SetVertexBuffers(
         0, 1, &vertex_buffer, nullptr,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    AuditBindingChangeInternal("ground", 0, params_binding, vertex_buffer,
-                               pipeline);
-    AuditScissorAtDrawInternal("ground");
     render_context->SetIndexBuffer(
         **context()->render.quad_index, 0,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -1682,29 +1445,6 @@ void TilemapImpl::GPURenderGroundLayerInternal(
     draw_indexed_attribs.IndexType =
         context()->render.quad_index->GetIndexType();
 
-    // See TilemapForcedInputInternal(): mode 3 reads the ground's quads from the tail of the
-    // batch instead of its head, which is what a draw whose read landed one upload away sees.
-    if (TilemapForcedInputInternal() == 3) {
-      int32_t batch_quads = gpu_.ground_draw_count;
-      for (int32_t count : gpu_.above_draw_count)
-        batch_quads += count;
-      if (batch_quads > gpu_.ground_draw_count)
-        draw_indexed_attribs.FirstIndexLocation =
-            6 * (batch_quads - gpu_.ground_draw_count);
-    }
-
-    {
-      // See AuditTilemapBindingInternal. Marker: URGE_BIND_AUDIT
-      TilemapBindingSample sample;
-      sample.pipeline = pipeline;
-      sample.srb = *gpu_.shader_binding;
-      sample.vertex_buffer = vertex_buffer;
-      sample.index_buffer = **context()->render.quad_index;
-      sample.params_binding = params_binding;
-      sample.num_indices = draw_indexed_attribs.NumIndices;
-      sample.first_index = draw_indexed_attribs.FirstIndexLocation;
-      AuditTilemapBindingInternal("ground", 0, sample);
-    }
     render_context->DrawIndexed(draw_indexed_attribs);
 
   }
@@ -1717,10 +1457,6 @@ void TilemapImpl::GPURenderAboveLayerInternal(
   if (!gpu_.atlas_texture)
     return;
 
-  // See TilemapForcedInputInternal(): mode 13 drops the above layers.
-  if (TilemapForcedInputInternal() == 13)
-    return;
-
   if (!gpu_.above_draw_count.empty()) {
     if (int32_t draw_count = gpu_.above_draw_count[index]) {
       int32_t draw_offset = gpu_.ground_draw_count;
@@ -1731,17 +1467,13 @@ void TilemapImpl::GPURenderAboveLayerInternal(
 
       // See GPUData::above_binding: this draw owns its binding, and only falls back to the
       // one the ground draws through when urge_debug/tmsrbsplit.txt = 0.
-      renderer::Binding_Tilemap& layer_binding =
-          TilemapSrbSplitInternal() ? gpu_.above_binding : gpu_.shader_binding;
+      renderer::Binding_Tilemap& layer_binding = gpu_.above_binding;
 
       // Setup uniform params
       layer_binding.u_transform->Set(world_binding);
       layer_binding.u_texture->Set(gpu_.atlas_binding);
-      // See TilemapForcedInputInternal(): mode 11 is mode 10 for this draw.
       Diligent::IBuffer* above_params_binding =
           gpu_.uniform_in_use ? gpu_.uniform_in_use : gpu_.uniform_buffer;
-      if (TilemapForcedInputInternal() == 11)
-        above_params_binding = world_binding;
       layer_binding.u_params->Set(above_params_binding);
 
       // Apply pipeline state
@@ -1757,9 +1489,6 @@ void TilemapImpl::GPURenderAboveLayerInternal(
       render_context->SetVertexBuffers(
           0, 1, &vertex_buffer, nullptr,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-      AuditBindingChangeInternal("above", index, above_params_binding,
-                                 vertex_buffer, pipeline);
-      AuditScissorAtDrawInternal("above");
       render_context->SetIndexBuffer(
           **context()->render.quad_index, 0,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -1770,18 +1499,6 @@ void TilemapImpl::GPURenderAboveLayerInternal(
       draw_indexed_attribs.IndexType =
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = draw_offset * 6;
-      {
-        // See AuditTilemapBindingInternal. Marker: URGE_BIND_AUDIT
-        TilemapBindingSample sample;
-        sample.pipeline = pipeline;
-        sample.srb = &layer_binding;
-        sample.vertex_buffer = vertex_buffer;
-        sample.index_buffer = **context()->render.quad_index;
-        sample.params_binding = above_params_binding;
-        sample.num_indices = draw_indexed_attribs.NumIndices;
-        sample.first_index = draw_indexed_attribs.FirstIndexLocation;
-        AuditTilemapBindingInternal("above", index + 1, sample);
-      }
       render_context->DrawIndexed(draw_indexed_attribs);
 
 

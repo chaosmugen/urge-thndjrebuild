@@ -620,58 +620,7 @@ void ViewportImpl::GPUResetIntermediateLayer(const base::Vec2i& effect_size) {
   }
 }
 
-// TEMPORARY A/B. Marker: URGE_NOEFFECT
-//
-// This pass is the only remaining CopyTexture in a normal frame: it stages a region of the screen
-// buffer into the effect's intermediate layer and then draws that layer back over the region. The
-// offscreen arm proved what copying into this driver's frame buffer does - the one-frame region
-// loss went from ~1.5 to ~50 a minute when the whole frame was rendered elsewhere and copied in -
-// and planecopy showed that an extra copy in itself does nothing, so the effect is whether *this*
-// copy into the buffer being composited is what loses regions. Skipping the pass removes that copy
-// and the effect with it; the picture loses the map-view tone, but the probe only compares frames
-// against each other, so the criterion still works.
-static bool ViewportEffectDisabledInternal() {
-  static int32_t s_noeffect_poll = 0;
-  static bool s_noeffect = false;
-  if (++s_noeffect_poll >= 30) {
-    s_noeffect_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "noeffect.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_noeffect = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/noeffect.txt");
-    }
-  }
-  return s_noeffect;
-}
 
-// TEMPORARY A/B, see GPUApplyViewportEffect. Marker: URGE_VPDSV
-static bool ViewportEffectKeepDepthInternal() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "vpdepth.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/vpdepth.txt");
-    }
-  }
-  return s_enabled;
-}
 
 
 void ViewportImpl::GPUApplyViewportEffect(
@@ -681,17 +630,6 @@ void ViewportImpl::GPUApplyViewportEffect(
     Diligent::IBuffer* root_world,
     const base::Rect& effect_region,
     const base::Vec4& color) {
-  // See ViewportEffectDisabledInternal(). Marker: URGE_NOEFFECT
-  if (ViewportEffectDisabledInternal())
-    return;
-  // Temporary: this pass is the only thing that can change how the map area looks while
-  // every draw the layers issue stays identical, so report its inputs. A frame whose
-  // colour, tone or intermediate layer differs from its neighbours' is that frame.
-  if (context()->sprite_batcher->RunFpEnabled()) {
-    const base::Vec4 tone = tone_->AsNormColor();
-    const base::Vec4 flash = flash_emitter_.GetColor();
-  }
-
   int32_t draw_back_first_index = 0;
 
     // Copy "screen" buffer desired region data to stage intermediate texture
@@ -749,9 +687,6 @@ void ViewportImpl::GPUApplyViewportEffect(
   // layers' own draws, which are all verified constant. Binding the same depth-stencil here keeps
   // the frame on one configuration end to end.
   Diligent::ITextureView* effect_depth_view = nullptr;
-  if (ViewportEffectKeepDepthInternal() && screen_depth_stencil)
-    effect_depth_view =
-        screen_depth_stencil->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
   render_context->SetRenderTargets(
       1, &render_target_view, effect_depth_view,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
