@@ -9,7 +9,6 @@
 #include "content/canvas/canvas_impl.h"
 #include "content/context/execution_context.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 
 namespace content {
@@ -86,11 +85,6 @@ VideoDecoderImpl::VideoDecoderImpl(ExecutionContext* execution_context,
 
   // Extract video info
   auto& info = *player_->info();
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[VideoDecoder] Resolution: " << info.width << "x"
-            << info.height;
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[VideoDecoder] Frame Rate: " << info.frameRate;
 
   // Init Audio components
   if (info.hasAudio && context()->audio_server) {

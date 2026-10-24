@@ -39,7 +39,6 @@
 #include "renderer/device/gpu_driver.h"
 
 // Defined further down. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 
 // TEMPORARY offscreen-then-copy experiment. Marker: URGE_OFFSCREEN
@@ -1785,39 +1784,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   URGE_GPU_AUDIT("present:after-present", true);
 }
 
-// Master switch for the diagnostic output. Marker: URGE_DIAG_GATE
-//
-// Every audit, probe and counter print in this tree exists to investigate the one-frame loss, not to
-// run the game: the per-frame [PassAudit] block alone walks ten counters and formats a line, and the
-// cell probe used to read a grid back from the GPU every frame. They are now behind one switch so a
-// normal session carries none of that cost - write a nonzero value into urge_debug/diag.txt to arm
-// them for an investigation. The instrumentation code itself is left in place (its snapshot lives in
-// doc/patches), so arming it needs no rebuild.
-extern "C" bool UrgeDiagEnabled() {
-  static int32_t s_poll = 0;
-  static bool s_enabled = false;
-  // Polled rather than read every call: the gate sits in front of ninety-odd log sites, some of them
-  // in per-draw paths, and a failed fopen costs a syscall. At this interval the hottest of them
-  // attempt one about every few frames, which is nothing next to the draws they guard.
-  if (++s_poll >= 600) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "diag.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_enabled = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/diag.txt");
-    }
-  }
-  return s_enabled;
-}
-
-extern "C" bool UrgeDiagEnabled();
 
 void RenderScreenImpl::GPUFrameBeginRenderPassInternal(
     Diligent::IDeviceContext* render_context,

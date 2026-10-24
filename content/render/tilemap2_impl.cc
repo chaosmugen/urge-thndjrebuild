@@ -7,7 +7,6 @@
 #include "content/context/execution_context.h"
 #include "renderer/utils/texture_utils.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -666,14 +665,6 @@ void Tilemap2Impl::GroundNodeHandlerInternal(
       // A rebuild that produces no ground quad blanks the whole ground layer for that
       // frame while the above layer keeps drawing - the one-frame flicker seen on the
       // TV. Report the state that produced it.
-      if (!gpu_.ground_draw_count)
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[LayerAudit] ground empty after rebuild: above="
-                  << gpu_.above_draw_count << " tile_viewport="
-                  << render_viewport_.x << "," << render_viewport_.y << " "
-                  << render_viewport_.width << "x" << render_viewport_.height
-                  << " origin=" << origin_.x << "," << origin_.y
-                  << " tilesize=" << tilesize_;
     }
 
     GPUUpdateTilemapUniformInternal(params->context,
@@ -683,13 +674,6 @@ void Tilemap2Impl::GroundNodeHandlerInternal(
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
     ++g_tm_ground_drawn;
     GPURenderGroundLayerInternal(params->context, params->world_binding);
-    if (g_tm_ground_drawn % 300 == 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[LayerAudit] ground ready=" << g_tm_ground_ready
-                << " drawn=" << g_tm_ground_drawn
-                << " above=" << g_tm_above_drawn
-                << " noatlas=" << g_tm_ground_noatlas
-                << " empty=" << g_tm_ground_empty;
   }
 }
 

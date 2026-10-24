@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 // TEMPORARY, defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 #include "content/render/window_impl.h"
 
 #include <unordered_set>  // TEMPORARY. Marker: URGE_WINKIND
@@ -928,32 +927,10 @@ void WindowImpl::FlushPendingLayers(Diligent::IDeviceContext* context,
     ForgetLayersInternal(it.window);
 }
 
-static bool AuditSkipWindowLayers() {
-  static int32_t s_poll = 0;
-  static bool s_skip = false;
-  if (++s_poll >= 30) {
-    s_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "nowindow.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_skip = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/nowindow.txt");
-    }
-  }
-  return s_skip;
-}
 
 void WindowImpl::GPUCompositeBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin) {
-  if (AuditSkipWindowLayers())
-    return;
   ++g_window_layer_composites;
 
   // Temporary probe: the background layer builds no quad at all without a windowskin
@@ -1105,8 +1082,6 @@ void WindowImpl::GPUCompositeControlLayerInternal(
     Diligent::IDeviceContext* render_context,
     BitmapTexture* windowskin,
     BitmapTexture* contents) {
-  if (AuditSkipWindowLayers())
-    return;
   ++g_window_layer_composites;
 
   const float contents_opacity_norm = contents_opacity_ / 255.0f;
@@ -1294,40 +1269,11 @@ void WindowImpl::GPUCompositeControlLayerInternal(
         render_context, quads.data(), quads.size());
 }
 
-// TEMPORARY per-frame draw audit for this class. Marker: URGE_WNDAUDIT
-//
-// Twelve days of instruments were all built on the tilemap, which turned out not to be the victim:
-// skipping this class makes the whole room picture vanish, so the layer that goes missing for a frame
-// is one of these. Nothing here has ever been audited per frame. This counts, for every frame, how
-// many times the background and control layers are drawn and how many quads they submit, and prints
-// only when one of those numbers changes - a steady frame stays silent, so the timing is untouched.
-// The frame number is the same counter the probe logs, so a line here and a [CellAll] event line can
-// be lined up directly: an audit line on a defect frame means the layer's submission differed in
-// that frame, and no line means it was submitted exactly like any other frame.
-static void AuditWindowDrawInternal(int64_t frame, const char* kind,
-                                   int32_t quads) {
-  // See UrgeDiagEnabled in renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  if (!UrgeDiagEnabled()) return;
-  static int64_t s_frame = -1;
-  static int32_t s_counts[4] = {0, 0, 0, 0};  // 0=bg calls, 1=bg quads, 2=ctrl calls, 3=ctrl quads
-  if (frame != s_frame) {
-    s_counts[0] = s_counts[1] = s_counts[2] = s_counts[3] = 0;
-    s_frame = frame;
-  }
-  const int32_t slot = (std::strcmp(kind, "bg") == 0) ? 0 : 2;
-  ++s_counts[slot];
-  s_counts[slot + 1] += quads;
-}
 
 void WindowImpl::GPURenderBackgroundLayerInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding,
     BitmapTexture* windowskin) {
-  // Diagnosis, see AuditSkipWindowLayers(): the composite stage is skipped too, but a node
-  // can still reach the draw stage with the quads of an earlier frame, which would show as
-  // a stale fragment instead of an absent layer - that would confound the bisection.
-  if (AuditSkipWindowLayers())
-    return;
   ++g_window_layer_draws;
 
   // The window draws with the shared quad index buffer, whose size is otherwise decided
@@ -1365,9 +1311,6 @@ void WindowImpl::GPURenderBackgroundLayerInternal(
     // Execute render command
     Diligent::DrawIndexedAttribs draw_indexed_attribs;
     draw_indexed_attribs.NumIndices = gpu_.background_draw_count * 6;
-  // TEMPORARY, see AuditWindowDrawInternal. Marker: URGE_WNDAUDIT
-  AuditWindowDrawInternal(context()->sprite_batcher->FrameCount(), "bg",
-                          static_cast<int32_t>(gpu_.background_draw_count));
     draw_indexed_attribs.IndexType =
         context()->render.quad_index->GetIndexType();
     render_context->DrawIndexed(draw_indexed_attribs);
@@ -1380,8 +1323,6 @@ void WindowImpl::GPURenderControlLayerInternal(
     BitmapTexture* windowskin,
     BitmapTexture* contents,
     ScissorStack* scissor_stack) {
-  if (AuditSkipWindowLayers())
-    return;
   ++g_window_layer_draws;
 
   // Same index-buffer reservation as the background layer above: this layer queues the
@@ -1561,8 +1502,6 @@ void WindowImpl::GPURenderControlLayerInternal(
       scissor_stack->Pop();
     }
   }
-  // TEMPORARY, see AuditWindowDrawInternal. Marker: URGE_WNDAUDIT
-  AuditWindowDrawInternal(context()->sprite_batcher->FrameCount(), "ctrl", 0);
 }
 
 }  // namespace content

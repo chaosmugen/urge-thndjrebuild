@@ -10,7 +10,6 @@
 
 #include "content/context/execution_context.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 // The plane picks its per-frame vertex set with SpriteBatch::FrameSetIndex(), whose range
 // is the batch's own set count. Keep the two counts equal at compile time, exactly as the
@@ -370,25 +369,6 @@ void PlaneImpl::GPUUpdatePlaneQuadArrayInternal(
   // Temporary: the set this frame composed into and the vertex buffer that set uses. A
   // frame that draws from another frame's data will show a buffer that is not the one
   // this line named.
-  if (context()->sprite_batcher->RunFpEnabled())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[PlaneFp] f=" << context()->sprite_batcher->FrameCount()
-              << " set=" << frame_set << " quads=" << quad_size << " buf="
-              << static_cast<const void*>(*gpu_.batch[frame_set])
-              << " obj=" << static_cast<const void*>(this)
-              << " tex=" << texture->size.x << "x" << texture->size.y
-              << " scale=" << scale.x << "," << scale.y
-              << " origin=" << origin.x << "," << origin.y
-              << " item=" << item_x << "," << item_y
-              << " wrap=" << wrap_ox << "," << wrap_oy
-              << " first=" << (-wrap_ox) << "," << (-wrap_oy)
-              << " op=" << opacity_ << " bl=" << blend_type_
-              << " src=" << src_rect.x << "," << src_rect.y << " "
-              << src_rect.width << "x" << src_rect.height
-              << " t=" << static_cast<const void*>(texture)
-              << " st=" << static_cast<int32_t>(texture->data->GetState())
-              << " srv=" << static_cast<const void*>(texture->shader_resource_view.RawPtr())
-              << " bmp=" << texture->name;
 
   renderer::Binding_Flat::Params transient_uniform;
   transient_uniform.Color = color_->AsNormColor();
@@ -793,20 +773,6 @@ void PlaneImpl::GPUOnViewportRenderingInternal(
   // Temporary: the set this draw reads and the vertex buffer it will actually read from.
   // A frame whose compose named another set (or whose buffer differs) is drawing another
   // frame's geometry.
-  if (context()->sprite_batcher->RunFpEnabled())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[PlaneDraw] f=" << context()->sprite_batcher->FrameCount()
-              << " set=" << context()->sprite_batcher->FrameSetIndex()
-              << " indices=" << draw_indexed_attribs.NumIndices << " buf="
-              << static_cast<const void*>(vertex_buffer)
-              << " obj=" << static_cast<const void*>(this)
-              << " w=" << static_cast<const void*>(world_binding)
-              << " tex=" << texture->size.x << "x" << texture->size.y
-              << " op=" << opacity_ << " bl=" << blend_type_
-              << " t=" << static_cast<const void*>(texture)
-              << " st=" << static_cast<int32_t>(texture->data->GetState())
-              << " srv=" << static_cast<const void*>(texture->shader_resource_view.RawPtr())
-              << " bmp=" << texture->name;
   draw_indexed_attribs.IndexType = context()->render.quad_index->GetIndexType();
   render_context->DrawIndexed(draw_indexed_attribs);
 }

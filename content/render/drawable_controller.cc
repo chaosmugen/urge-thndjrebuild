@@ -10,7 +10,6 @@
 
 #include "Graphics/GraphicsEngine/interface/DeviceContext.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -66,10 +65,6 @@ void ScissorStack::Pop() {
   // that produces. Pop() had no size guard, so this could not be observed before.
   const size_t depth = stack_.size();
   if (depth <= 1) {
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[ScissorAudit] UNDERFLOW: Pop with depth=" << depth
-              << " top=(" << stack_.top().x << "," << stack_.top().y << ","
-              << stack_.top().width << "x" << stack_.top().height << ")";
     // The bottom entry is the viewport scissor and is never popped; leaving it unbalanced would
     // read an empty stack in Reset() (undefined) and leave the scissor state wrong for the rest
     // of the frame, so restore it before returning.
@@ -372,25 +367,6 @@ void DrawNodeController::BroadCastNotification(
        it = it->next())
     snapshot.push_back(it->value());
 
-  // Temporary probe. The stages walk this snapshot; a node that is missing from it for a
-  // frame never enqueues and never draws, so its part of the picture is lost while every
-  // counter that measures what *was* enqueued stays correct. A snapshot smaller than the
-  // live list is that exact situation, so it is logged immediately (with a heartbeat).
-  {
-    static int64_t s_probe_calls = 0;
-    ++s_probe_calls;
-    int32_t live = 0;
-    for (auto* it = children_list_.head(); it != children_list_.end();
-         it = it->next())
-      ++live;
-    const int32_t count = static_cast<int32_t>(snapshot.size());
-    if (count != live || s_probe_calls % 5000 == 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[NodeAudit] call=" << s_probe_calls << " stage="
-                << static_cast<int32_t>(nid) << " snapshot=" << count
-                << " live=" << live
-                << (count != live ? "  <== MISMATCH" : "");
-  }
 
   // TEMPORARY per-frame listing of the snapshot. Marker: URGE_SNAPSHOT
   //
@@ -401,15 +377,6 @@ void DrawNodeController::BroadCastNotification(
   // a node after this point.
   if (static_cast<int32_t>(nid) == 0)
     ++g_urge_probe_frame;
-  if (UrgeDiagEnabled()) {  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    for (size_t i = 0; i < snapshot.size(); ++i)
-      LOG(INFO) << "[Snap] f=" << g_urge_probe_frame << " stage=" << static_cast<int32_t>(nid)
-                << " i=" << i
-                << " n=" << static_cast<const void*>(snapshot[i])
-                << " z0=" << snapshot[i]->GetSortKeys()->weight[0]
-                << " z1=" << snapshot[i]->GetSortKeys()->weight[1]
-                << " vis=" << (snapshot[i]->visible_ ? 1 : 0);
-  }
 
   // TEMPORARY order audit over tagged nodes. Marker: URGE_ORDER_AUDIT
   //
@@ -440,10 +407,6 @@ void DrawNodeController::BroadCastNotification(
     }
     if (order_tagged != 0 && s_order_digest[order_slot] != 0 &&
         s_order_digest[order_slot] != order_digest)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[OrderAudit] stage=" << static_cast<int32_t>(nid)
-                << " tagged=" << order_tagged << " digest "
-                << s_order_digest[order_slot] << "->" << order_digest;
     if (order_tagged != 0)
       s_order_digest[order_slot] = order_digest;
   }

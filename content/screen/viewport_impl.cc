@@ -12,7 +12,6 @@
 #include "content/context/execution_context.h"
 #include "renderer/utils/texture_utils.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 // TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
 
@@ -174,10 +173,6 @@ void ViewportImpl::Render(scoped_refptr<Bitmap> target,
   // frame's depth, and every sprite over those values is rejected - the compass in the corner
   // blinking out for a frame. clear_target comes from the script's viewport.render(bitmap, clear),
   // so this also says whether the caller is the source.
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[VpRender] f=" << context()->sprite_batcher->FrameCount()
-            << " clear=" << (clear_target ? 1 : 0)
-            << " target=" << static_cast<const void*>(bitmap_data->render_target_view);
 
   // Invalidate render target bitmap
   render_target->InvalidateSurfaceCache();
@@ -208,13 +203,6 @@ void ViewportImpl::Render(scoped_refptr<Bitmap> target,
 
   {
     static int64_t s_viewport_passes = 0;
-    if (++s_viewport_passes % 120 == 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[PassDiag] viewport pass world="
-                << static_cast<const void*>(gpu_.world_uniform)
-                << " scissor=" << viewport_rect.width << "x"
-                << viewport_rect.height << " offset=" << viewport_rect.x << ","
-                << viewport_rect.y;
   }
 
 
@@ -248,14 +236,6 @@ void ViewportImpl::Render(scoped_refptr<Bitmap> target,
       if (values[i] != s_probe_values[i])
         changed = true;
     if (changed) {
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[ViewportFx] f=" << context()->sprite_batcher->FrameCount()
-                << " valid=" << is_effect_valid << " color=" << target_color.x << ","
-                << target_color.y << "," << target_color.z << "," << target_color.w
-                << " tone=" << tone.x << "," << tone.y << "," << tone.z << "," << tone.w
-                << " flash_a=" << flash_color.w << " rect=" << viewport_rect.x << ","
-                << viewport_rect.y << " " << viewport_rect.width << "x"
-                << viewport_rect.height;
       for (int32_t i = 0; i < 9; ++i)
         s_probe_values[i] = values[i];
       s_probe_valid = static_cast<int32_t>(is_effect_valid);
@@ -527,11 +507,6 @@ void ViewportImpl::DrawableNodeHandlerInternal(
       const base::Rect intersect = base::MakeIntersect(current, viewport_bound);
       if (!intersect.width || !intersect.height) {
         static int64_t s_viewport_skips = 0;
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[WindowAudit] viewport skipped #" << ++s_viewport_skips
-                  << " bound=" << viewport_bound.x << "," << viewport_bound.y << " "
-                  << viewport_bound.width << "x" << viewport_bound.height
-                  << " outer_scissor=" << current.width << "x" << current.height;
       }
     }
 
@@ -715,18 +690,6 @@ void ViewportImpl::GPUApplyViewportEffect(
   if (context()->sprite_batcher->RunFpEnabled()) {
     const base::Vec4 tone = tone_->AsNormColor();
     const base::Vec4 flash = flash_emitter_.GetColor();
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[VpFp] f=" << context()->sprite_batcher->FrameCount()
-              << " region=" << effect_region.x << "," << effect_region.y << " "
-              << effect_region.width << "x" << effect_region.height << " layer="
-              << static_cast<const void*>(gpu_.effect.intermediate_layer.RawPtr())
-              << " layer_size=" << gpu_.effect.layer_size.x << "x"
-              << gpu_.effect.layer_size.y << " color=" << color.x << ","
-              << color.y << "," << color.z << "," << color.w << " tone=" << tone.x
-              << "," << tone.y << "," << tone.z << "," << tone.w
-              << " flash=" << flash.x << "," << flash.y << "," << flash.z << ","
-              << flash.w << " flashing=" << flash_emitter_.IsFlashing()
-              << " custom=" << (custom_pipeline_ ? 1 : 0);
   }
 
   int32_t draw_back_first_index = 0;

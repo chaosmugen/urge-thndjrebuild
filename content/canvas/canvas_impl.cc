@@ -20,7 +20,6 @@
 #include "renderer/device/gpu_audit.h"
 #include "renderer/utils/texture_utils.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 namespace content {
 
@@ -406,22 +405,9 @@ void CanvasImpl::SubmitQueuedCommands(bool at_frame_boundary) {
       }
     }
     if (clear_only && at_frame_boundary && ++pending_clear_frames_ < s_clear_cap) {
-      if (context()->sprite_batcher->RunFpEnabled())
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[CanvasOrder] hold clear-only batch f="
-                  << context()->sprite_batcher->FrameCount() << " canvas="
-                  << static_cast<const void*>(this) << " attempts="
-                  << pending_clear_frames_;
       return;
     }
 
-    if (context()->sprite_batcher->RunFpEnabled())
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[CanvasOrder] submit frame="
-                << context()->sprite_batcher->FrameCount() << " canvas="
-                << static_cast<const void*>(this) << " t="
-                << static_cast<const void*>(&gpu_) << " clear_only="
-                << clear_only;
     pending_clear_frames_ = 0;
   }
   Command* command_sequence = commands_;
@@ -984,15 +970,6 @@ void CanvasImpl::BlitTextureInternal(const base::Rect& dst_rect,
   // If a node samples the destination texture before this line for the same frame, that
   // frame draws the half-painted bitmap - the background losing its content for a frame.
   // The frame number and the texture pointers say which canvas and in which order.
-  if (context()->sprite_batcher->RunFpEnabled())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[CanvasBlt] f=" << context()->sprite_batcher->FrameCount()
-              << " dst=" << static_cast<const void*>(this) << " dt="
-              << static_cast<const void*>(&gpu_) << " src="
-              << static_cast<const void*>(src_texture) << " st="
-              << static_cast<const void*>(&src_texture->gpu_) << " rect="
-              << dst_rect.x << "," << dst_rect.y << " " << dst_rect.width << "x"
-              << dst_rect.height;
 
   // Execute blit immediately.
   if (blend_type >= 0) {
@@ -1020,17 +997,6 @@ void CanvasImpl::ClipTextureInternal(const base::Rect& dst_rect,
 
   // Temporary ordering marker, same purpose as the one in BlitTextureInternal: the only
   // other path that writes into a canvas' texture. See the blt marker above.
-  if (context()->sprite_batcher->RunFpEnabled())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[CanvasClip] f=" << context()->sprite_batcher->FrameCount()
-              << " dst=" << static_cast<const void*>(this) << " dt="
-              << static_cast<const void*>(&gpu_) << " src="
-              << static_cast<const void*>(src_texture) << " st="
-              << static_cast<const void*>(&src_texture->gpu_) << " clip="
-              << static_cast<const void*>(clip_texture) << " ct="
-              << static_cast<const void*>(&clip_texture->gpu_) << " rect="
-              << dst_rect.x << "," << dst_rect.y << " " << dst_rect.width << "x"
-              << dst_rect.height;
 
   // Execute clip blit immediately.
   GPUClipTextureInternal(dst_rect, &src_texture->gpu_, src_rect,

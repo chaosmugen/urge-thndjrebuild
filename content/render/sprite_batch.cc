@@ -13,7 +13,6 @@
 #include "renderer/device/device_mode.h"
 #include "renderer/device/gpu_driver.h"
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 // Fix for the one-frame loss on the sprite layer, same shape as the map's. Marker: URGE_SPRREDRAW
 //
@@ -139,17 +138,6 @@ void SpriteBatch::PushSprite(const renderer::Quad& quad,
   // Temporary: the parameters this quad will read back by its stamped index. A frame
   // that draws one element with another frame's colour or opacity (an overlay at full
   // strength, say) shows up here as a line that differs from its neighbours'.
-  if (run_fp_enabled_)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[QuadFp] f=" << audit_frame_ << " i=" << uniform_cache_.size()
-              << " col=" << uniform.Color.x << "," << uniform.Color.y << ","
-              << uniform.Color.z << "," << uniform.Color.w << " tone="
-              << uniform.Tone.x << "," << uniform.Tone.y << "," << uniform.Tone.z
-              << "," << uniform.Tone.w << " op=" << uniform.Opacity.x << " pos="
-              << uniform.Position.x << "," << uniform.Position.y << " org="
-              << uniform.Origin.x << "," << uniform.Origin.y << " sc="
-              << uniform.Scale.x << "," << uniform.Scale.y << " rot="
-              << uniform.Rotation.x;
 
   renderer::Quad stamped = quad;
   renderer::Quad::SetColor(
@@ -302,17 +290,6 @@ void SpriteBatch::FlushPass(Diligent::IDeviceContext* context,
       ++audit_null_texture_;
 
     // Same fingerprint as the node path (see SpriteImpl::GPUOnSpriteRenderingInternal).
-    if (run_fp_enabled_)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[RunFp] f=" << audit_frame_ << " src=fallback st=" << run.start
-                << " n=" << run.count << " bl=" << run.blend
-                << " t=" << static_cast<const void*>(texture)
-                << " name=" << texture->name << " size=" << texture->size.x << "x"
-                << texture->size.y << " srv="
-                << static_cast<const void*>(texture->shader_resource_view.RawPtr())
-                << " p=" << static_cast<const void*>(uniform_binding_)
-                // See the note on the node path's identical line in sprite_impl.cc.
-                << " w=" << static_cast<const void*>(world);
 
     binding_.u_transform->Set(world);
     binding_.u_texture->Set(texture->shader_resource_view);
@@ -416,9 +393,6 @@ void SpriteBatch::ResetFrameCache() {
       if (fscanf(fp, "%d", &value) == 1)
         run_fp_enabled_ = value != 0;
       fclose(fp);
-      if (run_fp_enabled_)
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[RunFp] enabled";
       remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
              "urge_debug/runfp.txt");
     }
@@ -434,15 +408,6 @@ void SpriteBatch::ResetFrameCache() {
   // audit_frame_ advances in AdvanceFrameSet, once per presented frame, so the count
   // reported here is the frame the sequence that just ended belonged to.
   ++render_ticks_;
-  if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-  LOG(INFO) << "[BatchAudit] f=" << audit_frame_ << " set=" << frame_set_
-            << " idx=" << FrameSetIndex() << " sprites="
-            << audit_sprites_ << " pushed=" << pushed
-            << " drawn=" << audit_drawn_ << " runs=" << audit_runs_
-            << " fallback_runs=" << audit_fallback_runs_
-            << " null_texture=" << audit_null_texture_
-            << " open_run_at_end=" << (last_batch_index_ >= 0)
-            << (anomaly ? "  <== ANOMALY" : "");
   audit_runs_ = 0;
   audit_sprites_ = 0;
   audit_drawn_ = 0;

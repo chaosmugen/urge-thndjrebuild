@@ -12,7 +12,6 @@
 // names a Diligent type. Marker: URGE_SECONDPASS
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 // TEMPORARY A/B switch, see the Ox/Oy setters. Marker: URGE_OXDIRTY
 //
@@ -691,16 +690,6 @@ static void AuditTilemapBindingInternal(const char* what, int32_t index,
                                       prev.params_binding != sample.params_binding ||
                                       prev.num_indices != sample.num_indices ||
                                       prev.first_index != sample.first_index);
-  if (changed)
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[BindAudit] " << what << " idx=" << index << " pipeline "
-              << prev.pipeline << "->" << sample.pipeline << " srb " << prev.srb << "->"
-              << sample.srb << " vbuf " << prev.vertex_buffer << "->"
-              << sample.vertex_buffer << " ibuf " << prev.index_buffer << "->"
-              << sample.index_buffer << " params " << prev.params_binding << "->"
-              << sample.params_binding << " num " << prev.num_indices << "->"
-              << sample.num_indices << " first " << prev.first_index << "->"
-              << sample.first_index;
   slots[slot] = sample;
   used[slot] = true;
 }
@@ -765,12 +754,6 @@ static void AuditScissorAtDrawInternal(const char* what) {
   static bool s_any = false;
   if (!s_any || s_last[0] != g_scissor_current[0] || s_last[1] != g_scissor_current[1] ||
       s_last[2] != g_scissor_current[2] || s_last[3] != g_scissor_current[3]) {
-    if (s_any)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[ScissorDraw] " << what << " rect (" << s_last[0] << "," << s_last[1] << ","
-                << s_last[2] << "x" << s_last[3] << ") -> (" << g_scissor_current[0] << ","
-                << g_scissor_current[1] << "," << g_scissor_current[2] << "x"
-                << g_scissor_current[3] << ")";
     for (int32_t i = 0; i < 4; ++i) s_last[i] = g_scissor_current[i];
     s_any = true;
   }
@@ -787,12 +770,6 @@ static void AuditBindingChangeInternal(const char* what, int32_t index,
   const bool first = !s_params[slot] && !s_vertices[slot] && !s_srb[slot];
   if (s_params[slot] != params || s_vertices[slot] != vertices ||
       s_srb[slot] != srb) {
-    if (!first)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[BindAudit] " << what << " idx=" << index
-                << " params " << s_params[slot] << "->" << params
-                << " vertices " << s_vertices[slot] << "->" << vertices
-                << " srb " << s_srb[slot] << "->" << srb;
     s_params[slot] = params;
     s_vertices[slot] = vertices;
     s_srb[slot] = srb;
@@ -836,10 +813,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
       // input measured so far, it has never appeared in a log next to a defect frame. The earlier
       // work only A/B'd the deferred-release switch, which is a different question. It is rare (a
       // scene change, an animation frame), so volume is not a concern and timing is untouched.
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[UploadAudit] f=" << context()->sprite_batcher->FrameCount()
-                << " ATLAS rebuild " << size.x << "x" << size.y << " tex="
-                << gpu_.atlas_texture.RawPtr();
     }
 
     // Parse and generate map buffer if need.
@@ -852,10 +825,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
                                   std::move(aboves_cache));
       map_buffer_dirty_ = false;
       // See the note above the atlas rebuild. Marker: URGE_UPLOAD_AUDIT
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[UploadAudit] f=" << context()->sprite_batcher->FrameCount()
-                << " BATCH reupload ground=" << gpu_.ground_draw_count
-                << " src=" << g_tm_dirty_source;
       // The marker is deliberately cleared here: it is sticky, so without this every later upload
       // would keep reporting whichever path dirtied the buffer first. A "?" on the next line means
       // the dirty came from one of the property setters rather than the viewport or the game's
@@ -866,12 +835,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
       // frame while the above layers keep drawing - the flicker reported from the TV.
       if (!gpu_.ground_draw_count) {
         ++g_tm_ground_empty;
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[LayerAudit] ground empty after rebuild: tile_viewport="
-                  << render_viewport_.x << "," << render_viewport_.y << " "
-                  << render_viewport_.width << "x" << render_viewport_.height
-                  << " origin=" << origin_.x << "," << origin_.y
-                  << " tilesize=" << tilesize_;
       }
     }
 
@@ -882,11 +845,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
     ++g_tm_ground_ready;
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
     ++g_tm_ground_drawn;
-    if (g_tm_ground_drawn % 300 == 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[LayerAudit] ground ready=" << g_tm_ground_ready
-                << " drawn=" << g_tm_ground_drawn
-                << " empty=" << g_tm_ground_empty;
     GPURenderGroundLayerInternal(params->context, params->world_binding);
 
     // See TilemapSecondPassEnabledInternal: same duplicate for the ground layer, in place.
@@ -958,11 +916,6 @@ void TilemapImpl::AboveNodeHandlerInternal(
     // timing of this defect before - is untouched until something actually happens.
     const int64_t audit_frame = context()->sprite_batcher->FrameCount();
     if (audit_frame != s_above_frame) {
-      if (s_above_frame != 0 && s_above_this_frame != s_above_prev_frame)
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[AboveAudit] f=" << audit_frame
-                  << " prev_frame_draws=" << s_above_prev_frame
-                  << " last_frame_draws=" << s_above_this_frame;
       s_above_prev_frame = s_above_this_frame;
       s_above_this_frame = 0;
       s_above_frame = audit_frame;
@@ -1080,30 +1033,9 @@ void TilemapImpl::UpdateViewportInternal(const base::Rect& viewport,
   render_offset_ += viewport_origin;
 
   if (new_viewport != render_viewport_) {
-    // TEMPORARY: read the previous value *before* it is overwritten - logging it afterwards printed
-    // the new value twice and made the two look identical, which hid what actually moved.
-    // Marker: URGE_UPLOAD_AUDIT
-    const base::Rect previous_viewport = render_viewport_;
     render_viewport_ = new_viewport;
     map_buffer_dirty_ = true;
     g_tm_dirty_source = "viewport";  // TEMPORARY, see g_tm_dirty_source
-    // TEMPORARY: the batch is re-uploaded every single frame because this test keeps firing, so
-    // print what actually moved. Rate-limited: the first thirty occurrences, then every three
-    // hundredth, which is enough to see whether the viewport is oscillating between two values
-    // (a computation that flips) or drifting (a sub-tile offset that never settles).
-    // Marker: URGE_UPLOAD_AUDIT
-    static int32_t s_vp_logs = 0;
-    ++s_vp_logs;
-    if (s_vp_logs <= 30 || s_vp_logs % 300 == 0)
-      if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-      LOG(INFO) << "[VpDirty] n=" << s_vp_logs << " new=" << new_viewport.x << ","
-                << new_viewport.y << " " << new_viewport.width << "x"
-                << new_viewport.height << " old=" << previous_viewport.x << ","
-                << previous_viewport.y << " " << previous_viewport.width << "x"
-                << previous_viewport.height << " origin=" << origin_.x << ","
-                << origin_.y << " vp_origin=" << viewport_origin.x << ","
-                << viewport_origin.y << " size=" << viewport_size.x << "x"
-                << viewport_size.y;
   }
 }
 
@@ -1610,23 +1542,6 @@ void TilemapImpl::GPUUpdateTilemapUniformInternal(
   // tile's UV and shows bright, unrelated atlas regions - the one-frame flicker. The buffers
   // logged are the ones this frame will really draw from, so a session can be split by the
   // ring afterwards without having to flip switches in step with it.
-  if (context()->sprite_batcher->RunFpEnabled())
-    if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-    LOG(INFO) << "[TmFp] f=" << context()->sprite_batcher->FrameCount()
-              << " atlas=" << static_cast<const void*>(gpu_.atlas_texture.RawPtr())
-              << " ast="
-              << static_cast<int32_t>(
-                     gpu_.atlas_texture ? gpu_.atlas_texture->GetState()
-                                        : Diligent::RESOURCE_STATE_UNKNOWN)
-              << " texsize=" << 1.0f / atlas_size.x << "," << 1.0f / atlas_size.y
-              << " off=" << offset.x << "," << offset.y
-              << " anim=" << anim_index << " tile=" << tilesize
-              << " flash=" << flash_opacity_ << " tiles_n="
-              << gpu_.ground_draw_count << " set="
-              << context()->sprite_batcher->FrameSetIndex() << " vbuf="
-              << static_cast<const void*>(
-*gpu_.batch)
-              << " ubuf=" << static_cast<const void*>(uniform_target);
 
   render_context->UpdateBuffer(
       uniform_target, 0, sizeof(uniform), &uniform,

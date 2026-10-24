@@ -11,7 +11,6 @@
 #include <cstdio>
 #include <string>
 // Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-extern "C" bool UrgeDiagEnabled();
 
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 
@@ -737,25 +736,7 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
       // Temporary: identity of the run this node is drawing. A frame that shows another
       // bitmap's content has a run whose texture name or size differs from its
       // neighbours', and this names it.
-      if (context()->sprite_batcher->RunFpEnabled())
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[RunFp] f=" << context()->sprite_batcher->FrameCount()
-                  << " src=node st=" << gpu_.instance_offset
-                  << " n=" << gpu_.instance_count << " bl=" << blend_type_
-                  << " t=" << static_cast<const void*>(texture)
-                  << " name=" << texture->name << " size=" << texture->size.x << "x"
-                  << texture->size.y << " srv="
-                  << static_cast<const void*>(texture->shader_resource_view.RawPtr())
-                  << " p=" << static_cast<const void*>(
-                         context()->sprite_batcher->GetUniformBinding())
-                  // The world buffer is the one draw input the fingerprint above does not
-                  // carry. A frame that draws with another level's transform shows the same
-                  // texture, the same run and the same size, and still lands somewhere else.
-                  << " w=" << static_cast<const void*>(world_binding);
 
-      if (!texture->shader_resource_view)
-        if (UrgeDiagEnabled())  // TEMPORARY gate, see renderscreen_impl.cc. Marker: URGE_DIAG_GATE
-        LOG(INFO) << "[BatchAudit] node draw with no shader resource view";
 
       // This run is on screen now: FlushPass only emits runs that no node drew.
       context()->sprite_batcher->MarkEmitted(gpu_.instance_offset,
