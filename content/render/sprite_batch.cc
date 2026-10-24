@@ -110,7 +110,6 @@ void SpriteBatch::CloseCurrentRunInternal() {
   run.count = count;
   run.blend = batch_blend_;
   pass_runs_.push_back(run);
-  ++audit_runs_;
 }
 
 void SpriteBatch::MarkEmitted(uint32_t start, uint32_t count) {
@@ -120,7 +119,6 @@ void SpriteBatch::MarkEmitted(uint32_t start, uint32_t count) {
   for (auto it = pass_runs_.rbegin(); it != pass_runs_.rend(); ++it) {
     if (it->start == start && it->count == count && !it->emitted) {
       it->emitted = true;
-      audit_drawn_ += count;
       return;
     }
   }
@@ -284,77 +282,12 @@ void SpriteBatch::FlushPass(Diligent::IDeviceContext* context,
     if (!texture || !run.count)
       continue;
 
-    audit_drawn_ += run.count;
-    ++audit_fallback_runs_;
-    if (!texture->shader_resource_view)
-      ++audit_null_texture_;
 
     // Same fingerprint as the node path (see SpriteImpl::GPUOnSpriteRenderingInternal).
 
     binding_.u_transform->Set(world);
     binding_.u_texture->Set(texture->shader_resource_view);
 
-    // Keep-alive ring for the texture this draw samples, switched by the auto A/B arm. The
-    // game replaces a window's contents bitmap while the window keeps drawing, and the
-    // bitmap it replaces is destroyed in the same frame. The flicker is one frame in which
-    // a region is drawn from the wrong texels, while every CPU-side value - the window's
-    // state, its quad counts, the draw's parameters, even the contents of the bitmap it
-    // samples, read back across such a frame - matches the frames around it. A texture that
-    // stops existing while a draw recorded in an earlier frame is still sampling it, and
-    // whose memory is then handed to the next texture, would look exactly like that. Holding
-    // a reference to the view each draw uses for a few frames keeps the resource out of the
-    // allocator's reach until those draws have certainly completed.
-    // Arms, 1000 frames each: 0 none, 1 eight frames, 2 thirty-two frames, 3 none (drift
-    // check - the event rate of the same build has varied by more than 10x between runs, so
-    // a second baseline arm is worth its quarter of the session).
-    {
-      static std::deque<std::pair<uint32_t, RRefPtr<Diligent::ITextureView>>> s_alive;
-      static int32_t s_alive_poll = 0;
-      static bool s_alive_auto = false;
-      static int32_t s_alive_depth = 0;
-      if (++s_alive_poll >= 30) {
-        s_alive_poll = 0;
-        FILE* file = fopen(
-            "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-            "keepalive.txt",
-            "r");
-        if (file) {
-          int32_t value = 0;
-          if (fscanf(file, "%d", &value) == 1)
-            s_alive_depth = value;
-          fclose(file);
-          remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-                 "urge_debug/keepalive.txt");
-        }
-        FILE* auto_file = fopen(
-            "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-            "autosync.txt",
-            "r");
-        if (auto_file) {
-          int32_t value = 1;
-          if (fscanf(auto_file, "%d", &value) == 1)
-            s_alive_auto = value != 0;
-          fclose(auto_file);
-          remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-                 "urge_debug/autosync.txt");
-        }
-      }
-      const uint32_t alive_arm = (audit_frame_ / 1000) % 4;
-      const int32_t depth =
-          s_alive_auto ? (alive_arm == 1 ? 8 : (alive_arm == 2 ? 32 : 0))
-                       : s_alive_depth;
-      if (depth > 0) {
-        s_alive.push_back({audit_frame_, texture->shader_resource_view});
-        const uint32_t oldest =
-            audit_frame_ > static_cast<uint32_t>(depth)
-                ? audit_frame_ - static_cast<uint32_t>(depth)
-                : 0;
-        while (!s_alive.empty() && s_alive.front().first < oldest)
-          s_alive.pop_front();
-      } else if (!s_alive.empty()) {
-        s_alive.clear();
-      }
-    }
 
     binding_.u_params->Set(uniform_binding_);
     context->SetPipelineState(pipelines->sprite[run.blend].RawPtr());
@@ -381,38 +314,8 @@ void SpriteBatch::AdvanceFrameSet() {
 
 void SpriteBatch::ResetFrameCache() {
 
-  // Temporary: read the per-run fingerprint switch (urge_debug/runfp.txt, 1 = on) about
-  // twice a second, so the probe only writes while a recording window is open.
-  if (++run_fp_poll_ >= 30) {
-    run_fp_poll_ = 0;
-    FILE* fp = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/runfp.txt",
-        "r");
-    if (fp) {
-      int32_t value = -1;
-      if (fscanf(fp, "%d", &value) == 1)
-        run_fp_enabled_ = value != 0;
-      fclose(fp);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/runfp.txt");
-    }
-  }
-
-  // Report the frame that just ended (this runs at the start of a sequence, while
-  // the previous one's caches are still intact). A quiet log means every queued quad
-  // reached the GPU through its own node; anything else is a frame that loses
-  // bitmaps and says which way it was lost.
-  const uint32_t pushed = static_cast<uint32_t>(uniform_cache_.size());
-  const bool anomaly = pushed != audit_drawn_ || audit_fallback_runs_ ||
-                       audit_null_texture_ || last_batch_index_ >= 0;
   // audit_frame_ advances in AdvanceFrameSet, once per presented frame, so the count
   // reported here is the frame the sequence that just ended belonged to.
-  ++render_ticks_;
-  audit_runs_ = 0;
-  audit_sprites_ = 0;
-  audit_drawn_ = 0;
-  audit_fallback_runs_ = 0;
-  audit_null_texture_ = 0;
 
   quad_cache_.clear();
   uniform_cache_.clear();

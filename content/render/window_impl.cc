@@ -553,7 +553,7 @@ void WindowImpl::ControlNodeHandlerInternal(
       }
 
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
-    // Candidate fix, switched automatically with the plane drain (urge_debug/autosync.txt
+    // Candidate fix, switched together with the plane drain
     // rotates the arms; urge_debug/windowsync.txt overrides it by hand). A battle session
     // that flickered was, by its own log, a session doing Window work: the game replaces a
     // window's contents bitmap continuously while the window keeps drawing, and this

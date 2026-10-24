@@ -493,7 +493,6 @@ void SpriteImpl::DrawableNodeHandlerInternal(
     // target and coordinate space without ever dropping a sprite.
     context()->sprite_batcher->SetBatchWorld(params->world_binding);
     context()->sprite_batcher->SetBatchBlend(blend_type_);
-    context()->sprite_batcher->AuditNodeEnqueued();
 
     GPUUpdateBatchSpriteInternal(params->context, current_texture, next_texture,
                                  src_rect);

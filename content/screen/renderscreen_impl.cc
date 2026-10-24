@@ -753,61 +753,6 @@ void RenderScreenImpl::RenderFrameInternal(
   // draw that could still be sampling it to have completed.
   renderer::AdvanceDeferredRelease();
 
-  // Candidate fix, rotating with the auto arms (1 and 3 drain, 0 and 2 do not).
-  // The amplified experiment in the plane path shows what this is for: a blit that reads a
-  // texture written earlier in the frame can read stale tiles, and retiring the pending work
-  // before that blit cuts the loss from 80 events per 10000 frames to 16.7. The canvas
-  // commands submitted just below are that shape - blits whose sources were written by
-  // earlier commands or by an earlier stage - and they are what produce the game's bitmaps,
-  // which is where the plane and the windows take their pixels from.
-  {
-    static int32_t s_canvas_sync_poll = 0;
-    static bool s_canvas_sync_auto = false;
-    // Off by default: this drain was on in every build the developer played, together with
-    // the present drain and the text drain, and the flicker did not change. Its rotating arm
-    // is gone as well - each file interpreted its own arm, so the comparison was confounded.
-    static bool s_canvas_sync_manual = false;
-    if (++s_canvas_sync_poll >= 30) {
-      s_canvas_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "canvasdrain.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_canvas_sync_manual = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/canvasdrain.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_canvas_sync_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t canvas_frame = context()->sprite_batcher->FrameCount();
-    const uint32_t canvas_arm = (canvas_frame / 1000u) % 4u;
-    // 2x2 with the plane drain: arm 0 nothing, 1 this drain, 2 this drain and the plane
-    // drain, 3 the plane drain only. InvalidateState was tried in arm 3 and measured no
-    // better than no fix at all (36.3 events per 10000 frames against 29.3 for the
-    // baseline), so it is gone.
-    const bool want_canvas_drain =
-        s_canvas_sync_auto ? (canvas_arm == 1 || canvas_arm == 2)
-                           : s_canvas_sync_manual;
-    if (want_canvas_drain && context()->primary_render_context) {
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-    }
-  }
 
   // Submit pending canvas commands
   context()->canvas_scheduler->SubmitPendingPaintCommands();
@@ -1322,70 +1267,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
                                  swapchain->GetDesc().Height);
   render_context->SetScissorRects(1, &present_scissor, UINT32_MAX, UINT32_MAX);
 
-  // Candidate fix, rotating with the auto arms (1 and 3 drain, 0 and 2 do not). This is the
-  // one boundary the evidence now points at, and the only one the three drains already in
-  // place do not cover: the frame is rendered into the offscreen screen buffer and then
-  // reaches the screen as an ImGui texture, so the composite samples a texture the engine
-  // finished writing moments earlier - the exact write-then-sample shape measured to read
-  // stale tiles on this driver (blitting a fresh copy of it multiplied the loss 20x, and a
-  // one-frame-late copy was just as bad, so what goes wrong is the blit's own content, not
-  // when it is sampled). The measurements that led here: a five-minute battle session in
-  // which the presented image carried 11 repeated-signature events (the defect) while the
-  // offscreen buffer carried 2 tiny ones, plus the developer reporting the same loss as
-  // before despite the canvas and plane drains.
-  {
-    static int32_t s_present_sync_poll = 0;
-    static bool s_present_sync_auto = false;
-    // Off by default, for the same reason as the canvas drain above: throughout the sessions
-    // that still flickered, this one - which also drained the canvas context - was on.
-    static bool s_present_sync_manual = false;
-    if (++s_present_sync_poll >= 30) {
-      s_present_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "presentsync.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_present_sync_manual = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/presentsync.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_present_sync_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t present_arm =
-        (context()->sprite_batcher->FrameCount() / 1000u) % 4u;
-    const bool want_present_drain =
-        s_present_sync_auto ? (present_arm == 1 || present_arm == 3)
-                            : s_present_sync_manual;
-    if (want_present_drain && context()->primary_render_context) {
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-      // The canvas commands are encoded on the scheduler's own device context, so draining
-      // the primary one does not wait for them. A frame that mixed two frames - the top 78%
-      // of the screen from one, the bottom from another, measured three times in twelve
-      // minutes - is what compositing while the canvas writes are still in flight looks
-      // like, and it survived draining only the primary context.
-      if (auto* canvas_context =
-              context()->canvas_scheduler->GetDiscreteRenderContext()) {
-        canvas_context->Flush();
-        canvas_context->WaitForIdle();
-      }
-    }
-  }
 
   // Render GUI and present
   gui_renderer->RenderDrawData(render_context, ImGui::GetDrawData());

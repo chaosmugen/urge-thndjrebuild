@@ -1154,57 +1154,6 @@ void CanvasImpl::GPUApproximateBlitTextureInternal(const base::Rect& dst_region,
   render_context->CopyTexture(copy_attribs);
   renderer::ConsiderLoadDrain();
 
-  // Targeted sync between the copy above and the draw below, rotating with the auto arms:
-  // 0 and 2 do nothing, 1 invalidates the state cache, 3 drains. Every canvas blit copies
-  // the source into the shared intermediate cache and then draws with that cache bound, so
-  // it samples a texture written by the command immediately before it - the shape measured
-  // to read stale tiles on this driver (sampling a freshly blitted copy multiplied the loss
-  // by 20). Draining before the canvas batch removes most of the loss (4.88 to 0.95 events
-  // per 10000 frames, p=0.0005) but cannot retire this pair, which happens inside the batch.
-  {
-    static int32_t s_blt_sync_poll = 0;
-    static bool s_blt_sync_auto = false;
-    static bool s_blt_sync_manual = false;
-    if (++s_blt_sync_poll >= 30) {
-      s_blt_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "bltsync.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_blt_sync_manual = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/bltsync.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_blt_sync_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t blt_arm =
-        (context()->sprite_batcher->FrameCount() / 1000u) % 4u;
-    if (s_blt_sync_auto ? (blt_arm == 1 || blt_arm == 3) : s_blt_sync_manual) {
-      // Manual mode always drains: the drain is the one lever with measurements behind it,
-      // while the invalidating variant measured no better than doing nothing at all.
-      if (s_blt_sync_auto ? blt_arm == 3 : true) {
-        render_context->Flush();
-        render_context->WaitForIdle();
-      } else {
-        render_context->InvalidateState();
-      }
-    }
-  }
 
   // Custom blend blit pipeline
   auto* pipeline = context()->render.pipeline_states->bitmap.bitmapblt.RawPtr();

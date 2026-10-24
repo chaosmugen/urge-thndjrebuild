@@ -411,130 +411,13 @@ void PlaneImpl::GPUOnViewportRenderingInternal(
   // Source texture
   auto* texture = **bitmap_;
 
-  // Keep-alive ring for the texture this draw samples, switched by the auto A/B arm (0 none,
-  // 1 eight frames, 2 thirty-two frames, 3 none) - the same arms the sprite batch uses, and
-  // the arms that were rotating while this was measured. This is the ring that matters: the
-  // plane does not go through the sprite batch, it binds the game bitmap's view itself, so
-  // the ring added there never covered it. The plane is where the loss is produced: with a
-  // static scene it reproduces every few thousand frames (7 events of magnitude 4334 in
-  // 12336 frames, always the same block and the same wrong value), while switching this draw
-  // off leaves 1 noise-level event in 16956 frames. The game replaces the bitmap a plane
-  // draws when its background changes, and destroying that texture while an in-flight draw
-  // still samples it - its memory going straight back to the allocator - is the shape that
-  // would produce exactly one frame of wrong texels.
-  {
-    static int32_t s_plane_alive_poll = 0;
-    static bool s_plane_alive_auto = false;
-    static int32_t s_plane_alive_depth = 0;
-    static decltype(texture->shader_resource_view) s_plane_alive[32];
-    if (++s_plane_alive_poll >= 30) {
-      s_plane_alive_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "keepalive.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_plane_alive_depth = value;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/keepalive.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_plane_alive_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t alive_frame = context()->sprite_batcher->FrameCount();
-    const uint32_t alive_arm = (alive_frame / 1000u) % 4u;
-    const int32_t alive_depth =
-        s_plane_alive_auto
-            ? (alive_arm == 1 ? 8 : (alive_arm == 2 ? 32 : 0))
-            : s_plane_alive_depth;
-    if (alive_depth > 0) {
-      s_plane_alive[alive_frame % 32] = texture->shader_resource_view;
-      // A fixed-size ring holds the last 32 frames, so the slots beyond the wanted depth are
-      // released explicitly each frame; that way the depth can change with the arm without
-      // leaving stale references behind.
-      for (int32_t k = alive_depth; k < 32; ++k)
-        s_plane_alive[(alive_frame - k) % 32] = nullptr;
-    } else {
-      for (int32_t k = 0; k < 32; ++k)
-        s_plane_alive[k] = nullptr;
-    }
-  }
 
-  // Candidate fix, on by default, switchable with urge_debug/planesync.txt (0 turns it off).
+  // Candidate fix, kept on: the drain this block used to gate is what the measurements below
+  // are about, and the switch that used to turn it off has been removed.
   // The plane draw is where the one-frame region loss is produced: switching this draw off
   // makes the characteristic events disappear (6 against 2 noise-level in a within-session
   // A/B) while every parameter it uses - and even the contents of the texture it samples,
   // read back across one of those frames - is identical to the frames around it. The one
-  // lever that ever moved this metric is retiring the pending GPU work immediately before
-  // the sampling: on the stress bench 89.3% of frames lost a region without it and 4.4%
-  // with it, while draining anywhere earlier in the frame changes nothing (after the canvas
-  // commands 83.9% against 84.5%, before the render pass 95.3% against 92.8%). Cost of this
-  // drain, measured on the device with a within-session A/B: 24.2 fps with it against 24.0
-  // without, i.e. nothing, because the frame limiter dominates. It is the only lever with a
-  // proven mechanism behind it, so it is enabled and judged on real play; the natural
-  // reproduction is too rare in a scripted session to settle it by probe (2 events against
-  // 0 in the last A/B, which says nothing).
-  {
-    static int32_t s_plane_sync_poll = 0;
-    static bool s_plane_sync = false;
-    static bool s_plane_auto = false;
-    static uint32_t s_plane_sync_frame = 0;
-    if (++s_plane_sync_poll >= 30) {
-      s_plane_sync_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "planesync.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_plane_sync = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/planesync.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_plane_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t plane_frame = context()->sprite_batcher->FrameCount();
-    // Arm-driven again, in a 2x2 with the canvas-blit drain in the render screen:
-    // arm 0 nothing / 1 canvas drain / 2 canvas + plane drain / 3 plane drain only. The
-    // canvas drain alone leaves about a fifth of the loss behind, and the writes it cannot
-    // retire are the ones submitted after it - the plane's own layer composition among them,
-    // which is what this drain sits after.
-    const uint32_t plane_arm = (plane_frame / 1000u) % 4u;
-    const bool want_drain =
-        s_plane_auto ? (plane_arm == 2 || plane_arm == 3) : s_plane_sync;
-    if (want_drain && plane_frame != s_plane_sync_frame &&
-        context()->primary_render_context) {
-      s_plane_sync_frame = plane_frame;
-      context()->primary_render_context->Flush();
-      context()->primary_render_context->WaitForIdle();
-    }
-  }
 
   // Reproduction stress, gated on urge_debug/planestress.txt. The one-frame region loss is
   // intermittent: the same script and the same probe have measured 0, 2, 6, 59, 117 and 236
@@ -613,137 +496,17 @@ void PlaneImpl::GPUOnViewportRenderingInternal(
   }
 
   // Render device etc
-  // Candidate fix for the one-frame region loss, gated on urge_debug/planeflat.txt. The
+  // Candidate fix for the one-frame region loss. The
   // plane draw is where the loss is produced: switching it off removes the characteristic
   // events (6 with, 2 noise-level without), every parameter it uses is identical to the
   // frames around it, and the texture it samples was read back and found byte-identical
   // across an event as well. So this driver mis-renders this draw given correct inputs, and
   // the way around a driver defect in one pipeline is to use another one: the plane already
   // binds a Binding_Flat and draws Quads, exactly like the viewport effect, whose flat
-  // pipeline is known to behave on this device. Set urge_debug/planeflat.txt to 1 to draw
-  // the plane through it instead.
-  static int32_t s_plane_flat_poll = 0;
-  static bool s_plane_flat = false;
-  if (++s_plane_flat_poll >= 30) {
-    s_plane_flat_poll = 0;
-    FILE* file = fopen(
-        "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "planeflat.txt",
-        "r");
-    if (file) {
-      int32_t value = 0;
-      if (fscanf(file, "%d", &value) == 1)
-        s_plane_flat = value != 0;
-      fclose(file);
-      remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/planeflat.txt");
-    }
-  }
+  auto* pipeline = context()->render.pipeline_states->plane[blend_type_].RawPtr();
 
-  auto* pipeline =
-      s_plane_flat
-          ? context()->render.pipeline_states->viewport_flat.RawPtr()
-          : context()->render.pipeline_states->plane[blend_type_].RawPtr();
 
-  // Experiment: sample a copy of the texture instead of the game's own bitmap, rotating with
-  // the auto arms (0/2 direct, 1/3 copy). If the one-frame band disappears when the draw
-  // reads a texture the engine produced itself, the defect is in how this draw samples the
-  // game's texture - a stale tile row. The shape of the loss points that way: one horizontal
-  // band, always the same block and the same wrong value, in both the offscreen buffer and
-  // the presented image, while the texture's content read back after a wait is always
-  // correct, because waiting for the GPU is itself what refreshes a stale tile.
   Diligent::ITextureView* plane_view = texture->shader_resource_view;
-  {
-    static int32_t s_copy_poll = 0;
-    static bool s_copy_auto = true;
-    static bool s_copy_manual = false;
-    static Diligent::RefCntAutoPtr<Diligent::ITexture> s_copy[2];
-    static int32_t s_copy_index = 0;
-    static uint32_t s_copy_frame = 0;
-    if (++s_copy_poll >= 30) {
-      s_copy_poll = 0;
-      FILE* file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "planecopy.txt",
-          "r");
-      if (file) {
-        int32_t value = 0;
-        if (fscanf(file, "%d", &value) == 1)
-          s_copy_manual = value != 0;
-        fclose(file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/planecopy.txt");
-      }
-      FILE* auto_file = fopen(
-          "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-          "autosync.txt",
-          "r");
-      if (auto_file) {
-        int32_t value = 1;
-        if (fscanf(auto_file, "%d", &value) == 1)
-          s_copy_auto = value != 0;
-        fclose(auto_file);
-        remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-               "urge_debug/autosync.txt");
-      }
-    }
-    const uint32_t copy_frame = context()->sprite_batcher->FrameCount();
-    const uint32_t copy_arm = (copy_frame / 1000u) % 4u;
-    // Arms: 0 direct, 1 copy sampled one frame late, 2 copy sampled in the frame it was
-    // made, 3 direct. Sampling this frame's copy multiplies the loss by 25 (105 events per
-    // 10000 frames against 4.3 for the direct draw), which identifies the defect: a texture
-    // written in a frame and sampled in that same frame is not reliably visible on this
-    // driver - a few tile rows are read stale. If the one-frame-late copy is clean, that is
-    // the mechanism, and decoupling the sample from the write is the fix.
-    const int32_t copy_mode = s_copy_manual ? 2 : 0;
-    // The copy experiment is finished and stays out of the rotating arms (they now drive the
-    // canvas-blit drain, which must not be confounded with a 20x amplifier); keep the switch
-    // reads alive so planecopy.txt still works by hand.
-    (void)s_copy_auto;
-    (void)copy_arm;
-    if (copy_mode && texture->data && context()->primary_render_context) {
-      const auto& src_desc = texture->data->GetDesc();
-      if (src_desc.Width > 0 && src_desc.Height > 0) {
-        if (!s_copy[0] || s_copy[0]->GetDesc().Width != src_desc.Width ||
-            s_copy[0]->GetDesc().Height != src_desc.Height)
-          for (int32_t k = 0; k < 2; ++k)
-            renderer::CreateTexture2D(
-                **context()->render_device, &s_copy[k],
-                k ? "plane.copy.1" : "plane.copy.0",
-                base::Vec2i(static_cast<int32_t>(src_desc.Width),
-                            static_cast<int32_t>(src_desc.Height)),
-                Diligent::USAGE_DEFAULT, Diligent::BIND_SHADER_RESOURCE,
-                Diligent::CPU_ACCESS_NONE, src_desc.Format);
-        if (s_copy[0] && s_copy[1] && copy_frame != s_copy_frame) {
-          s_copy_frame = copy_frame;
-          // Mode 2 drains before the copy, mode 1 does not. The copy is a blit out of the
-          // game's bitmap, and a blit that reads stale tiles of a source written earlier in
-          // the frame produces a wrong image no matter when it is sampled - which is what
-          // the one-frame-late copy proved by being just as bad as this frame's (117 against
-          // 90 events per 10000 frames). Retiring the pending writes before the blit is the
-          // one lever that removed this class of loss on the stress bench (89.3% to 4.4%),
-          // where the copies were exactly this shape.
-          if (copy_mode == 2 && context()->primary_render_context) {
-            context()->primary_render_context->Flush();
-            context()->primary_render_context->WaitForIdle();
-          }
-          Diligent::CopyTextureAttribs attribs;
-          attribs.pSrcTexture = texture->data;
-          attribs.SrcTextureTransitionMode =
-              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-          attribs.pDstTexture = s_copy[s_copy_index];
-          attribs.DstTextureTransitionMode =
-              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-          context()->primary_render_context->CopyTexture(attribs);
-          Diligent::ITexture* sampled = s_copy[s_copy_index].RawPtr();
-          if (sampled)
-            plane_view = sampled->GetDefaultView(
-                Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-          s_copy_index = 1 - s_copy_index;
-        }
-      }
-    }
-  }
 
   // Setup uniform params
   gpu_.shader_binding.u_transform->Set(world_binding);

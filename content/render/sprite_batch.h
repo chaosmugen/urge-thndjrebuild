@@ -100,10 +100,6 @@ class SpriteBatch {
   // picks up what no node got to draw.
   void MarkEmitted(uint32_t start, uint32_t count);
 
-  // Temporary diagnostics: one call per sprite node that queues this frame. A frame
-  // whose count is lower than its neighbours lost sprite nodes before the queue.
-  void AuditNodeEnqueued() { ++audit_sprites_; }
-
   // Which of the rotating frame sets this frame writes into. The window layers queue
   // their vertices into their own single buffer today, which a frame still in flight can
   // be reading while the next one overwrites it - the sprite batch avoids exactly that
@@ -117,36 +113,11 @@ class SpriteBatch {
   // frame number and their order within one frame becomes unambiguous.
   int64_t FrameCount() const { return audit_frame_; }
 
-  // TEMPORARY accessor for the UI-flicker audit. Marker: URGE_SPRAUDIT
-  //
-  // Reports what the batcher actually submitted for the frame it last finished: how many quads were
-  // drawn, how many runs had to be emitted by the fallback path because their node was gone, and how
-  // many had no texture. The remaining UI flicker is small and lives on the bottom and right strips,
-  // which are drawn from here, so a frame in which those numbers differ from their usual values is a
-  // frame in which the batcher submitted something different - which is the first thing to rule in
-  // or out before looking anywhere else.
-  void UrgeAuditCounters(uint32_t& drawn, uint32_t& fallback_runs,
-                         uint32_t& null_texture) const {
-    drawn = audit_drawn_;
-    fallback_runs = audit_fallback_runs_;
-    null_texture = audit_null_texture_;
-  }
-
-  // Diagnostics: scene renders since the last present. Normal play renders once per
-  // presented frame; a freeze or transition frame renders the scene twice (screen plus
-  // snapshot), which rotates the sets again inside one frame. Reported by the screen so
-  // the rotation rate can be checked against the number of sets.
-  uint32_t TakeRenderTicks() {
-    const uint32_t ticks = render_ticks_;
-    render_ticks_ = 0;
-    return ticks;
-  }
-
   // Rotates the per-frame buffer sets. Called once per presented frame, at the present
   // boundary: the sets exist to keep the CPU off buffers the GPU may still be executing
   // from, and the GPU is only done with a set once that frame has reached the screen.
   // Rotating per render call instead split a frame that renders the scene twice (screen
-  // plus snapshot, see TakeRenderTicks) across two sets - so a layer that latched the set
+  // plus snapshot) across two sets - so a layer that latched the set
   // when it queued its vertices drew from the other one, putting an element of that frame
   // on screen from data it never wrote: the one-frame vanishing.
   void AdvanceFrameSet();
@@ -158,12 +129,6 @@ class SpriteBatch {
   void ResetFrameCache();
 
   bool IsBatchEnabled() const { return support_storage_buffer_batch_; }
-
-  // Temporary: per-run draw fingerprints are only written while this is on. The switch
-  // is read from urge_debug/runfp.txt (1 = on), so the probe can be armed for a short
-  // recording window instead of filling the log for the whole session - the writes
-  // themselves are heavy enough to disturb the frame timing being measured.
-  bool RunFpEnabled() const { return run_fp_enabled_; }
 
  private:
   // One contiguous run of sprites sharing a texture and a blend mode; the unit the
@@ -190,11 +155,6 @@ class SpriteBatch {
   // versus quads a node really drew, plus the runs only the fallback had to emit and
   // the runs whose texture carried no shader resource view. A frame where these do
   // not line up is a frame that loses bitmaps.
-  uint32_t audit_drawn_ = 0;
-  uint32_t audit_runs_ = 0;
-  uint32_t audit_sprites_ = 0;
-  uint32_t audit_fallback_runs_ = 0;
-  uint32_t audit_null_texture_ = 0;
   uint32_t audit_frame_ = 0;
 
   TextureID current_texture_;
@@ -212,9 +172,6 @@ class SpriteBatch {
   renderer::RenderDevice* device_ = nullptr;
   Diligent::IBuffer* batch_world_ = nullptr;
   int32_t frame_set_ = 0;
-  uint32_t render_ticks_ = 0;
-  bool run_fp_enabled_ = false;
-  uint32_t run_fp_poll_ = 0;
   int32_t batch_blend_ = 0;
 };
 
