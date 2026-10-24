@@ -19,7 +19,6 @@ extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil);
 
 // See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
-extern "C" void UrgePublishViewportRegion(int32_t x, int32_t y, int32_t w, int32_t h);
 
 namespace content {
 
@@ -572,12 +571,6 @@ void ViewportImpl::GPUCreateViewportAgent() {
 void ViewportImpl::GPUUpdateViewportTransform(
     Diligent::IDeviceContext* render_context,
     const base::Rect& region) {
-  // See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
-  // The repair only redraws runs whose quad sticks out of this region, so the region has to be
-  // published on every update - without it the test has nothing to compare against and the repair
-  // silently never fires.
-  UrgePublishViewportRegion(region.x, region.y, region.width, region.height);
-
   renderer::WorldTransform& world_matrix = gpu_.world_uniform_cpu;
   renderer::MakeProjectionMatrix(world_matrix.projection,
                                  region.Size().Recast<float>());

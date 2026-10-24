@@ -15,19 +15,18 @@
 
 // Fix for the one-frame loss on the sprite layer, same shape as the map's.
 //
-// TEMPORARY A/B. Marker: URGE_CLIPREDRAW
+// TEMPORARY A/B. Marker: URGE_SPRITEREDRAW
 //
-// Redraw only the runs whose quad sticks out of the sprite screen - the one class measured to lose
-// fragments. This gets the repair without re-blending the big translucent panels, which is what the
-// seam metric reports. 1 = on (default), 0 = off.
-extern "C" bool ClipRedrawEnabledInternal() {
+// Redraw every sprite run in a pass of its own (the repair for the one-frame region loss). 1 = on
+// (default), 0 = off, via urge_debug/spriteredraw.txt.
+extern "C" bool SpriteRedrawEnabledInternal() {
   static int32_t s_poll = 0;
   static bool s_enabled = true;
   if (++s_poll >= 30) {
     s_poll = 0;
     FILE* file = fopen(
         "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-        "clipredraw.txt",
+        "spriteredraw.txt",
         "r");
     if (file) {
       int32_t value = 0;
@@ -35,8 +34,8 @@ extern "C" bool ClipRedrawEnabledInternal() {
         s_enabled = value != 0;
       fclose(file);
       remove("/storage/emulated/0/Android/data/com.admenri.urge/files/"
-             "urge_debug/clipredraw.txt");
-      LOG(INFO) << "[ClipRedraw] enabled=" << s_enabled;
+             "urge_debug/spriteredraw.txt");
+      LOG(INFO) << "[SpriteRedraw] enabled=" << s_enabled;
     }
   }
   return s_enabled;

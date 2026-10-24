@@ -13,9 +13,7 @@
 
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 
-// See UrgeQuadClippedByTarget (renderscreen_impl.cc). Marker: URGE_CLIPREDRAW
-extern "C" bool UrgeQuadClippedByTarget(float x0, float y0, float x1, float y1);
-extern "C" bool ClipRedrawEnabledInternal();
+extern "C" bool SpriteRedrawEnabledInternal();
 
 
 
@@ -696,31 +694,18 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
       render_context->DrawIndexed(draw_indexed_attribs);
-      // Marker: URGE_CLIPREDRAW
-      // The redraw re-blends translucent content, which is what deepens the seam. It is therefore
-      // limited to the only kind of run measured to lose fragments: the one whose quad sticks out
-      // of the screen the sprites are laid out in (the compass is 210x245 at (620,434) on an
-      // 800x608 screen). Everything else keeps the single, unchanged draw.
-      bool clip_redraw = false;
-      if (ClipRedrawEnabledInternal()) {
-        float lx0 = 1e9f, ly0 = 1e9f, lx1 = -1e9f, ly1 = -1e9f;
-        for (int32_t i = 0; i < 4; ++i) {
-          const auto& pos = gpu_.quad.vertices[i].position;
-          lx0 = std::min(lx0, pos.x);
-          ly0 = std::min(ly0, pos.y);
-          lx1 = std::max(lx1, pos.x);
-          ly1 = std::max(ly1, pos.y);
-        }
-        const float sx = uniform_params_.Scale.x;
-        const float sy = uniform_params_.Scale.y;
-        const float x0 = uniform_params_.Position.x + (lx0 - uniform_params_.Origin.x) * sx;
-        const float y0 = uniform_params_.Position.y + (ly0 - uniform_params_.Origin.y) * sy;
-        const float x1 = uniform_params_.Position.x + (lx1 - uniform_params_.Origin.x) * sx;
-        const float y1 = uniform_params_.Position.y + (ly1 - uniform_params_.Origin.y) * sy;
-        clip_redraw = UrgeQuadClippedByTarget(x0, y0, x1, y1);
-      }
-      if (clip_redraw) {
-        // The repair only lands in a NEW pass, so the boundary is part of the fix, not optional.
+      // Marker: URGE_SPRITEREDRAW
+      // Repair a lost draw by submitting the same run a second time in a pass of its own: a write
+      // that one pass loses is covered by the other, because both passes losing the same run is
+      // what does not happen. The pass boundary is part of the repair, not an option - a second
+      // draw inside the same pass does not land (measured, see the note in the doc).
+      //
+      // It applies to every run, not only to the ones whose quad is clipped by the viewport: the
+      // right-hand panel contents do not stick out anywhere and still lose a frame now and then
+      // (1 in 2378 measured), and they are only covered when they are redrawn too. The seam metric
+      // is the same 0.210 either way - the translucent panels are already in the redrawn set,
+      // because their own quads do stick out - so covering everything costs no extra blending.
+      if (SpriteRedrawEnabledInternal()) {
         UrgeForcePassBoundary(render_context);
         render_context->DrawIndexed(draw_indexed_attribs);
       }
@@ -739,31 +724,18 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
           context()->render.quad_index->GetIndexType();
       draw_indexed_attribs.FirstIndexLocation = 6 * gpu_.instance_offset;
       render_context->DrawIndexed(draw_indexed_attribs);
-      // Marker: URGE_CLIPREDRAW
-      // The redraw re-blends translucent content, which is what deepens the seam. It is therefore
-      // limited to the only kind of run measured to lose fragments: the one whose quad sticks out
-      // of the screen the sprites are laid out in (the compass is 210x245 at (620,434) on an
-      // 800x608 screen). Everything else keeps the single, unchanged draw.
-      bool clip_redraw = false;
-      if (ClipRedrawEnabledInternal()) {
-        float lx0 = 1e9f, ly0 = 1e9f, lx1 = -1e9f, ly1 = -1e9f;
-        for (int32_t i = 0; i < 4; ++i) {
-          const auto& pos = gpu_.quad.vertices[i].position;
-          lx0 = std::min(lx0, pos.x);
-          ly0 = std::min(ly0, pos.y);
-          lx1 = std::max(lx1, pos.x);
-          ly1 = std::max(ly1, pos.y);
-        }
-        const float sx = uniform_params_.Scale.x;
-        const float sy = uniform_params_.Scale.y;
-        const float x0 = uniform_params_.Position.x + (lx0 - uniform_params_.Origin.x) * sx;
-        const float y0 = uniform_params_.Position.y + (ly0 - uniform_params_.Origin.y) * sy;
-        const float x1 = uniform_params_.Position.x + (lx1 - uniform_params_.Origin.x) * sx;
-        const float y1 = uniform_params_.Position.y + (ly1 - uniform_params_.Origin.y) * sy;
-        clip_redraw = UrgeQuadClippedByTarget(x0, y0, x1, y1);
-      }
-      if (clip_redraw) {
-        // The repair only lands in a NEW pass, so the boundary is part of the fix, not optional.
+      // Marker: URGE_SPRITEREDRAW
+      // Repair a lost draw by submitting the same run a second time in a pass of its own: a write
+      // that one pass loses is covered by the other, because both passes losing the same run is
+      // what does not happen. The pass boundary is part of the repair, not an option - a second
+      // draw inside the same pass does not land (measured, see the note in the doc).
+      //
+      // It applies to every run, not only to the ones whose quad is clipped by the viewport: the
+      // right-hand panel contents do not stick out anywhere and still lose a frame now and then
+      // (1 in 2378 measured), and they are only covered when they are redrawn too. The seam metric
+      // is the same 0.210 either way - the translucent panels are already in the redrawn set,
+      // because their own quads do stick out - so covering everything costs no extra blending.
+      if (SpriteRedrawEnabledInternal()) {
         UrgeForcePassBoundary(render_context);
         render_context->DrawIndexed(draw_indexed_attribs);
       }

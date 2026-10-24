@@ -565,36 +565,6 @@ extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
   g_urge_frame_dsv = depth_stencil;
 }
 
-// See UrgeQuadClippedByTarget. Marker: URGE_CLIPREDRAW
-//
-// The region the sprites are laid out in (the game screen, in game coordinates). A run whose quad
-// sticks out of it is the only kind measured to lose its fragments, so re-drawing exactly those
-// keeps the repair where it is needed and keeps the double-blend off the large translucent panels
-// that form the seam.
-static float g_urge_viewport_x = 0.f;
-static float g_urge_viewport_y = 0.f;
-static float g_urge_viewport_w = 0.f;
-static float g_urge_viewport_h = 0.f;
-
-extern "C" void UrgePublishViewportRegion(int32_t x, int32_t y, int32_t w, int32_t h) {
-  // The region is published in the same space the sprites are laid out in, so it has to be kept
-  // whole: the viewport transform is projection(size) followed by translation(position), which
-  // makes the visible area this rectangle - not [0,width]x[0,height]. The game scrolls its
-  // viewports and changes resolution at runtime, so both the position and the size move.
-  g_urge_viewport_x = static_cast<float>(x);
-  g_urge_viewport_y = static_cast<float>(y);
-  g_urge_viewport_w = static_cast<float>(w);
-  g_urge_viewport_h = static_cast<float>(h);
-}
-
-extern "C" bool UrgeQuadClippedByTarget(float x0, float y0, float x1, float y1) {
-  if (g_urge_viewport_w <= 0.f || g_urge_viewport_h <= 0.f)
-    return false;
-  return x0 < g_urge_viewport_x || y0 < g_urge_viewport_y ||
-         x1 > g_urge_viewport_x + g_urge_viewport_w ||
-         y1 > g_urge_viewport_y + g_urge_viewport_h;
-}
-
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context) {
   if (!render_context || !g_urge_frame_rtv)
     return;
