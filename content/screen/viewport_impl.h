@@ -19,6 +19,10 @@ namespace content {
 
 class ViewportImpl : public Viewport, public EngineObject, public Disposable {
  public:
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4324)  // GPUData is padded by the alignas(16) WorldTransform member
+#endif
   struct GPUData {
     RRefPtr<Diligent::IBuffer> world_uniform;
     // The values uploaded into |world_uniform|, see RenderScreenImpl::GPUData.
@@ -32,6 +36,9 @@ class ViewportImpl : public Viewport, public EngineObject, public Disposable {
       RRefPtr<Diligent::IBuffer> uniform_buffer;
     } effect;
   };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   ViewportImpl(ExecutionContext* execution_context,
                scoped_refptr<ViewportImpl> parent,

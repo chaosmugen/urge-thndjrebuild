@@ -24,6 +24,10 @@ namespace content {
 
 class RenderScreenImpl : public Graphics, public EngineObject {
  public:
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4324)  // GPUData is padded by the alignas(16) WorldTransform member
+#endif
   struct GPUData {
     RRefPtr<Diligent::ITexture> screen_buffer;
     // The screen target rendered on the PREVIOUS frame. The composite samples this one, so
@@ -51,6 +55,9 @@ class RenderScreenImpl : public Graphics, public EngineObject {
     renderer::Binding_AlphaTrans transition_binding_alpha;
     renderer::Binding_VagueTrans transition_binding_vague;
   };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   RenderScreenImpl(ExecutionContext* execution_context, uint32_t frame_rate);
   ~RenderScreenImpl() override;
