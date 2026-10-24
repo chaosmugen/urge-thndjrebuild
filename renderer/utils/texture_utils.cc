@@ -44,10 +44,11 @@ void NotifyFramePresented() {
 }
 
 bool DeferredReleaseEnabled() {
-  // See DeferredTextureRelease() in the header.
-  static int32_t s_ring_poll = 0;
-  // Unverified for the loss, so off by default; texring.txt = 1 turns it on. Marker: URGE_DEFAULTS
+  // See DeferredTextureRelease() in the header. Default off; texring.txt = 1 turns it on
+  // for a debug session. Marker: URGE_DEFAULTS. Release builds never touch the file.
   static bool s_ring_on = false;
+#if !defined(NDEBUG)
+  static int32_t s_ring_poll = 0;
   if (++s_ring_poll >= 30) {
     s_ring_poll = 0;
     FILE* file = fopen(
@@ -63,6 +64,7 @@ bool DeferredReleaseEnabled() {
              "urge_debug/texring.txt");
     }
   }
+#endif  // !defined(NDEBUG)
   return s_ring_on;
 }
 

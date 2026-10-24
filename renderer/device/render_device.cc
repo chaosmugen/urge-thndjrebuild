@@ -246,7 +246,7 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   swap_chain_desc.PreTransform = Diligent::SURFACE_TRANSFORM_OPTIMAL;
   swap_chain_desc.IsPrimary = Diligent::True;
 
-  // TEMPORARY A/B for the one-frame region loss. Marker: URGE_SWAPCOUNT
+  // Startup A/B for the swap-chain buffer count (debug builds only). Marker: URGE_SWAPCOUNT
   //
   // The swap chain carries no explicit buffer count today - Diligent's default is used - and an
   // earlier experiment put three buffers in on a premise that later turned out to be false (the
@@ -256,6 +256,7 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   // than while running because changing the count means rebuilding the swap chain, and this
   // platform has crashed in that path before. The file is left in place when read, so the chosen
   // arm survives a restart.
+  #if !defined(NDEBUG)  // swap-chain buffer-count A/B: debug builds only
   {
     FILE* swap_file = fopen(
         "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
@@ -271,6 +272,7 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
     LOG(INFO) << "[Renderer] SwapChain BufferCount=" << swap_chain_desc.BufferCount
               << " (requested=" << requested_count << ")";
   }
+#endif  // !defined(NDEBUG)
 
   // Create device and fallback when error
   size_t creating_retry_count = 0;

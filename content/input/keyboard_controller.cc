@@ -290,7 +290,7 @@ bool KeyboardControllerImpl::CreateButtonGUISettings() {
 
 void KeyboardControllerImpl::Update(ExceptionState& exception_state) {
 #if !defined(NDEBUG)  // adb key-injection hook: debug builds only
-  /* TEMPORARY test hook, restored for the flicker investigation. Marker: UrgeTagKeyTap
+  /* adb key-injection hook (debug builds only). Marker: UrgeTagKeyTap
      Android-injected key events never reach the engine (the activity does not forward them),
      so driving the TV from adb has to go through the engine's own emulation. Writing an SDL
      scancode into urge_debug/key.txt taps that key once, released one engine frame later,
@@ -338,7 +338,7 @@ void KeyboardControllerImpl::Update(ExceptionState& exception_state) {
       }
     }
   }
-  // End TEMPORARY test hook
+  // End adb key-injection hook
 #endif  // !defined(NDEBUG)
 
   for (int32_t i = 0; i < SDL_SCANCODE_COUNT; ++i) {

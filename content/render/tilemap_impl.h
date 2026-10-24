@@ -69,7 +69,7 @@ class TilemapImpl : public Tilemap, public EngineObject, public Disposable {
     // the flash lands on 0 - which is the recorded image exactly: byte-identical in every
     // session, one frame, every other pipeline untouched. The above layers now own their own
     // binding, so the two draws can no longer write into each other's.
-    // urge_debug/tmsrbsplit.txt = 0 puts the shared binding back for A/B.
+    // (The shared binding was split apart; the historical tmsrbsplit.txt A/B no longer applies.)
     renderer::Binding_Tilemap above_binding;
 
     int32_t ground_draw_count;
@@ -89,8 +89,8 @@ class TilemapImpl : public Tilemap, public EngineObject, public Disposable {
     // parameters and samples unrelated atlas regions - exactly the bright instead-of-dark
     // ground seen for one frame, with the UI panels on other pipelines untouched. One batch
     // and one params buffer per frame set, picked by SpriteBatch::FrameSetIndex(), keeps one
-    // frame's upload away from another frame's reads. Gated on urge_debug/tmuniring.txt
-    // (nonzero for on) so it can be A/B tested against the single-buffered path above.
+    // frame's upload away from another frame's reads. Gated on IsMaliGpu() (this is the Mali
+    // driver's hazard class that forced the per-frame-set split).
     static constexpr int32_t kFrameSets = 8;
     renderer::QuadBatch batch_sets[kFrameSets];
     RRefPtr<Diligent::IBuffer> uniform_buffer_sets[kFrameSets];

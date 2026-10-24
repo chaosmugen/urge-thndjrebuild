@@ -16,7 +16,7 @@ extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 
 namespace content {
 
-// TEMPORARY, see their definitions further down. Marker: URGE_SECONDPASS
+// Forward declarations (defined below). Marker: URGE_SECONDPASS
 static bool TilemapSecondPassEnabledInternal();
 static bool ForcePassBoundaryInternal(Diligent::IDeviceContext* render_context,
                                      Diligent::ITexture* screen_buffer,
@@ -610,7 +610,7 @@ static int64_t s_above_frame = 0;
 static int64_t s_above_this_frame = 0;
 static int64_t s_above_prev_frame = 0;
 
-// TEMPORARY, see TilemapSecondPassEnabledInternal. Marker: URGE_SECONDPASS
+// Pass-counter for the Mali second-pass workaround. Marker: URGE_SECONDPASS
 static int64_t g_tm_second_pass = 0;
 
 

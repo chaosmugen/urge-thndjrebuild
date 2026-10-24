@@ -541,7 +541,7 @@ void RenderScreenImpl::FrameProcessInternal(
   renderer::NotifyFramePresented();
 }
 
-// TEMPORARY: the frame's render target views, recorded so other translation units can force a pass
+// The frame's render target views, recorded so other translation units can force a pass
 // boundary without threading the textures through. Marker: URGE_FRAME_RTV
 static Diligent::ITextureView* g_urge_frame_rtv = nullptr;
 static Diligent::ITextureView* g_urge_frame_dsv = nullptr;
@@ -863,7 +863,7 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
   gui_renderer->RenderDrawData(render_context, ImGui::GetDrawData());
   URGE_GPU_AUDIT("present:after-gui", true);
 
-  // TEMPORARY present-side probe: a 16x16 grid of 16x16 blocks (256 of them) spread evenly
+  // Present-side probe: a 16x16 grid of 16x16 blocks (256 of them) spread evenly
   // over the back buffer, one line per frame, read back a frame later without waiting.
   //
   // It replaced a full-width row probe, and the reason matters. Averaging a whole row
@@ -885,7 +885,7 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
     static uint32_t s_busy = 0;
     static int32_t s_stage_w = 0;
 
-    // TEMPORARY aimed dump, see the [CellDump] note below. The last three readbacks: their
+    // Aimed dump, see the [CellDump] note below. The last three readbacks: their
     // frame labels, their 256 block averages (the values the line above prints) and their raw
     // 256x256 pixels. Three is exactly what it takes to recognise the defect's fingerprint -
     // one frame differs, the frame before and the frame after are byte-identical - and a
@@ -1114,7 +1114,7 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
             // read as "the defect stopped" - it had not, the probe had. Marker for checking
             // that a build carries this: URGE_PROBE_ALLEVENTS.
 
-            if (deviation >= 20 && qualifying >= 1) {  // TEMPORARY, see above
+            if (deviation >= 20 && qualifying >= 1) {  // see above
               if (s_dump_count < 2000 &&
                   (s_last_dump_frame == 0 ||
                    s_hist_label[2] - s_last_dump_frame > 60)) {
