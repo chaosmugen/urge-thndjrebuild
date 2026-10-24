@@ -39,20 +39,9 @@ class WindowImpl : public Window, public EngineObject, public Disposable {
     int32_t contents_quad_offset = 0;
 
 
-    // TEMPORARY diagnostic. Marker: URGE_FRAMESET
-    // Which rotating frame set each layer queued its vertices into. The read side resolves the
-    // index again later in the frame; if the frame counter advanced in between, it reads a
-    // different set - one holding an earlier round's vertices.
     int32_t bg_write_set = -1;
     int32_t ctrl_write_set = -1;
 
-    // TEMPORARY diagnostic: how many times each of this window's layers was drawn in the current
-    // frame. A layer drawn twice in one frame blends its translucent edges twice, which is what
-    // makes the seam between two stacked panels go dark.
-    uint32_t last_bg_frame = 0;
-    int32_t bg_draws = 0;
-    uint32_t last_ctrl_frame = 0;
-    int32_t ctrl_draws = 0;
   };
 
   // A window layer is composed in the enqueue stage and drawn in the draw stage. The

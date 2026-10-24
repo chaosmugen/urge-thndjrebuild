@@ -263,8 +263,6 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                                   {target_format}, depth_stencil_format,
                                   default_sample);
 
-    // See PipelineSet::tilemap_noblend: identical, but with blending off, so the tilemap writes its
-    // pixels instead of blending them into whatever is already there. Marker: URGE_NOBLEND
     {
       Diligent::BlendStateDesc no_blend_state = blend_state;
       no_blend_state.RenderTargets[0].BlendEnable = Diligent::False;

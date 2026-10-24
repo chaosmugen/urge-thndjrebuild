@@ -11,23 +11,7 @@
 // Defined in content/screen/renderscreen_impl.cc, declared after the includes because it
 // names a Diligent type. Marker: URGE_SECONDPASS
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
-// TEMPORARY A/B switch, see the Ox/Oy setters. Marker: URGE_OXDIRTY
-//
-// Ox and Oy used to dirty the tile batch unconditionally, and a game that assigns tilemap.ox/.oy
-// every frame - the usual way a map view follows the player - then re-parsed the whole map and
-// re-uploaded the entire vertex batch every frame: about 24 uploads a second in a completely idle
-// scene, as [UploadAudit] showed. That rewrite races the draws the GPU is still reading, which is
-// the shape of the one-frame region loss this file has been chasing. The setters now dirty only when
-// the value actually changes, matching RepeatX/RepeatY right below them. Setting
-// urge_debug/oxalwaysdirty.txt to 1 restores the old behaviour so the two can be compared in one
-// session, which is the only way this metric can be trusted.
-// TEMPORARY: which code path marked the tile batch dirty, so the upload audit line can say why the
-// buffer is being rewritten. The map is being re-uploaded about 24 times a second in an idle scene,
-// and the difference between "the game changes the map every frame" and "the engine re-dirties it on
-// its own" is the difference between a design consequence and a bug. Marker: URGE_UPLOAD_AUDIT
-static const char* g_tm_dirty_source = "?";
 
 
 namespace content {
@@ -416,7 +400,6 @@ TilemapImpl::TilemapImpl(ExecutionContext* execution_context,
       max_vertical_count_(max_atlas_size_ / tilesize),
       viewport_(parent),
       repeat_(1) {
-  ground_node_.SetDebugTag(0x1000);  // TEMPORARY, see the order audit. Marker: URGE_ORDER_AUDIT
   ground_node_.RegisterEventHandler(base::BindRepeating(
       &TilemapImpl::GroundNodeHandlerInternal, base::Unretained(this)));
 
@@ -550,12 +533,9 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     },
     {
       DISPOSE_CHECK;
-      // See TilemapAlwaysDirtyInternal. Only a real change may dirty the batch: rewriting it every
-      // frame races the GPU's read of the previous frame. Marker: URGE_OXDIRTY
       if (origin_.x != value) {
         origin_.x = value;
         map_buffer_dirty_ = true;
-        g_tm_dirty_source = "ox";
       }
     });
 
@@ -569,11 +549,9 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     },
     {
       DISPOSE_CHECK;
-      // See TilemapAlwaysDirtyInternal. Marker: URGE_OXDIRTY
       if (origin_.y != value) {
         origin_.y = value;
         map_buffer_dirty_ = true;
-        g_tm_dirty_source = "oy";
       }
     });
 
@@ -628,7 +606,6 @@ void TilemapImpl::OnObjectDisposed() {
 // quad blanks the whole ground layer for one frame (the flicker seen on the TV).
 static int64_t g_tm_ground_ready = 0;
 static int64_t g_tm_ground_drawn = 0;
-// TEMPORARY audit state, see AboveNodeHandlerInternal. Marker: URGE_ABOVE_AUDIT
 static int64_t s_above_frame = 0;
 static int64_t s_above_this_frame = 0;
 static int64_t s_above_prev_frame = 0;
@@ -671,13 +648,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
 
       GPUMakeAtlasInternal(params->context, size, std::move(commands));
       atlas_dirty_ = false;
-      // TEMPORARY correlation instrument. Marker: URGE_UPLOAD_AUDIT
-      //
-      // A rebuild replaces the whole atlas texture and re-points the binding at it, which is the
-      // only remaining per-frame event that changes what the tilemap samples - and unlike every
-      // input measured so far, it has never appeared in a log next to a defect frame. The earlier
-      // work only A/B'd the deferred-release switch, which is a different question. It is rare (a
-      // scene change, an animation frame), so volume is not a concern and timing is untouched.
     }
 
     // Parse and generate map buffer if need.
@@ -689,12 +659,6 @@ void TilemapImpl::GroundNodeHandlerInternal(
       GPUUploadTilesBatchInternal(params->context, std::move(ground_cache),
                                   std::move(aboves_cache));
       map_buffer_dirty_ = false;
-      // See the note above the atlas rebuild. Marker: URGE_UPLOAD_AUDIT
-      // The marker is deliberately cleared here: it is sticky, so without this every later upload
-      // would keep reporting whichever path dirtied the buffer first. A "?" on the next line means
-      // the dirty came from one of the property setters rather than the viewport or the game's
-      // map-data call. Marker: URGE_UPLOAD_AUDIT
-      g_tm_dirty_source = "?";
 
       // A rebuild that produces no ground quad blanks the whole ground layer for that
       // frame while the above layers keep drawing - the flicker reported from the TV.
@@ -770,15 +734,6 @@ void TilemapImpl::AboveNodeHandlerInternal(
     return;
 
   if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    // TEMPORARY audit. Marker: URGE_ABOVE_AUDIT
-    //
-    // The probe has shown that in a defect frame the pixels of the darkened region do not come out
-    // of this pipeline at all (an unconditional paint over the whole layer does not land there),
-    // while the ground layer's ready/drawn counters stay equal. Those counters are cumulative, so
-    // they cannot see a single frame in which the above layers were drawn fewer times or not at
-    // all. This counts the above draws per frame and prints only when that count differs from the
-    // previous frame, so a steady frame stays silent and the log volume - which has changed the
-    // timing of this defect before - is untouched until something actually happens.
     const int64_t audit_frame = context()->sprite_batcher->FrameCount();
     if (audit_frame != s_above_frame) {
       s_above_prev_frame = s_above_this_frame;
@@ -900,7 +855,6 @@ void TilemapImpl::UpdateViewportInternal(const base::Rect& viewport,
   if (new_viewport != render_viewport_) {
     render_viewport_ = new_viewport;
     map_buffer_dirty_ = true;
-    g_tm_dirty_source = "viewport";  // TEMPORARY, see g_tm_dirty_source
   }
 }
 
@@ -1110,8 +1064,6 @@ void TilemapImpl::SetupTilemapLayersInternal(const base::Rect& viewport) {
     auto above_node = std::make_unique<DrawableNode>(
         ground_node_.GetController(),
         SortKey(64, 0, kTilemapSortStamp + 1));
-    // TEMPORARY stable tag, see the order audit. Marker: URGE_ORDER_AUDIT
-    above_node->SetDebugTag(0x1001 + i);
     above_node->RegisterEventHandler(base::BindRepeating(
         &TilemapImpl::AboveNodeHandlerInternal, base::Unretained(this), i));
     above_nodes_.push_back(std::move(above_node));
@@ -1141,7 +1093,6 @@ void TilemapImpl::AtlasModifyHandlerInternal() {
 
 void TilemapImpl::MapDataModifyHandlerInternal() {
   map_buffer_dirty_ = true;
-  g_tm_dirty_source = "map-data-modify";  // TEMPORARY, see g_tm_dirty_source
 }
 
 void TilemapImpl::GPUCreateTilemapInternal() {
@@ -1269,13 +1220,6 @@ void TilemapImpl::GPUUpdateTilemapUniformInternal(
   uniform.AnimateIndexAndTileSizeAndFlashAlpha.x = anim_index / 16;
   uniform.AnimateIndexAndTileSizeAndFlashAlpha.y = tilesize;
   uniform.AnimateIndexAndTileSizeAndFlashAlpha.z = flash_opacity_ / 255.0f;
-  // TEMPORARY: frame counter for the shader's self-test. Marker: URGE_PARAM_READOUT
-  //
-  // The other self-test keyed on the flash alpha reaching a particular byte value. That only works
-  // in a map whose darkening sweeps a range; where the alpha is constant it never fires, the probe
-  // cannot prove its own path is live, and its negative results mean nothing. This counter is
-  // value-free: the v1 shader paints the layer blue on two frames out of every 300, whatever the
-  // parameters hold. The v1 shader never reads .w, so nothing else changes.
   uniform.AnimateIndexAndTileSizeAndFlashAlpha.w =
       static_cast<float>(context()->sprite_batcher->FrameCount() % 300);
 

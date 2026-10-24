@@ -29,60 +29,11 @@ void CanvasScheduler::SubmitPendingPaintCommands() {
 }
 
 
-// TEMPORARY canvas-target audit. Marker: URGE_CANVAS_RT
-//
-// The frame ends and reopens the Vulkan render scope 19 to 34 times (measured with [PassAudit]),
-// every one of them a render-target change, and on this tile-based GPU each change stores and
-// reloads every tile - the only mechanism found so far that can lose one rectangle of a frame while
-// all application inputs are correct. This counts how the canvas contributes: distinct targets per
-// frame, and how many of its bindings repeat a target the frame has already bound, which is the part
-// that could in principle be merged away. Reset and printed once per frame by the [PassAudit] block.
-extern "C" int g_urge_canvas_rt_calls = 0;
-extern "C" int g_urge_canvas_rt_resets = 0;
-extern "C" int g_urge_canvas_rt_repeat = 0;
-extern "C" void* g_urge_canvas_rt_seen[64] = {};
-extern "C" int g_urge_canvas_rt_seen_count = 0;
-// The order in which the frame binds them, so the pattern - alternating A/B/A/B or grouped - can be
-// told apart. Marker: URGE_CANVAS_RT
-extern "C" void* g_urge_canvas_rt_seq[16] = {};
-extern "C" int g_urge_canvas_rt_seq_count = 0;
-
-
 void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
                                         Diligent::ITextureView* depth_stencil,
                                         bool clear_target) {
-  // See g_urge_canvas_rt_calls. Marker: URGE_CANVAS_RT
-  if (render_target) {
-    ++g_urge_canvas_rt_calls;
-    if (g_urge_canvas_rt_seq_count < 16)
-      g_urge_canvas_rt_seq[g_urge_canvas_rt_seq_count++] = render_target;
-    bool repeat = false;
-    for (int32_t i = 0; i < g_urge_canvas_rt_seen_count; ++i) {
-      if (g_urge_canvas_rt_seen[i] == render_target) {
-        repeat = true;
-        break;
-      }
-    }
-    if (repeat)
-      ++g_urge_canvas_rt_repeat;
-    else if (g_urge_canvas_rt_seen_count < 64)
-      g_urge_canvas_rt_seen[g_urge_canvas_rt_seen_count++] = render_target;
-  } else {
-    ++g_urge_canvas_rt_resets;
-  }
-
   // Setup new render target
   if (render_target) {
-    // TEMPORARY normalisation arm. Marker: URGE_RTNORM
-    //
-    // [PassAudit] shows 19 to 32 render scopes ended per frame while only ever leaving *one*
-    // distinct framebuffer and never leaving a null one - so the frame repeatedly reopens a scope on
-    // the same target with a different dynamic-rendering configuration. The configuration that
-    // varies here is the depth attachment (and, on a few call sites, the clear flag); the same
-    // colour target bound once with a depth-stencil and once without is two different framebuffers
-    // to Diligent, so every alternation costs a scope. This arm always binds it the same way, so a
-    // frame can reuse one scope; it is deliberately blunt (no depth, no clear) because the point is
-    // to see whether the boundary count collapses at all.
     context_->SetRenderTargets(
         1, &render_target, depth_stencil,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -107,18 +58,6 @@ void CanvasScheduler::SetupRenderTarget(Diligent::ITextureView* render_target,
 
   // Reset render target state
   //
-  // TEMPORARY A/B switch. Marker: URGE_RTKEEP
-  //
-  // This reset ends the Vulkan render scope outright, and the canvas issues it after *every* draw
-  // command: twelve of those a frame, each followed by a command that immediately binds the very
-  // same target again. The engine therefore ends and reopens a render scope roughly twenty-five
-  // times a frame (measured with [PassAudit]), and on this tile-based GPU every one of those
-  // boundaries stores and reloads every tile of the screen - the one mechanism we have found that
-  // can lose a rectangle of a frame while every input the application supplies is correct, and the
-  // one that GLES, which has no render scopes at all, cannot exhibit. Skipping the reset leaves the
-  // target bound; the next SetupRenderTarget, or any draw that binds its own, still switches it
-  // correctly. If the loss rate falls with this on, the boundaries are the mechanism and reducing
-  // them is the evasion.
   context_->SetRenderTargets(0, nullptr, nullptr,
                              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }

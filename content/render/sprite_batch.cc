@@ -12,9 +12,8 @@
 
 #include "renderer/device/device_mode.h"
 #include "renderer/device/gpu_driver.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
-// Fix for the one-frame loss on the sprite layer, same shape as the map's. Marker: URGE_SPRREDRAW
+// Fix for the one-frame loss on the sprite layer, same shape as the map's.
 //
 // TEMPORARY A/B. Marker: URGE_CLIPREDRAW
 //

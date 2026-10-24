@@ -10,7 +10,6 @@
 
 #include <cstdio>
 #include <string>
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
 
@@ -688,12 +687,6 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
 
     // Execute render command
     if (enable_batch) {
-      // TEMPORARY A/B. Marker: URGE_RECOMMIT
-      // One frame in a few thousand draws this sprite with the *previous* texture: the region shows
-      // another artwork that exists elsewhere in the frame, for exactly one frame, while every
-      // CPU-side value is identical. That is what a stale descriptor looks like - the binding was
-      // updated, the draw did not see it. Committing the same resources again right before the draw
-      // is idempotent (no second blend, no visual change), so it is safe to A/B.
       render_context->CommitShaderResources(
           *context()->sprite_batcher->GetShaderBinding(),
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -741,12 +734,6 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
       context()->sprite_batcher->MarkEmitted(gpu_.instance_offset,
                                              gpu_.instance_count);
     } else {
-      // TEMPORARY A/B. Marker: URGE_RECOMMIT
-      // One frame in a few thousand draws this sprite with the *previous* texture: the region shows
-      // another artwork that exists elsewhere in the frame, for exactly one frame, while every
-      // CPU-side value is identical. That is what a stale descriptor looks like - the binding was
-      // updated, the draw did not see it. Committing the same resources again right before the draw
-      // is idempotent (no second blend, no visual change), so it is safe to A/B.
       render_context->CommitShaderResources(
           *context()->sprite_batcher->GetShaderBinding(),
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

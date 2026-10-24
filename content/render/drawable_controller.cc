@@ -9,7 +9,6 @@
 #include "base/debug/logging.h"
 
 #include "Graphics/GraphicsEngine/interface/DeviceContext.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
 namespace content {
 
@@ -55,14 +54,6 @@ bool ScissorStack::Push(const base::Rect& scissor) {
 }
 
 void ScissorStack::Pop() {
-  // TEMPORARY audit and guard. Marker: URGE_SCISSOR_AUDIT
-  //
-  // The probe has narrowed the defect to "in one frame the tilemap's draw does not cover part of
-  // the map": those pixels never reach the tilemap's pixel shader at all, the layer below shows
-  // through, and the draw calls, submitted ranges, bindings and vertex data are all unchanged. A
-  // scissor stack that is one Pop out of balance does exactly that - the base entry is popped,
-  // Reset() then reads an empty stack, and from there every draw is clipped to whatever rectangle
-  // that produces. Pop() had no size guard, so this could not be observed before.
   const size_t depth = stack_.size();
   if (depth <= 1) {
     // The bottom entry is the viewport scissor and is never popped; leaving it unbalanced would
@@ -79,14 +70,6 @@ void ScissorStack::Reset() {
   SetScissor(stack_.top());
 }
 
-// TEMPORARY scissor-rect audit. Marker: URGE_SCISSOR_AUDIT
-//
-// Auditing the stack's depth was not enough: Pop() can be balanced while the rectangle itself is
-// the wrong one (a stale entry from another node), and a stale rectangle clips exactly one region
-// for one frame - surviving a duplicate draw of the same geometry, with every count, binding,
-// matrix and node order unchanged. This folds each rectangle that is actually programmed, together
-// with the stack depth at the time, into a digest; BroadCastNotification compares that digest once
-// per frame and prints only when the frame's sequence of rectangles changes.
 int32_t g_scissor_current[4] = {0, 0, 0, 0};
 
 void ScissorStack::SetScissor(const base::Rect& bound) {
@@ -123,15 +106,7 @@ void DrawableNode::RegisterEventHandler(const NotificationHandler& handler) {
   handler_ = handler;
 }
 
-// TEMPORARY. Marker: URGE_LINKAGE
-// A frame counter the linkage traces can share with the snapshot listing: the controller cannot
-// reach the sprite batch, and the enqueue stage is the once-per-frame event.
-static int32_t g_urge_probe_frame = 0;
 
-// TEMPORARY. Marker: URGE_TONE
-// How many nodes each tone pass actually drew. The compass in the corner changes colour for one
-// frame now and then (110,70,3 <-> 181,133,48) with every submitted batch identical, which is what
-// a tone pass applied a different number of times looks like; these counters make that visible.
 
 
 void DrawableNode::SetToneExempt(bool value) {
@@ -347,57 +322,10 @@ void DrawNodeController::BroadCastNotification(
     snapshot.push_back(it->value());
 
 
-  // TEMPORARY per-frame listing of the snapshot. Marker: URGE_SNAPSHOT
-  //
-  // A window that is missing from this list for a frame is never walked, so it neither composes nor
-  // draws, and its part of the picture is missing while everything that *was* submitted stays
-  // correct. Listed by pointer so it can be joined with [WinKind], which maps a window to its
-  // nodes; the position in the list matters as much as the presence, since the walk can also drop
-  // a node after this point.
-  if (static_cast<int32_t>(nid) == 0)
-    ++g_urge_probe_frame;
 
-  // TEMPORARY order audit over tagged nodes. Marker: URGE_ORDER_AUDIT
-  //
-  // Every counter has been ruled out for the one-frame region loss - parameters, atlas, tint
-  // branch, draw counts, submitted ranges, bindings, vertex buffer ownership, scissor stack,
-  // matrices, snapshot integrity - yet in a defect frame the tilemap's pixels are not there and
-  // the layer below shows through. A paint order that swaps for a single frame would do that with
-  // every counter unchanged. A digest of the whole snapshot is useless (the tilemap recreates its
-  // above layers every frame and re-sets their keys, so the list churns); this folds in only the
-  // nodes that carry a stable tag, together with the position each was visited at, and is printed
-  // only when that sequence changes - which leaves the log volume and the timing untouched.
-  {
-    const int32_t order_slot = static_cast<int32_t>(nid) & 3;
-    static uint64_t s_order_digest[4] = {};
-    uint64_t order_digest = 1469598103934665603ull;
-    int32_t order_tagged = 0;
-    int32_t order_position = 0;
-    for (auto* node : snapshot) {
-      const int32_t node_tag = node->GetDebugTag();
-      if (node_tag != 0) {
-        order_digest ^= static_cast<uint64_t>(node_tag) + 0x9e3779b97f4a7c15ull;
-        order_digest *= 1099511628211ull;
-        order_digest ^= static_cast<uint64_t>(order_position);
-        order_digest *= 1099511628211ull;
-        ++order_tagged;
-      }
-      ++order_position;
-    }
-    if (order_tagged != 0 && s_order_digest[order_slot] != 0 &&
-        s_order_digest[order_slot] != order_digest)
-    if (order_tagged != 0)
-      s_order_digest[order_slot] = order_digest;
-  }
 
-  // TEMPORARY. Marker: URGE_DISPATCH
-  // The two stacked panels (sort weight 150 for their background nodes, 152 for their contents)
-  // are present and visible in every snapshot this walk takes, yet one of them does not draw on a
-  // good share of the frames. This records what happens to them at the point of dispatch, so the
-  // remaining question - is the handler called at all - has an answer.
   for (auto* node : snapshot) {
     const int64_t z0 = node->GetSortKeys()->weight[0];
-    const bool tracked = (z0 == 150 || z0 == 152);
     const bool tone_skipped =
         blend_filter >= 0 && node->IsToneExempt() != (blend_filter == 1);
     if (tone_skipped)

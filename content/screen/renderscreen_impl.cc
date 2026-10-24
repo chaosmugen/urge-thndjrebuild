@@ -38,10 +38,8 @@
 #include "renderer/utils/texture_utils.h"
 #include "renderer/device/gpu_driver.h"
 
-// Defined further down. Marker: URGE_DIAG_GATE
 
 
-// TEMPORARY offscreen-then-copy experiment. Marker: URGE_OFFSCREEN
 namespace content {
 
 
@@ -518,18 +516,11 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     { return SDL_GetWindowTitle(context()->window->AsSDLWindow()); },
     { SDL_SetWindowTitle(context()->window->AsSDLWindow(), value.c_str()); });
 
-// TEMP: pixel probe state at file scope, so the probe can be called at the end of the
-// frame as well. Marker: URGE_PROBEEND
 
 void RenderScreenImpl::FrameProcessInternal(
     Diligent::ITexture* present_target) {
   // Increase frame render count
   ++frame_count_;
-
-  // TEMPORARY: which screen buffer this frame presents, and with what brightness. The
-
-
-
 
   // Determine wait delay time
   limiter_.Delay();
@@ -546,7 +537,6 @@ void RenderScreenImpl::FrameProcessInternal(
   // A frame is on screen: see ConsiderLoadDrain(), which keeps its GPU drain out
   // of normal play by relying on exactly this boundary.
   //
-  // Temporary probe. Every per-frame vertex and parameter buffer lives in kFrameSets
 
   renderer::NotifyFramePresented();
 }
@@ -568,10 +558,6 @@ static Diligent::ITextureView* g_urge_frame_dsv = nullptr;
 // by the old unconditional sprite redraw: it does not happen with the redraw off, and it happened on
 // every entry into a title sub-scene with it on. The repair that ships now only redraws runs whose
 // quad is clipped by the sprite screen, which is why it does not reopen this path - keep it that way.
-// TEMP: pixel probe geometry - file scope so the probe can be called at the end of the
-// frame as well as during it. Marker: URGE_PROBEEND
-// TEMP: pixel probe state, at file scope so the probe can run at the end of the frame too.
-// Marker: URGE_PROBEEND
 
 extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil) {
@@ -693,19 +679,6 @@ void RenderScreenImpl::RenderFrameInternal(
 
 
 
-  // TEMPORARY A/B. Marker: URGE_SCREENSTORE
-  //
-  // The frame is drawn into this offscreen buffer and then reaches the screen as an ImGui texture,
-  // so it is sampled right after this pass ends. Nothing in this file ever says so: there is not one
-  // TransitionResourceStates call for it. On a tile-based renderer that leaves the driver free to
-  // discard the attachment instead of storing it when the pass ends, and what shows up then is
-  // content from an earlier frame over part of the picture - measured on the device as 3.8% of
-  // frames losing the bottom-right region (260 transients in 1151 presented frames), while the very
-  // same frames read back from this buffer are pixel-identical to their neighbours (0 transients in
-  // 467 whole-frame samples). A drain before the composite does not help (3.61%), and neither does a
-  // render-scope boundary before presenting - a store is not a drain and is not a scope change.
-  // Declaring the buffer as shader-readable is what makes the store necessary.
-  //
   {
 
       Diligent::StateTransitionDesc transitions[1];
@@ -755,8 +728,6 @@ void RenderScreenImpl::GPUUpdateScreenWorldInternal() {
       Diligent::CPU_ACCESS_NONE, &world_transform);
 }
 
-// TEMPORARY A/B switches for how the frame reaches the screen. Marker: URGE_SWEXPERIMENT
-//
 
 
 void RenderScreenImpl::GPUResetScreenBufferInternal() {
@@ -1160,10 +1131,6 @@ void RenderScreenImpl::GPUPresentScreenBufferInternal(
                 const int32_t diff = cur > prev ? cur - prev : prev - cur;
                 if (diff > back)
                   deviation += diff - back;
-                // TEMPORARY sensitivity raise: the map/sprite repairs brought the big-region events to
-                // zero while the user still sees the UI flicker, so the visible defect is smaller or
-                // lower in contrast than this detector's original floor (25 per channel, two cells,
-                // 100 total) could see. Marker: URGE_PROBE_SENSITIVE
                 if (diff >= 8 && back <= 4)
                   cell_qualifies = true;
               }

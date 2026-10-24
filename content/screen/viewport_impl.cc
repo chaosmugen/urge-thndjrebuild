@@ -11,9 +11,7 @@
 #include "content/common/rect_impl.h"
 #include "content/context/execution_context.h"
 #include "renderer/utils/texture_utils.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
-// TEMPORARY, see renderscreen_impl.cc. Marker: URGE_RT_TAG
 
 // See UrgeSetPassTarget: publishes the target of the pass this level is about to open, so a forced
 // pass boundary reopens the same one. Marker: URGE_FRAME_RTV
@@ -167,12 +165,6 @@ void ViewportImpl::Render(scoped_refptr<Bitmap> target,
       controller_params.context, bitmap_data->render_target_view,
       bitmap_data->depth_stencil_view, clear_target);
 
-  // TEMPORARY. Marker: URGE_VPCLEAR
-  // Whether this frame cleared the bitmap it renders into. The clear carries the depth clear, and
-  // the sprite pipelines test depth: a frame that renders without clearing inherits the previous
-  // frame's depth, and every sprite over those values is rejected - the compass in the corner
-  // blinking out for a frame. clear_target comes from the script's viewport.render(bitmap, clear),
-  // so this also says whether the caller is the source.
 
   // Invalidate render target bitmap
   render_target->InvalidateSurfaceCache();
@@ -609,9 +601,6 @@ void ViewportImpl::GPUResetIntermediateLayer(const base::Vec2i& effect_size) {
         effect_size.y, effect_layer ? effect_layer->GetDesc().Height : 0);
 
     renderer::DeferredTextureRelease(gpu_.effect.intermediate_layer);
-    // TEMPORARY: the staging arm draws into this layer instead of copying into it, so it needs a
-    // render-target view as well as the shader-resource view it already had.
-    // Marker: URGE_VPCOPYDRAW
     renderer::CreateTexture2D(
         **context()->render_device, &gpu_.effect.intermediate_layer,
         "viewport.intermediate.layer", gpu_.effect.layer_size,
@@ -678,14 +667,6 @@ void ViewportImpl::GPUApplyViewportEffect(
   Diligent::ITextureView* render_target_view =
       screen_buffer->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
 
-  // TEMPORARY A/B. Marker: URGE_VPDSV
-  //
-  // The frame loses its depth-stencil attachment for this pass and takes it back afterwards - three
-  // target changes per frame, and the offscreen arms measured that the loss rate moves by a factor
-  // of four to thirty depending on whether a pass carries a depth attachment. The one-frame region
-  // loss may therefore be this mid-frame change of configuration rather than anything about the
-  // layers' own draws, which are all verified constant. Binding the same depth-stencil here keeps
-  // the frame on one configuration end to end.
   Diligent::ITextureView* effect_depth_view = nullptr;
   render_context->SetRenderTargets(
       1, &render_target_view, effect_depth_view,

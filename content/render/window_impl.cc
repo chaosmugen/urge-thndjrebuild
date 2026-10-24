@@ -2,20 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TEMPORARY, defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 #include "content/render/window_impl.h"
 
-#include <unordered_set>  // TEMPORARY. Marker: URGE_WINKIND
 
 #include "content/context/execution_context.h"
 #include "content/render/tilequad.h"
 #include "renderer/device/gpu_driver.h"
 #include "renderer/utils/texture_utils.h"
 
-// Defined in content/screen/renderscreen_impl.cc, declared after the includes because it
-// names a Diligent type. Marker: URGE_WNDREDRAW
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
-extern "C" void* UrgeCurrentPassTarget();  // TEMPORARY diagnostic
 
 // The window path picks its per-frame vertex set with SpriteBatch::FrameSetIndex(), whose
 // range is the batch's own set count, and indexes background_batch/controls_batch with it.
@@ -66,12 +61,6 @@ DISPOSABLE_DEFINITION(WindowImpl);
 void WindowImpl::Update(ExceptionState& exception_state) {
   DISPOSE_CHECK;
 
-  // TEMPORARY. Marker: URGE_NODE
-  // The two panels are missing from about a quarter of the frames - not drawn, and not even
-  // composed - which means the controller did not walk their node that frame. The node's two
-  // switches are its visibility and its sort weight (z); this records them from the script's own
-  // per-frame update, so it also covers the frames where the node was skipped. If either flips in
-  // exactly the frames where the panel goes missing, that is the mechanism.
 
   ++pause_index_;
   if (pause_index_ >= 32)
@@ -402,18 +391,11 @@ BitmapTexture* WindowImpl::ResolveContentsInternal() {
 
 
 
-// See WindowRedrawEnabledInternal: end the pass, reopen it on the frame's target, draw nothing else
-// in between. Marker: URGE_WNDREDRAW
 static bool WindowForcePassBoundaryInternal(
     Diligent::IDeviceContext* render_context, Diligent::ITexture* screen_buffer,
     Diligent::ITexture* screen_depth) {
   if (!render_context || !screen_buffer || !screen_depth)
     return false;
-  // End the current pass and reopen the target the interrupted pass published - not the frame's:
-  // a window can be drawn inside a viewport that is being rendered into a bitmap (the title's
-  // mirror does exactly that), and screen_buffer is the frame's screen, so using it here would
-  // put the redraw on the screen instead of back where the window's own draws are recorded.
-  // Marker: URGE_WNDREDRAW
   UrgeForcePassBoundary(render_context);
   return true;
 }
@@ -442,36 +424,11 @@ void WindowImpl::BackgroundNodeHandlerInternal(
   BitmapTexture* windowskin_agent = ResolveWindowskinInternal();
 
   if (stage == DrawableNode::RenderStage::BEFORE_RENDER) {
-    // TEMPORARY draw-order probe. Marker: URGE_DRAWORDER
-    // Two windows share the same z (both panels are z=150) and overlap at the seam, where alpha
-    // blending is not commutative. If the order they are walked in changes from frame to frame,
-    // the seam's shade changes with it even though every input is identical. Record the position
-    // this window occupies in the frame's walk, so the two pointers can be compared per frame.
     GPUCompositeBackgroundLayerInternal(params->context, windowskin_agent);
     RegisterLayerInternal(this, params->world_binding, /*background=*/true);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    // TEMPORARY. Marker: URGE_FRAMESET
-    // The write side resolved this index earlier in the frame. If it moved since, the layers
-    // below read a different rotating set - one holding an earlier round's vertices.
-    // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
-    {
-      const uint32_t fc = context()->sprite_batcher->FrameCount();
-      if (fc != gpu_.last_bg_frame) { gpu_.last_bg_frame = fc; gpu_.bg_draws = 0; }
-    }
     GPURenderBackgroundLayerInternal(params->context, params->world_binding,
                                      windowskin_agent);
-    // See WindowRedrawEnabledInternal. Marker: URGE_WNDREDRAW
-    // The layer is submitted a second time; the forced pass break that used to accompany it is
-    // gone. That break is what made the seam between the two stacked panels alternate: those two
-    // build no background geometry at all, so for them the break redrew nothing and its only
-    // effect was ending the render scope - which on a tile-based GPU stores and reloads every
-    // screen tile, including the ones holding the two overlapping translucent edges that form the
-    // seam. The second submission is what a layer that lost its draw stage actually needs, and
-    // keeping it is what the system menu's contents depend on.
-    // Marker: URGE_WNDREDRAW
-    // The background layer is redrawn once in a pass of its own; on Mali a single submission of it
-    // was measured to go missing, and this second pass is what the system menu's contents depend on.
-    // The background is opaque over the area it covers, so drawing it twice is invisible.
     if (renderer::IsMaliGpu() && params->screen_buffer &&
         params->screen_depth_stencil &&
         WindowForcePassBoundaryInternal(params->context, params->screen_buffer,
@@ -499,11 +456,6 @@ void WindowImpl::ControlNodeHandlerInternal(
 
   BitmapTexture* windowskin_agent = ResolveWindowskinInternal();
   BitmapTexture* contents_agent = ResolveContentsInternal();
-  // TEMPORARY. Marker: URGE_CONTENTSRC
-  // The panels vanish for a frame now and then. The layer is drawn with contents_agent, which
-  // falls back to last_contents_ and then to nullptr - a frame that gets nullptr has no contents
-  // to draw at all. Record which of the three this frame used, and whether the live texture had
-  // a shader resource view yet.
 
   // Temporary: with the window's own state (skin/contents/opacity/bound) proven constant,
   // the textures it draws with are the only inputs left that can blank a whole window for
@@ -559,42 +511,11 @@ void WindowImpl::ControlNodeHandlerInternal(
     RegisterLayerInternal(this, params->world_binding, /*background=*/false);
 
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
-    // TEMPORARY. Marker: URGE_FRAMESET
-    // The write side resolved this index earlier in the frame. If it moved since, the layers
-    // below read a different rotating set - one holding an earlier round's vertices.
-    // TEMPORARY. Marker: URGE_TEXTWIN
-    // TEMPORARY. Marker: URGE_WINKIND
-    // Which windows have no skin at all - those draw only their contents. The seam fix under
-    // consideration makes such contents opaque (so blending it twice equals blending it once, and
-    // the seam stops depending on where the render pass is broken), and that changes how they
-    // look. Logged once per window, on the first frame it draws.
-    {
-      static uint32_t s_kind_frame = 0;
-      static std::unordered_set<const void*> s_kind_seen;
-      const uint32_t fc = context()->sprite_batcher->FrameCount();
-      if (fc != s_kind_frame) {
-        s_kind_frame = fc;
-      }
-    }
-    // TEMPORARY diagnostic. Marker: URGE_DUPCOUNT
-    {
-      const uint32_t fc = context()->sprite_batcher->FrameCount();
-      if (fc != gpu_.last_ctrl_frame) { gpu_.last_ctrl_frame = fc; gpu_.ctrl_draws = 0; }
-    }
-    // TEMPORARY. Marker: URGE_CTRLDRAW
-    // The panels' pixels come entirely from this layer (their background layer builds no quad at
-    // all), so whether the seam darkens must show up here: count the 191x98 control layers drawn
-    // per frame. Two lines per frame = both panels drew; one = one of them did not.
-    // TEMPORARY. Marker: URGE_CTRLDRAW
-    // Every window layer, not just the two panels: the band between them may also be covered by
-    // whichever other windows are on screen, and their set changes with the UI state - which the
-    // panel-only probe could never see.
     GPURenderControlLayerInternal(params->context, params->world_binding,
                                   windowskin_agent, contents_agent,
                                   params->scissors);
     MarkLayerDrawnInternal(this, /*background=*/false);
 
-    // See the background layer above: this trace was removed for performance.
   }
 }
 
@@ -852,8 +773,6 @@ void WindowImpl::GPUCompositeBackgroundLayerInternal(
   // Make sure quads drawcall count
   gpu_.background_draw_count = quad_index;
 
-  // Update vertex buffer, into this frame's own set (see GPUData::kFrameSets)
-    gpu_.bg_write_set = context()->sprite_batcher->FrameSetIndex();  // TEMPORARY. Marker: URGE_FRAMESET
   if (!gpu_.background_cache.empty())
     gpu_.background_batch[context()->sprite_batcher->FrameSetIndex()].QueueWrite(
         render_context, gpu_.background_cache.data(),
@@ -1044,8 +963,6 @@ void WindowImpl::GPUCompositeControlLayerInternal(
   // Make sure index buffer count
   context()->render.quad_index->Allocate(quad_index);
 
-  // Update vertex buffer, into this frame's own set (see GPUData::kFrameSets)
-    gpu_.ctrl_write_set = context()->sprite_batcher->FrameSetIndex();  // TEMPORARY. Marker: URGE_FRAMESET
   if (!quads.empty())
     gpu_.controls_batch[context()->sprite_batcher->FrameSetIndex()].QueueWrite(
         render_context, quads.data(), quads.size());
@@ -1113,20 +1030,7 @@ void WindowImpl::GPURenderControlLayerInternal(
   if (!gpu_.controls_cache.empty())
     context()->render.quad_index->Allocate(gpu_.controls_cache.size());
 
-  // TEMPORARY. Marker: URGE_ENTRY
-  // Which of the two draw branches this call will take. Neither logged anything for the two
-  // panels, yet they are visible, so the branch that paints them is not the one assumed.
 
-  // TEMPORARY seam probe. Marker: URGE_QUADHASH
-  // Hash the vertices this layer is about to submit. Frame-over-frame, the seam between the two
-  // panels is sometimes the normal gold edge and sometimes a darker version of it. If the hash
-  // differs between the two, the two versions are computed before the GPU sees them (vertex
-  // positions or colours differ). If it is identical, the same data renders differently, and the
-  // cause is GPU state rather than data.
-  // TEMPORARY seam probe. Marker: URGE_QUADHASH
-  // Every window, not only the two battle panels: the shimmering text in the side panel belongs to
-  // a window of a different size, and its vertices had never been looked at. Two values of this
-  // hash across frames mean the difference is computed before the GPU sees it.
 
   const auto current_viewport =
       background_node_.GetParentViewport()->bound.Position() -
@@ -1138,10 +1042,6 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      bound_.width, bound_.height);
 
     const bool frame_pushed = scissor_stack->Push(clipping_region);
-    // TEMPORARY. Marker: URGE_SCISSOR
-    // The clip each layer draws under. The panels take this branch (the engine hands a no-skin
-    // window a stand-in skin, so windowskin is not null), and the clip rect - not the vertices -
-    // is the last input that had not been recorded when the seam rendered differently.
     if (!frame_pushed) {
       // The border layer draws nothing at all when its clip region does not intersect the
       // scissor in force. This was invisible in every earlier trace because those were
@@ -1193,10 +1093,6 @@ void WindowImpl::GPURenderControlLayerInternal(
                                      bound_.height - 16 * scale_);
 
     const bool contents_pushed = scissor_stack->Push(clipping_region);
-    // TEMPORARY. Marker: URGE_SCISSOR
-    // The clip rect each layer draws under, plus the viewport it is derived from. Every other
-    // input of these layers was measured identical across frames that render the seam
-    // differently, so the clip is the remaining candidate.
 
     if (!contents_pushed) {
       // See the border layer above: a refused clip silently skips the contents.
@@ -1227,10 +1123,6 @@ void WindowImpl::GPURenderControlLayerInternal(
           *gpu_.content_binding,
           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-      // Execute render command
-      // TEMPORARY. Marker: URGE_DRAWSTATE
-      // The state this contents quad is actually submitted under. Marker unchanged across
-      // frames that render the seam differently would mean the difference is not in the call.
 
       Diligent::DrawIndexedAttribs draw_indexed_attribs;
       draw_indexed_attribs.NumIndices = 6;

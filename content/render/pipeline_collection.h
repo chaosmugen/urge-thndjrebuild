@@ -44,8 +44,6 @@ struct PipelineCollection {
   PipelineObject brightness;
 
   PipelineObject tilemap;
-  // Tilemap pipeline with blending off, for the one-frame-loss A/B. Marker: URGE_NOBLEND
-  // See renderer::PipelineSet::tilemap_noblend for why this exists.
   PipelineObject tilemap_noblend;
   PipelineObject tilemap2;
 

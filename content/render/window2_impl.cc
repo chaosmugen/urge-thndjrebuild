@@ -4,7 +4,6 @@
 
 #include "content/render/window2_impl.h"
 
-#include <unordered_map>  // TEMPORARY. Marker: URGE_W2DUP
 
 #include "content/context/execution_context.h"
 #include "content/render/tilequad.h"
@@ -83,11 +82,6 @@ Window2Impl::Window2Impl(ExecutionContext* execution_context,
       padding_bottom_(padding_),
       back_opacity_(rgss3_style_ ? 192 : 255),
       tone_(base::MakeRefCounted<ToneImpl>(base::Vec4())) {
-  // TEMPORARY stable tag, see the order audit in drawable_controller.cc. Marker: URGE_ORDER_AUDIT
-  //
-  // This node is the one that draws through the "base" pipeline - the wallpaper the defect frame
-  // exposes - and it was the only participant in the suspected order swap that carried no tag.
-  node_.SetDebugTag(0x2000);
   node_.RegisterEventHandler(base::BindRepeating(
       &Window2Impl::DrawableNodeHandlerInternal, base::Unretained(this)));
 
@@ -964,10 +958,6 @@ void Window2Impl::GPURenderWindowQuadsInternal(
     BitmapTexture* windowskin,
     const base::Rect& padding_rect,
     ScissorStack* scissor_stack) {
-  // TEMPORARY. Marker: URGE_W2DUP
-  // The two panels whose seam flickers were only ever counted on the WindowImpl path. This is the
-  // other possible owner, and it had no counter at all. Count every object once per frame; report
-  // any object drawn twice, and also report every 191x98 object so the owner class is settled.
 
   auto* pipeline = context()->render.pipeline_states->window.RawPtr();
 

@@ -9,7 +9,6 @@
 #include <algorithm>
 
 #include "content/context/execution_context.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
 // The plane picks its per-frame vertex set with SpriteBatch::FrameSetIndex(), whose range
 // is the batch's own set count. Keep the two counts equal at compile time, exactly as the

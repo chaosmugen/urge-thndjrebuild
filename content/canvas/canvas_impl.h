@@ -87,19 +87,10 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
   // Read buffer for surface pixels data.
   SDL_Surface* RequireMemorySurface();
 
-  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
-  // Hash of the first |rows| rows of this bitmap's pixels, downloaded from the GPU. Two windows
-  // whose submitted vertices are identical but whose rendered seam differs must differ here.
   uint64_t PixelHashInternal(int32_t rows);
 
-  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
-  // Same, for the last |rows| rows: the band between the two panels is the upper panel's bottom
-  // rows overlapping the lower panel's top rows.
   uint64_t PixelHashBottomInternal(int32_t rows);
 
-  // TEMPORARY diagnostic. Marker: URGE_TEXHASH
-  // Hash of an arbitrary row range. The seam falls on the lower panel's rows 7..16, which the
-  // top-10 and bottom-12 hashes do not cover.
   uint64_t PixelHashRowsInternal(int32_t first_row, int32_t rows);
   void InvalidateSurfaceCache();
 
@@ -242,9 +233,6 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
   void OnObjectDisposed() override;
   std::string DisposedObjectName() override { return "Bitmap"; }
 
-  // TEMPORARY diagnostic. Marker: URGE_CANVASOPS
-  // Paint commands applied to this bitmap since a window last sampled the counters. A seam whose
-  // darkness equals a second blend of the same gold edge should show up as more than one blit.
   int32_t pending_clears_ = 0;
   int32_t pending_blits_ = 0;
 

@@ -8,7 +8,6 @@
 
 #include "content/canvas/canvas_impl.h"
 #include "content/context/execution_context.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
 
 namespace content {

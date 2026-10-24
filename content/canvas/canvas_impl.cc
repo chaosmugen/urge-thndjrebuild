@@ -19,7 +19,6 @@
 #include "content/screen/renderscreen_impl.h"
 #include "renderer/device/gpu_audit.h"
 #include "renderer/utils/texture_utils.h"
-// Defined in content/screen/renderscreen_impl.cc. Marker: URGE_DIAG_GATE
 
 namespace content {
 
