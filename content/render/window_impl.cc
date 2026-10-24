@@ -72,19 +72,6 @@ void WindowImpl::Update(ExceptionState& exception_state) {
   // switches are its visibility and its sort weight (z); this records them from the script's own
   // per-frame update, so it also covers the frames where the node was skipped. If either flips in
   // exactly the frames where the panel goes missing, that is the mechanism.
-  if (bound_.width == 191 && bound_.height == 98) {
-    static uint32_t s_node_frame = 0;
-    const uint32_t fc = context()->sprite_batcher->FrameCount();
-    if (fc != s_node_frame) {
-      s_node_frame = fc;
-      LOG(INFO) << "[Node] f=" << fc << " y=" << bound_.y
-                << " vis_bg=" << (background_node_.GetVisibility() ? 1 : 0)
-                << " vis_ctrl=" << (control_node_.GetVisibility() ? 1 : 0)
-                << " z_bg=" << background_node_.GetSortKeys()->weight[0]
-                << " z_ctrl=" << control_node_.GetSortKeys()->weight[0]
-                << " opacity=" << opacity_ << "/" << contents_opacity_;
-    }
-  }
 
   ++pause_index_;
   if (pause_index_ >= 32)
@@ -460,21 +447,6 @@ void WindowImpl::BackgroundNodeHandlerInternal(
     // blending is not commutative. If the order they are walked in changes from frame to frame,
     // the seam's shade changes with it even though every input is identical. Record the position
     // this window occupies in the frame's walk, so the two pointers can be compared per frame.
-    {
-      static uint32_t s_seq_frame = 0;
-      static int32_t s_seq = 0;
-      const uint32_t frame_count = context()->sprite_batcher->FrameCount();
-      if (frame_count != s_seq_frame) {
-        s_seq_frame = frame_count;
-        s_seq = 0;
-      }
-      ++s_seq;
-      if (bound_.width == 191 && bound_.height == 98) {
-        LOG(INFO) << "[DrawOrder] f=" << frame_count << " seq=" << s_seq
-                  << " win=" << static_cast<const void*>(this)
-                  << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
-      }
-    }
     GPUCompositeBackgroundLayerInternal(params->context, windowskin_agent);
     RegisterLayerInternal(this, params->world_binding, /*background=*/true);
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
@@ -532,17 +504,6 @@ void WindowImpl::ControlNodeHandlerInternal(
   // falls back to last_contents_ and then to nullptr - a frame that gets nullptr has no contents
   // to draw at all. Record which of the three this frame used, and whether the live texture had
   // a shader resource view yet.
-  if (bound_.width == 191 && bound_.height == 98) {
-    BitmapTexture* live = nullptr;
-    if (Disposable::IsValid(contents_.get())) live = **contents_;
-    const bool live_srv = live != nullptr && live->shader_resource_view != nullptr;
-    LOG(INFO) << "[ContentsSrc] f=" << context()->sprite_batcher->FrameCount()
-              << " win=" << static_cast<const void*>(this)
-              << " agent=" << static_cast<const void*>(contents_agent)
-              << " live=" << static_cast<const void*>(live)
-              << " live_srv=" << (live_srv ? 1 : 0)
-              << " agent_null=" << (contents_agent == nullptr ? 1 : 0);
-  }
 
   // Temporary: with the window's own state (skin/contents/opacity/bound) proven constant,
   // the textures it draws with are the only inputs left that can blank a whole window for
@@ -634,119 +595,11 @@ void WindowImpl::ControlNodeHandlerInternal(
                                      contents_agent);
     RegisterLayerInternal(this, params->world_binding, /*background=*/false);
 
-    // The one line that answers "why did the window vanish": everything that decides
-    // whether a window can be drawn at all. Both layers' quad counts are known here (the
-    // control composite just ran). A frame with zero quads in both layers is a frame the
-    // window draws no pixel in, which is what shows the background through. Written on
-    // any change, on every zero-quad frame, and periodically for a baseline.
-    {
-      struct WindowDiag {
-        const void* window = nullptr;
-        int64_t seq = 0;
-        int32_t bound_w = 0, bound_h = 0;
-        int32_t opacity = 0, back_opacity = 0, contents_opacity = 0;
-        const void* skin = nullptr;
-        const void* skin_srv = nullptr;
-        const void* contents = nullptr;
-        const void* contents_srv = nullptr;
-        const void* world = nullptr;
-        int32_t scissor_w = 0, scissor_h = 0;
-        int32_t bg_quads = 0, ctrl_quads = 0;
-      };
-      static std::vector<WindowDiag> s_diag;
-      static int64_t s_seq = 0;
-
-      WindowDiag state;
-      state.window = this;
-      state.seq = ++s_seq;
-      state.bound_w = bound_.width;
-      state.bound_h = bound_.height;
-      state.opacity = opacity_;
-      state.back_opacity = back_opacity_;
-      state.contents_opacity = contents_opacity_;
-      state.skin = windowskin_agent;
-      state.skin_srv = windowskin_agent
-                           ? static_cast<const void*>(
-                                 windowskin_agent->shader_resource_view)
-                           : nullptr;
-      state.contents = contents_agent;
-      state.contents_srv = contents_agent
-                               ? static_cast<const void*>(
-                                     contents_agent->shader_resource_view)
-                               : nullptr;
-      state.world = static_cast<const void*>(params->world_binding);
-      const base::Rect scissor_rect =
-          params->scissors ? params->scissors->Current() : base::Rect();
-      state.scissor_w = scissor_rect.width;
-      state.scissor_h = scissor_rect.height;
-      state.bg_quads = gpu_.background_draw_count;
-      state.ctrl_quads = gpu_.controls_draw_count;
-
-      WindowDiag* last = nullptr;
-      for (auto& it : s_diag) {
-        if (it.window == this) {
-          last = &it;
-          break;
-        }
-      }
-
-      const bool nothing_to_draw = !state.bg_quads && !state.ctrl_quads;
-      const bool changed =
-          !last || last->bound_w != state.bound_w ||
-          last->bound_h != state.bound_h || last->opacity != state.opacity ||
-          last->back_opacity != state.back_opacity ||
-          last->contents_opacity != state.contents_opacity ||
-          last->skin != state.skin || last->skin_srv != state.skin_srv ||
-          last->contents != state.contents ||
-          last->contents_srv != state.contents_srv ||
-          last->world != state.world ||
-          last->scissor_w != state.scissor_w ||
-          last->scissor_h != state.scissor_h ||
-          last->bg_quads != state.bg_quads ||
-          last->ctrl_quads != state.ctrl_quads;
-
-      // Only on change and periodically: the quad fields here are not the counts the
-      // draws use (see the [WinDraw] trace for those), so this is the state baseline.
-      if (changed || s_seq % 400 == 0) {
-      }
-
-      if (last)
-        *last = state;
-      else
-        s_diag.push_back(state);
-    }
   } else if (stage == DrawableNode::RenderStage::ON_RENDERING) {
     // TEMPORARY. Marker: URGE_FRAMESET
     // The write side resolved this index earlier in the frame. If it moved since, the layers
     // below read a different rotating set - one holding an earlier round's vertices.
     // TEMPORARY. Marker: URGE_TEXTWIN
-    // Per-frame record of every window that draws inside the pixel probe's area (internal
-    // 661..789, 219..251 - the right-hand text list), so the sampled pixels and the inputs that
-    // produced them sit in one log under the same frame number. Scoped to those windows on
-    // purpose: the flicker is a fraction of a pixel of rasterisation, and a measurement that has to
-    // share a clock with a screen capture cannot see it.
-
-    // TEMPORARY. Marker: URGE_PANEL
-    // What the two stacked panels draw when they are walked. Joins with [CanvasCmd] by bitmap
-    // pointer: a frame where this line is missing and a clear for the same bitmap went unanswered
-    // by a blit is a frame where the panel was drawn with an empty bitmap - which is what
-    // "the panel disappears for a frame" looks like from the outside.
-    if (bound_.width == 191 && bound_.height == 98) {
-      // TEMPORARY, see above. The window pointer and its viewport are what identify the two
-      // instances that alternate at this position: two windows of the same size and place, each
-      // with its own contents bitmap, only one of them refilled by the script.
-      LOG(INFO) << "[Panel] f=" << context()->sprite_batcher->FrameCount()
-                << " y=" << bound_.y
-                << " win=" << static_cast<const void*>(this)
-                << " vp=" << static_cast<const void*>(viewport_.get())
-                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_
-                << " vis=" << (background_node_.GetVisibility() ? 1 : 0)
-                << (control_node_.GetVisibility() ? 1 : 0)
-                << " bmp=" << static_cast<const void*>(contents_.get())
-                << " agent=" << static_cast<const void*>(contents_agent)
-                << " quads=" << gpu_.controls_cache.size();
-    }
-
     // TEMPORARY. Marker: URGE_WINKIND
     // Which windows have no skin at all - those draw only their contents. The seam fix under
     // consideration makes such contents opaque (so blending it twice equals blending it once, and
@@ -773,13 +626,6 @@ void WindowImpl::ControlNodeHandlerInternal(
     // Every window layer, not just the two panels: the band between them may also be covered by
     // whichever other windows are on screen, and their set changes with the UI state - which the
     // panel-only probe could never see.
-    {
-      LOG(INFO) << "[CtrlDraw] f=" << context()->sprite_batcher->FrameCount()
-                << " win=" << static_cast<const void*>(this)
-                << " rect=" << bound_.x << "," << bound_.y << " " << bound_.width << "x"
-                << bound_.height
-                << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
-    }
     GPURenderControlLayerInternal(params->context, params->world_binding,
                                   windowskin_agent, contents_agent,
                                   params->scissors);
@@ -1318,18 +1164,6 @@ void WindowImpl::GPURenderControlLayerInternal(
   // Every window, not only the two battle panels: the shimmering text in the side panel belongs to
   // a window of a different size, and its vertices had never been looked at. Two values of this
   // hash across frames mean the difference is computed before the GPU sees it.
-  if (bound_.width == 191 && bound_.height == 98 && !gpu_.controls_cache.empty()) {
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(gpu_.controls_cache.data());
-    const size_t count = gpu_.controls_cache.size() * sizeof(gpu_.controls_cache[0]);
-    uint64_t hash = 1469598103934665603ULL;
-    for (size_t i = 0; i < count; ++i) {
-      hash ^= bytes[i];
-      hash *= 1099511628211ULL;
-    }
-    LOG(INFO) << "[QuadHash] f=" << context()->sprite_batcher->FrameCount()
-              << " n=" << gpu_.controls_cache.size() << " hash=" << hash
-              << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
-  }
 
   const auto current_viewport =
       background_node_.GetParentViewport()->bound.Position() -
@@ -1345,14 +1179,6 @@ void WindowImpl::GPURenderControlLayerInternal(
     // The clip each layer draws under. The panels take this branch (the engine hands a no-skin
     // window a stand-in skin, so windowskin is not null), and the clip rect - not the vertices -
     // is the last input that had not been recorded when the seam rendered differently.
-    if (bound_.width == 191 && bound_.height == 98) {
-      LOG(INFO) << "[Scissor] f=" << context()->sprite_batcher->FrameCount()
-                << " y=" << bound_.y << " clip=" << clipping_region.x << "," << clipping_region.y
-                << " " << clipping_region.width << "x" << clipping_region.height
-                << " pushed=" << (frame_pushed ? 1 : 0) << " vp=" << current_viewport.x << ","
-                << current_viewport.y << " scale=" << scale_
-                << " skin=" << static_cast<const void*>(windowskin);
-    }
     if (!frame_pushed) {
       // The border layer draws nothing at all when its clip region does not intersect the
       // scissor in force. This was invisible in every earlier trace because those were
@@ -1442,19 +1268,6 @@ void WindowImpl::GPURenderControlLayerInternal(
       // TEMPORARY. Marker: URGE_DRAWSTATE
       // The state this contents quad is actually submitted under. Marker unchanged across
       // frames that render the seam differently would mean the difference is not in the call.
-      if (bound_.width == 191 && bound_.height == 98) {
-        const base::Rect active = scissor_stack->Current();
-        LOG(INFO) << "[DrawState] f=" << context()->sprite_batcher->FrameCount()
-                  << " y=" << bound_.y << " clip=" << clipping_region.x << ","
-                  << clipping_region.y << " " << clipping_region.width << "x"
-                  << clipping_region.height << " active=" << active.x << "," << active.y << " "
-                  << active.width << "x" << active.height
-                  << " first=" << gpu_.contents_quad_offset * 6
-                  << " tex=" << static_cast<const void*>(contents)
-                  << " srv=" << static_cast<const void*>(contents->shader_resource_view)
-                  << " pipe=" << static_cast<const void*>(pipeline)
-                  << " opacity=" << opacity_ << "/" << back_opacity_ << "/" << contents_opacity_;
-      }
 
       Diligent::DrawIndexedAttribs draw_indexed_attribs;
       draw_indexed_attribs.NumIndices = 6;

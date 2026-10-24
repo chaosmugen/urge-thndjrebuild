@@ -693,27 +693,6 @@ extern "C" void UrgeSetPassTarget(Diligent::ITextureView* render_target,
                                  Diligent::ITextureView* depth_stencil) {
   g_urge_frame_rtv = render_target;
   g_urge_frame_dsv = depth_stencil;
-  // Marker: URGE_STENCILFILL - one line per distinct (colour, depth-stencil) format pair, so it is
-  // visible which pass the sprites actually draw into and whether that pass carries a stencil
-  // aspect at all. Without this the DSV read at clear time may belong to a different pass.
-  static int32_t s_seen = 0;
-  if (s_seen < 12) {
-    const char* rtv_name = "null";
-    const char* dsv_name = "null";
-    // The *view* format is what the render pass is built from: a D24S8 texture can be exposed as a
-    // depth-only view, and in that case every stencil write is silently dropped.
-    if (render_target)
-      rtv_name = Diligent::GetTextureFormatAttribs(render_target->GetDesc().Format).Name;
-    if (depth_stencil)
-      dsv_name = Diligent::GetTextureFormatAttribs(depth_stencil->GetDesc().Format).Name;
-    static std::string s_last;
-    std::string key = std::string(rtv_name) + "|" + dsv_name;
-    if (key != s_last) {
-      s_last = key;
-      ++s_seen;
-      LOG(INFO) << "[PassFmt] rtv=" << rtv_name << " dsv=" << dsv_name;
-    }
-  }
 }
 
 // See UrgeQuadClippedByTarget. Marker: URGE_CLIPREDRAW
@@ -1178,40 +1157,6 @@ void RenderScreenImpl::GPUUpdateScreenWorldInternal() {
 
 // TEMPORARY A/B switches for how the frame reaches the screen. Marker: URGE_SWEXPERIMENT
 //
-// Every repair aimed at the drawing side measured nothing - drawing the affected layers a second
-// time, draining the queues in six places, clearing depth before the draws, staging the viewport
-// effect with a draw instead of a copy. The shape that does differ is the frame being written into
-// an offscreen buffer and then read (sampled) to get onto the screen, so these two touch that
-// instead: the format the offscreen buffer is written in, and the pacing of the presentation.
-// Both are off by default and a normal session is unchanged.
-//
-//   urge_debug/swformat.txt   1 -> create the screen buffer as BGRA8 rather than RGBA8, the channel
-//                                  order most Android/Mali surfaces are native in, which changes the
-//                                  write-back path the frame takes. Read once, when the buffer is made.
-//   urge_debug/swvsync.txt    0 -> present without waiting for vsync, 1 -> force vsync. Absent, or
-//                                  any other value, leaves the engine's own setting alone.
-//
-// Note: the swap chain's present mode is not exposed through SwapChainDesc here, so it cannot be
-// switched this way; the queue-depth lever that does exist is the buffer-count switch already in
-// renderer/device/render_device.cc.
-static Diligent::TEXTURE_FORMAT ScreenBufferFormatInternal() {
-  static const char kPath[] =
-      "/storage/emulated/0/Android/data/com.admenri.urge/files/urge_debug/"
-      "swformat.txt";
-  FILE* file = fopen(kPath, "r");
-  if (file) {
-    int32_t value = 0;
-    if (fscanf(file, "%d", &value) == 1 && value != 0) {
-      fclose(file);
-      remove(kPath);
-      LOG(INFO) << "[SwFormat] screen buffer format=BGRA8";
-      return Diligent::TEX_FORMAT_BGRA8_UNORM;
-    }
-    fclose(file);
-    remove(kPath);
-  }
-  return Diligent::TEX_FORMAT_RGBA8_UNORM;
-}
 
 
 void RenderScreenImpl::GPUResetScreenBufferInternal() {
@@ -1232,8 +1177,7 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
       context()->resolution, Diligent::USAGE_DEFAULT,
       Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE,
       Diligent::CPU_ACCESS_NONE,
-      // See ScreenBufferFormatInternal. Marker: URGE_SWEXPERIMENT
-      ScreenBufferFormatInternal());
+      Diligent::TEX_FORMAT_RGBA8_UNORM);
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.screen_buffer_prev,
       "screen.main.buffer.prev", context()->resolution,
