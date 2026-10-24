@@ -725,10 +725,6 @@ void SpriteImpl::GPUOnSpriteRenderingInternal(
         render_context->DrawIndexed(draw_indexed_attribs);
       }
 
-      // Temporary: identity of the run this node is drawing. A frame that shows another
-      // bitmap's content has a run whose texture name or size differs from its
-      // neighbours', and this names it.
-
 
       // This run is on screen now: FlushPass only emits runs that no node drew.
       context()->sprite_batcher->MarkEmitted(gpu_.instance_offset,
