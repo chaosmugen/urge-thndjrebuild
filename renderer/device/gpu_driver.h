@@ -10,7 +10,8 @@ namespace renderer {
 // that ships on a whole generation of G52/G76/G57 devices - while the GLES path of that same driver
 // never shows it (both verified on the same machine). A workaround gated on "is this an Android TV"
 // would therefore fix nothing outside one model, and would be wrong on a TV that is not Mali; the
-// gate that generalises names the GPU family.
+// gate that generalises names the GPU family AND the Vulkan backend, so it fires only on Mali + Vulkan
+// and stays off on Mali + GLES (where the defect does not exist).
 //
 // Kept deliberately identical in shape to the earlier device-mode flag: one process-wide boolean,
 // set once at device creation from the adapter Diligent actually picked (render_device.cc), read

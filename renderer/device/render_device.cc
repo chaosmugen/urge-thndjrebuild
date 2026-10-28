@@ -4,8 +4,12 @@
 
 #include "renderer/device/render_device.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
+#include <string>
 
 #if defined(OS_ANDROID)
 #include <sys/system_properties.h>
@@ -13,6 +17,7 @@
 
 #include "renderer/device/gpu_driver.h"
 
+#include "SDL3/SDL_filesystem.h"
 #include "SDL3/SDL_hints.h"
 #include "SDL3/SDL_loadso.h"
 #include "SDL3/SDL_video.h"
@@ -391,8 +396,41 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
   // etc
   const auto& device_info = device->GetDeviceInfo();
   const auto& adapter_info = device->GetAdapterInfo();
-  const int32_t max_texture_size =
+  int32_t max_texture_size =
       static_cast<int32_t>(adapter_info.Texture.MaxTexture2DDimension);
+
+  // Diagnostic override, for reproducing a lower hardware limit (for example
+  // 4096) on a machine whose GPU reports more. Sources, in order of precedence:
+  //   - max_texture_size.txt in the working directory (first integer inside)
+  //   - the URGE_MAX_TEXTURE_SIZE environment variable
+  // It only ever lowers the limit, so it can never make the engine attempt a
+  // size the device does not support.
+  int32_t max_texture_override = 0;
+  // Resolve against the working directory, which the host sets to the game
+  // data folder. A relative path is not enough: on Android SDL resolves those
+  // against the APK assets, so the file next to the data never got read.
+  std::string override_path = "max_texture_size.txt";
+  try {
+    const auto working_dir = std::filesystem::current_path();
+    override_path = (working_dir / "max_texture_size.txt").generic_string();
+  } catch (...) {
+  }
+  if (SDL_IOStream* override_stream =
+          SDL_IOFromFile(override_path.c_str(), "rb")) {
+    char override_buffer[32] = {0};
+    const size_t override_read =
+        SDL_ReadIO(override_stream, override_buffer, sizeof(override_buffer) - 1);
+    SDL_CloseIO(override_stream);
+    if (override_read > 0)
+      max_texture_override = std::atoi(override_buffer);
+  }
+  if (const char* env = std::getenv("URGE_MAX_TEXTURE_SIZE")) {
+    const int32_t env_value = std::atoi(env);
+    if (env_value > 0)
+      max_texture_override = env_value;
+  }
+  if (max_texture_override > 0 && max_texture_override < max_texture_size)
+    max_texture_size = max_texture_override;
 
   LOG(INFO) << "[Renderer] DeviceType: " +
                    std::string(GetRenderDeviceTypeString(device_info.Type)) +
@@ -400,7 +438,8 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
             << device_info.APIVersion.Major << "."
             << device_info.APIVersion.Minor << ")";
   LOG(INFO) << "[Renderer] Adapter: " << adapter_info.Description;
-  LOG(INFO) << "[Renderer] MaxTexture Size: " << max_texture_size;
+  LOG(INFO) << "[Renderer] MaxTexture Size: " << max_texture_size
+            << (max_texture_override ? " (override)" : "");
 
   // See renderer/device/gpu_driver.h. The workarounds for the one-frame region loss are gated on the
   // GPU family, not on the device class: the defect follows the Mali driver branch, so a gate on
@@ -411,8 +450,12 @@ RenderDevice::CreateDeviceResult RenderDevice::Create(
         std::strstr(adapter_info.Description, "Mali") != nullptr ||
         adapter_info.Vendor == Diligent::ADAPTER_VENDOR_ARM ||
         adapter_info.VendorId == 0x13B5;
-    renderer::SetMaliGpu(is_mali);
-    LOG(INFO) << "[Renderer] Driver gate: mali=" << is_mali << " adapter='"
+    // The region-loss defect lives in the Mali *Vulkan* path only; the GLES path never
+    // shows it. Gate the workarounds on both, so they do not run on Mali + GLES.
+    const bool vulkan = device_info.Type == Diligent::RENDER_DEVICE_TYPE_VULKAN;
+    renderer::SetMaliGpu(is_mali && vulkan);
+    LOG(INFO) << "[Renderer] Driver gate: mali=" << is_mali
+              << " vulkan=" << vulkan << " adapter='"
               << adapter_info.Description << "' vendorId=" << adapter_info.VendorId;
   }
 
