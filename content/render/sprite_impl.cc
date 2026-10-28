@@ -4,6 +4,8 @@
 
 #include "content/render/sprite_impl.h"
 
+#include "base/debug/logging.h"
+
 #include "content/context/execution_context.h"
 #include "content/screen/renderscreen_impl.h"
 #include "content/screen/viewport_impl.h"
@@ -582,6 +584,20 @@ void SpriteImpl::GPUUpdateBatchSpriteInternal(
     BitmapTexture* texture,
     BitmapTexture* next_texture,
     const base::Rect& src_rect) {
+  if (texture->size.y > 4096) {
+  }
+
+  // Runs of the previous frame must never survive into this one.
+  gpu_.paged_runs.clear();
+
+  // A bitmap that spans several GPU textures cannot be sampled by a single
+  // draw: emit one run per page instead of the single quad below.
+  if (texture->IsPaged() && context()->sprite_batcher->IsBatchEnabled()) {
+    GPUUpdatePagedSpriteInternal(render_context, texture, next_texture,
+                                 src_rect);
+    return;
+  }
+
   // Update sprite quad if need
   if (wave_.amp) {
     // Wave process if need
@@ -609,7 +625,8 @@ void SpriteImpl::GPUUpdateBatchSpriteInternal(
   // gone by the time draws are issued - which used to drop its bitmaps for a frame.
   // Start a batch if no context
   if (!context()->sprite_batcher->GetCurrentTexture())
-    context()->sprite_batcher->BeginBatch(texture);
+    context()->sprite_batcher->BeginBatch(texture,
+                                          texture->shader_resource_view);
 
   // Push this node into batch scheduler if batchable
   if (texture == context()->sprite_batcher->GetCurrentTexture()) {
@@ -643,10 +660,156 @@ void SpriteImpl::GPUUpdateBatchSpriteInternal(
 
 }
 
+void SpriteImpl::GPUUpdatePagedSpriteInternal(
+    Diligent::IDeviceContext* render_context,
+    BitmapTexture* texture,
+    BitmapTexture* next_texture,
+    const base::Rect& src_rect) {
+  auto* batcher = context()->sprite_batcher;
+  gpu_.instance_count = 0;
+
+  base::Rect rect = src_rect;
+  // Same clamping as the single-texture path. When the source rect starts past
+  // the right edge of the bitmap the upper bound is negative, std::clamp hands
+  // that back, and the single-texture path still emits the quad (reversed). A
+  // paged bitmap must do the same, otherwise the cell disappears here while the
+  // non-paged build shows it.
+  rect.width = std::clamp(rect.width, 0, texture->size.x - rect.x);
+  rect.height = std::clamp(rect.height, 0, texture->size.y - rect.y);
+  if (rect.width <= 0 || rect.height <= 0) {
+    rect.width = std::max(rect.width, -texture->size.x);
+    rect.height = std::max(rect.height, -texture->size.y);
+    base::Rect mirrored(rect.x + rect.width, rect.y, -rect.width, rect.height);
+    rect = mirrored;
+  }
+
+  const int32_t first_page = texture->PageIndexAt(rect.y);
+  const int32_t last_page = texture->PageIndexAt(rect.y + rect.height - 1);
+
+  for (int32_t page = first_page; page <= last_page; ++page) {
+    Diligent::ITextureView* page_view = texture->PageViewAt(page);
+    if (!page_view)
+      continue;
+
+    const int32_t page_top = texture->PageTop(page);
+    const int32_t page_height = texture->PageHeightAt(page);
+    const int32_t top = std::max(rect.y, page_top);
+    const int32_t bottom =
+        std::min(rect.y + rect.height, page_top + page_height);
+    if (bottom <= top)
+      continue;
+
+    base::Rect page_src(rect.x, top - page_top, rect.width, bottom - top);
+    base::Rect texcoord = page_src;
+    if (mirror_)
+      texcoord = base::Rect(page_src.x + page_src.width, page_src.y,
+                            -page_src.width, page_src.height);
+
+    renderer::Quad quad;
+    renderer::Quad::SetPositionRect(
+        &quad, base::RectF(0.0f, static_cast<float>(top - rect.y),
+                           static_cast<float>(rect.width),
+                           static_cast<float>(bottom - top)));
+    renderer::Quad::SetTexCoordRect(
+        &quad, texcoord,
+        base::Vec2(static_cast<float>(texture->size.x),
+                   static_cast<float>(page_height)));
+
+    // The sampled UVs are page-relative, so the bush depth is normalised
+    // against the page as well.
+    renderer::Binding_Sprite::Params params = uniform_params_;
+    params.BushDepthAndOpacity.x =
+        static_cast<float>(bottom - bush_.depth) /
+        static_cast<float>(page_height);
+
+    if (batcher->IsBatchEnabled()) {
+      batcher->BeginBatch(texture, page_view);
+      batcher->PushSprite(quad, params);
+
+      uint32_t offset = 0, count = 0;
+      batcher->EndBatch(&offset, &count);
+      if (count) {
+        GPUData::PagedRun run;
+        run.offset = offset;
+        run.count = count;
+        run.srv = page_view;
+        run.quad = quad;
+      run.page = page;
+        run.page = page;
+        gpu_.paged_runs.push_back(run);
+      }
+    } else {
+      // Without the shared vertex batch every run is drawn on its own, so the
+      // quad travels with the run instead of going into the batch queue.
+      GPUData::PagedRun run;
+      run.offset = 0;
+      run.count = 1;
+      run.srv = page_view;
+      run.quad = quad;
+      run.page = page;
+      gpu_.paged_runs.push_back(run);
+    }
+  }
+
+  // The non-batched path draws with the single uniform block, which the caller
+  // of the batched path updates; update it here as well.
+  if (!batcher->IsBatchEnabled()) {
+    render_context->UpdateBuffer(
+        gpu_.single_uniform, 0, sizeof(uniform_params_), &uniform_params_,
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  }
+
+  src_rect_dirty_ = false;
+}
+
 void SpriteImpl::GPUOnSpriteRenderingInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::IBuffer* world_binding,
     BitmapTexture* texture) {
+  if (!gpu_.paged_runs.empty()) {
+    // Page-by-page draw: one run per page, each bound to that page's view.
+    auto* batcher = context()->sprite_batcher;
+    auto* pipeline =
+        context()->render.pipeline_states->sprite[blend_type_].RawPtr();
+
+    batcher->GetShaderBinding().u_transform->Set(world_binding);
+    render_context->SetPipelineState(pipeline);
+
+    if (!batcher->IsBatchEnabled())
+      return;
+
+    batcher->GetShaderBinding().u_params->Set(batcher->GetUniformBinding());
+
+    Diligent::IBuffer* const vertex_buffer = batcher->GetVertexBuffer();
+    render_context->SetVertexBuffers(
+        0, 1, &vertex_buffer, nullptr,
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    render_context->SetIndexBuffer(
+        **context()->render.quad_index, 0,
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    for (const auto& run : gpu_.paged_runs) {
+      if (!run.count || !run.srv)
+        continue;
+
+      batcher->GetShaderBinding().u_texture->Set(run.srv);
+      render_context->CommitShaderResources(
+          *batcher->GetShaderBinding(),
+          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+      Diligent::DrawIndexedAttribs draw_indexed_attribs;
+      draw_indexed_attribs.NumIndices = 6 * run.count;
+      draw_indexed_attribs.IndexType =
+          context()->render.quad_index->GetIndexType();
+      draw_indexed_attribs.FirstIndexLocation = 6 * run.offset;
+      render_context->DrawIndexed(draw_indexed_attribs);
+
+      batcher->MarkEmitted(run.offset, run.count);
+    }
+
+    return;
+  }
+
   if (gpu_.instance_count) {
     // Batch draw
     auto* pipeline = context()->render.pipeline_states->sprite[blend_type_].RawPtr();

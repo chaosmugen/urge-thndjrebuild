@@ -12,6 +12,12 @@ namespace content {
 // aka RGBA32
 constexpr SDL_PixelFormat kSurfaceInternalFormat = SDL_PIXELFORMAT_ABGR8888;
 
+// Bitmaps at or above this pixel count (about 1024x1024) can drop their CPU
+// copy after upload: it costs as much as the texture and playback never reads
+// it back, so it is rebuilt lazily when get_pixel/create_surface asks for it.
+constexpr bool kDropLargeCpuCopy = true;
+constexpr int64_t kCpuCopyKeepLimit = 1024LL * 1024LL;
+
 // Convert target surface to engine internal expected format.
 // The converting will destroy origin surface.
 inline void MakeSureSurfaceFormat(SDL_Surface*& surface) {

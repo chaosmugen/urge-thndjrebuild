@@ -4,6 +4,10 @@
 
 #include "content/canvas/canvas_impl.h"
 
+#include <cstdio>
+
+#include "base/debug/logging.h"
+
 #include "SDL3_image/SDL_image.h"
 #include "SDL3_ttf/SDL_ttf.h"
 
@@ -21,6 +25,7 @@
 #include "renderer/utils/texture_utils.h"
 
 namespace content {
+
 
 // static
 scoped_refptr<Bitmap> Bitmap::New(ExecutionContext* execution_context,
@@ -103,8 +108,9 @@ scoped_refptr<Bitmap> Bitmap::FromStream(ExecutionContext* execution_context,
 
   const int32_t max_texture_size =
       execution_context->render_device->MaxTextureSize();
-  if (memory_texture->w > max_texture_size ||
-      memory_texture->h > max_texture_size) {
+  // Taller than the device limit is served by page storage in
+  // GPUCreateTextureInternal; only an over-wide bitmap is rejected here.
+  if (memory_texture->w > max_texture_size) {
     exception_state.ThrowError(
         ExceptionCode::GPU_ERROR,
         "texture size exceeds hardware limit: %dx%d (GPU max support: %d)",
@@ -217,7 +223,7 @@ scoped_refptr<CanvasImpl> CanvasImpl::Create(
 
   const int32_t max_texture_size =
       execution_context->render_device->MaxTextureSize();
-  if (size.x > max_texture_size || size.y > max_texture_size) {
+  if (size.x > max_texture_size) {
     exception_state.ThrowError(
         ExceptionCode::GPU_ERROR,
         "texture size exceeds hardware limit: %dx%d (GPU max support: %d)",
@@ -225,8 +231,21 @@ scoped_refptr<CanvasImpl> CanvasImpl::Create(
     return nullptr;
   }
 
+  // A bitmap the script creates itself is drawn into every frame in the list
+  // and scroll paths. Making such a bitmap paged means drawing into page
+  // textures, which crashes inside the NVIDIA D3D11 driver (scratch surface +
+  // copy lowered it from ~67% to ~25%, it never went to zero). Clamping keeps
+  // the game running; read-only content loaded from a file still pages.
+  base::Vec2i create_size = size;
+  if (create_size.y > max_texture_size) {
+    LOG(INFO) << "[Canvas] Clamp bitmap " << size.x << "x" << size.y << " to "
+              << create_size.x << "x" << max_texture_size
+              << " (device limit)";
+    create_size.y = max_texture_size;
+  }
+
   auto* empty_surface =
-      SDL_CreateSurface(size.x, size.y, kSurfaceInternalFormat);
+      SDL_CreateSurface(create_size.x, create_size.y, kSurfaceInternalFormat);
   if (!empty_surface) {
     exception_state.ThrowError(ExceptionCode::CONTENT_ERROR, SDL_GetError());
     return nullptr;
@@ -267,8 +286,9 @@ scoped_refptr<CanvasImpl> CanvasImpl::Create(
 
   const int32_t max_texture_size =
       execution_context->render_device->MaxTextureSize();
-  if (memory_texture->w > max_texture_size ||
-      memory_texture->h > max_texture_size) {
+  // Taller than the device limit is served by page storage in
+  // GPUCreateTextureInternal; only an over-wide bitmap is rejected here.
+  if (memory_texture->w > max_texture_size) {
     exception_state.ThrowError(
         ExceptionCode::GPU_ERROR,
         "texture size exceeds hardware limit: %dx%d (GPU max support: %d)",
@@ -313,6 +333,17 @@ CanvasImpl::CanvasImpl(ExecutionContext* execution_context,
   // Create renderer texture
   gpu_.name = debug_name;
   GPUCreateTextureInternal(memory_surface);
+
+  // A bitmap loaded from disk keeps a full CPU copy for get_pixel and
+  // create_surface. For the oversized animation sheets that copy is as large as
+  // the texture itself (960x7680 = 28 MB each) and playback never reads it
+  // back, so drop it for big bitmaps; RequireMemorySurface rebuilds on demand.
+  if (kDropLargeCpuCopy && surface_cache_ &&
+      static_cast<int64_t>(surface_cache_->w) * surface_cache_->h >=
+          kCpuCopyKeepLimit) {
+    SDL_DestroySurface(surface_cache_);
+    surface_cache_ = nullptr;
+  }
 }
 
 CanvasImpl::CanvasImpl(ExecutionContext* execution_context,
@@ -371,22 +402,115 @@ void CanvasImpl::SubmitQueuedCommands(bool at_frame_boundary) {
   while (command_sequence) {
     switch (command_sequence->id) {
       case CommandID::CLEAR: {
-        GPUCanvasClearInternal();
+        if (gpu_.IsPaged()) {
+          for (int32_t page = 0; page < gpu_.PageCount(); ++page) {
+            BeginPageTargetInternal(page);
+            GPUCanvasClearInternal();
+            EndPageTargetInternal();
+          }
+        } else {
+          GPUCanvasClearInternal();
+        }
       } break;
       case CommandID::GRADIENT_FILL_RECT: {
         const auto* c =
             static_cast<Command_GradientFillRect*>(command_sequence);
-        GPUCanvasGradientFillRectInternal(c->region, c->color1, c->color2,
-                                          c->vertical);
+        if (gpu_.IsPaged()) {
+          for (int32_t page = 0; page < gpu_.PageCount(); ++page) {
+            const int32_t page_top = gpu_.PageTop(page);
+            const int32_t top = std::max(c->region.y, page_top);
+            const int32_t bottom = std::min(c->region.y + c->region.height,
+                                            page_top + gpu_.PageHeightAt(page));
+            if (bottom <= top)
+              continue;
+
+            base::Vec4 color1 = c->color1;
+            base::Vec4 color2 = c->color2;
+            if (c->vertical && c->region.height > 0) {
+              // A vertical gradient spans the whole region, so each page slice
+              // samples it at its own position.
+              const float t0 = static_cast<float>(top - c->region.y) /
+                               static_cast<float>(c->region.height);
+              const float t1 = static_cast<float>(bottom - c->region.y) /
+                               static_cast<float>(c->region.height);
+              color1 = base::Vec4(
+                  c->color1.x + (c->color2.x - c->color1.x) * t0,
+                  c->color1.y + (c->color2.y - c->color1.y) * t0,
+                  c->color1.z + (c->color2.z - c->color1.z) * t0,
+                  c->color1.w + (c->color2.w - c->color1.w) * t0);
+              color2 = base::Vec4(
+                  c->color1.x + (c->color2.x - c->color1.x) * t1,
+                  c->color1.y + (c->color2.y - c->color1.y) * t1,
+                  c->color1.z + (c->color2.z - c->color1.z) * t1,
+                  c->color1.w + (c->color2.w - c->color1.w) * t1);
+            }
+
+            base::Rect slice_dst(c->region.x, top - page_top, c->region.width,
+                                 bottom - top);
+            BeginPageTargetInternal(page);
+            GPUCanvasGradientFillRectInternal(slice_dst, color1, color2,
+                                              c->vertical);
+            EndPageTargetInternal();
+          }
+        } else {
+          GPUCanvasGradientFillRectInternal(c->region, c->color1, c->color2,
+                                            c->vertical);
+        }
       } break;
       case CommandID::HUE_CHANGE: {
         const auto* c = static_cast<Command_HueChange*>(command_sequence);
-        GPUCanvasHueChange(c->hue);
+        if (gpu_.IsPaged()) {
+          for (int32_t page = 0; page < gpu_.PageCount(); ++page) {
+            BeginPageTargetInternal(page);
+            GPUCanvasHueChange(c->hue);
+            EndPageTargetInternal();
+          }
+        } else {
+          GPUCanvasHueChange(c->hue);
+        }
       } break;
       case CommandID::DRAW_TEXT: {
-        const auto* c = static_cast<Command_DrawText*>(command_sequence);
-        GPUCanvasDrawTextSurfaceInternal(c->region, c->text, c->opacity,
-                                         c->align);
+        auto* c = static_cast<Command_DrawText*>(command_sequence);
+        if (gpu_.IsPaged()) {
+          // The text surface is consumed by the draw (freed at the end), so a
+          // copy is what each page slice reads from.
+          SDL_Surface* text_copy = SDL_DuplicateSurface(c->text);
+          if (text_copy) {
+            SDL_DestroySurface(c->text);
+            c->text = nullptr;
+
+            for (int32_t page = 0; page < gpu_.PageCount(); ++page) {
+              const int32_t page_top = gpu_.PageTop(page);
+              const int32_t top = std::max(c->region.y, page_top);
+              const int32_t bottom = std::min(c->region.y + c->region.height,
+                                              page_top +
+                                                  gpu_.PageHeightAt(page));
+              if (bottom <= top)
+                continue;
+
+              const int32_t row_offset = top - c->region.y;
+              SDL_Surface* text_slice = SDL_CreateSurfaceFrom(
+                  text_copy->w, bottom - top, text_copy->format,
+                  static_cast<uint8_t*>(text_copy->pixels) +
+                      static_cast<size_t>(row_offset) * text_copy->pitch,
+                  text_copy->pitch);
+              if (!text_slice)
+                continue;
+
+              base::Rect slice_dst(c->region.x, top - page_top, c->region.width,
+                                   bottom - top);
+              BeginPageTargetInternal(page);
+              GPUCanvasDrawTextSurfaceInternal(slice_dst, text_slice,
+                                               c->opacity, 0);
+              EndPageTargetInternal();
+            }
+
+            SDL_DestroySurface(text_copy);
+          }
+        } else {
+          GPUCanvasDrawTextSurfaceInternal(c->region, c->text, c->opacity,
+                                           c->align);
+        }
       } break;
       default:
         NOTREACHED();
@@ -898,6 +1022,25 @@ void CanvasImpl::OnObjectDisposed() {
   // renderer::DeferredTextureRelease.
   renderer::DeferredTextureRelease(gpu_.data);
   renderer::DeferredTextureRelease(gpu_.depth);
+  // Paged bitmaps own their page textures on top of the page-0 aliases above.
+  for (auto& it : gpu_.pages)
+    renderer::DeferredTextureRelease(it);
+  for (auto& it : gpu_.pages_srv)
+    renderer::DeferredTextureRelease(it);
+  for (auto& it : gpu_.pages_depth)
+    renderer::DeferredTextureRelease(it);
+  for (auto& it : gpu_.pages_dsv)
+    renderer::DeferredTextureRelease(it);
+  for (auto& it : gpu_.pages_rtv)
+    renderer::DeferredTextureRelease(it);
+  for (auto& it : gpu_.pages_world)
+    renderer::DeferredTextureRelease(it);
+  renderer::DeferredTextureRelease(gpu_.page_scratch);
+  renderer::DeferredTextureRelease(gpu_.page_scratch_depth);
+  renderer::DeferredTextureRelease(gpu_.page_scratch_srv);
+  renderer::DeferredTextureRelease(gpu_.page_scratch_rtv);
+  renderer::DeferredTextureRelease(gpu_.page_scratch_dsv);
+  renderer::DeferredTextureRelease(gpu_.page_scratch_world);
   // The three views hang off those two textures. Parking the textures but destroying their
   // views here leaves every descriptor still in flight naming a freed view object - the same
   // hazard one level up, so they go into the same graveyard.
@@ -926,15 +1069,128 @@ void CanvasImpl::BlitTextureInternal(const base::Rect& dst_rect,
   // frame draws the half-painted bitmap - the background losing its content for a frame.
   // The frame number and the texture pointers say which canvas and in which order.
 
+  // Emits one blit. When the source bitmap is paged the copy is issued once per
+  // source page: each pass binds that page's view and works in page-local
+  // source rows, with the destination rows scaled the same way the whole blit
+  // is, so a stretched blit keeps its ratio inside every page slice.
+  auto EmitBlit = [&](const base::Rect& dst_slice,
+                      const base::Rect& src_slice,
+                      int32_t blend,
+                      uint32_t alpha) {
+    if (!src_texture->gpu_.IsPaged()) {
+      if (blend >= 0) {
+        GPUBlendBlitTextureInternal(dst_slice, &src_texture->gpu_, src_slice,
+                                    blend, alpha);
+      } else {
+        GPUApproximateBlitTextureInternal(dst_slice, &src_texture->gpu_,
+                                          src_slice, alpha);
+      }
+      return;
+    }
+
+    const GPUData& src_gpu = src_texture->gpu_;
+    const int32_t src_first = src_gpu.PageIndexAt(src_slice.y);
+    const int32_t src_last =
+        src_gpu.PageIndexAt(src_slice.y + src_slice.height - 1);
+
+    for (int32_t src_page = src_first; src_page <= src_last; ++src_page) {
+      const int32_t src_page_top = src_gpu.PageTop(src_page);
+      const int32_t src_page_height = src_gpu.PageHeightAt(src_page);
+      const int32_t s_top = std::max(src_slice.y, src_page_top);
+      const int32_t s_bottom = std::min(src_slice.y + src_slice.height,
+                                        src_page_top + src_page_height);
+      if (s_bottom <= s_top)
+        continue;
+
+      const int32_t src_rows = s_bottom - s_top;
+      const int32_t src_offset = s_top - src_slice.y;
+      int32_t dst_rows = src_rows;
+      int32_t dst_offset = src_offset;
+      if (src_slice.height > 0 && dst_slice.height != src_slice.height) {
+        dst_rows = std::max(
+            1, static_cast<int32_t>(static_cast<int64_t>(src_rows) *
+                                    dst_slice.height / src_slice.height));
+        dst_offset = static_cast<int32_t>(
+            static_cast<int64_t>(src_offset) * dst_slice.height /
+            src_slice.height);
+      }
+
+      base::Rect page_src(src_slice.x, s_top - src_page_top, src_slice.width,
+                          src_rows);
+      base::Rect page_dst(dst_slice.x, dst_slice.y + dst_offset,
+                          dst_slice.width, dst_rows);
+
+      // A stand-in for the source: this page's view and this page's height, so
+      // the UVs the blit builds are relative to the page it actually samples.
+      GPUData page_data = src_gpu;
+      page_data.shader_resource_view = src_gpu.pages_srv[src_page];
+      page_data.size.y = src_page_height;
+
+      if (blend >= 0) {
+        GPUBlendBlitTextureInternal(page_dst, &page_data, page_src, blend,
+                                    alpha);
+      } else {
+        GPUApproximateBlitTextureInternal(page_dst, &page_data, page_src,
+                                          alpha);
+      }
+    }
+  };
+
+  // A paged target is written one page at a time: each page gets the part of
+  // the destination it owns, in page-local coordinates, with the matching part
+  // of the source rect.
+  if (gpu_.IsPaged()) {
+    const int32_t first_page = gpu_.PageIndexAt(dst_rect.y);
+    const int32_t last_page =
+        gpu_.PageIndexAt(dst_rect.y + dst_rect.height - 1);
+    const int32_t clamped_blend =
+        blend_type >= 0 ? std::clamp<int32_t>(blend_type, 0, BLEND_TYPE_NUMS - 1)
+                        : -1;
+
+    for (int32_t page = first_page; page <= last_page; ++page) {
+      const int32_t page_top = gpu_.PageTop(page);
+      const int32_t top = std::max(dst_rect.y, page_top);
+      const int32_t bottom = std::min(dst_rect.y + dst_rect.height,
+                                      page_top + gpu_.PageHeightAt(page));
+      if (bottom <= top)
+        continue;
+
+      base::Rect slice_src = src_rect;
+      const int32_t dst_offset = top - dst_rect.y;
+      if (src_rect.height > 0 && src_rect.height != dst_rect.height &&
+          dst_rect.height > 0) {
+        // Stretched blit: the source rows scale with the destination rows.
+        slice_src.y += static_cast<int32_t>(static_cast<int64_t>(dst_offset) *
+                                            src_rect.height /
+                                            dst_rect.height);
+        slice_src.height =
+            std::max(1, static_cast<int32_t>(
+                            static_cast<int64_t>(bottom - top) *
+                            src_rect.height / dst_rect.height));
+      } else {
+        slice_src.y += dst_offset;
+        slice_src.height = bottom - top;
+      }
+
+      base::Rect slice_dst(dst_rect.x, top - page_top, dst_rect.width,
+                           bottom - top);
+
+      BeginPageTargetInternal(page);
+      EmitBlit(slice_dst, slice_src, clamped_blend, opacity);
+      EndPageTargetInternal();
+    }
+
+    InvalidateSurfaceCache();
+    return;
+  }
+
   // Execute blit immediately.
   if (blend_type >= 0) {
-    blend_type = std::clamp<int32_t>(blend_type, 0, BLEND_TYPE_NUMS - 1);
-    GPUBlendBlitTextureInternal(dst_rect, &src_texture->gpu_, src_rect,
-                                blend_type, opacity);
+    EmitBlit(dst_rect, src_rect,
+             std::clamp<int32_t>(blend_type, 0, BLEND_TYPE_NUMS - 1), opacity);
   } else {
     // Apply approximate blend pipeline render pass (DDraw style)
-    GPUApproximateBlitTextureInternal(dst_rect, &src_texture->gpu_, src_rect,
-                                      opacity);
+    EmitBlit(dst_rect, src_rect, -1, opacity);
   }
 
   // Invalidate memory cache
@@ -961,28 +1217,140 @@ void CanvasImpl::ClipTextureInternal(const base::Rect& dst_rect,
   InvalidateSurfaceCache();
 }
 
+// Uploads one page of a paged bitmap: |rows| rows of |data| starting at |top|.
+// Same texture description as renderer::CreateTexture2D(surface); only the
+// height and the source row offset differ.
+static void CreatePageTexture2D(Diligent::IRenderDevice* device,
+                               Diligent::ITexture** texture,
+                               const std::string& name,
+                               SDL_Surface* data,
+                               int32_t top,
+                               int32_t rows) {
+  Diligent::TextureDesc texture_desc;
+  texture_desc.Name = name.c_str();
+  texture_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+  texture_desc.Width = data->w;
+  texture_desc.Height = rows;
+  texture_desc.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+  texture_desc.BindFlags =
+      Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE;
+  texture_desc.Usage = Diligent::USAGE_DEFAULT;
+  texture_desc.CPUAccessFlags = Diligent::CPU_ACCESS_NONE;
+  texture_desc.ClearValue.Format = texture_desc.Format;
+  std::memset(texture_desc.ClearValue.Color, 0,
+              sizeof(texture_desc.ClearValue.Color));
+
+  Diligent::TextureSubResData texture_sub_res_data;
+  texture_sub_res_data.pData =
+      static_cast<uint8_t*>(data->pixels) + static_cast<size_t>(top) * data->pitch;
+  texture_sub_res_data.Stride = static_cast<uint32_t>(data->pitch);
+
+  Diligent::TextureData texture_data;
+  texture_data.pSubResources = &texture_sub_res_data;
+  texture_data.NumSubresources = 1;
+
+  device->CreateTexture(texture_desc, &texture_data, texture);
+}
+
 void CanvasImpl::GPUCreateTextureInternal(SDL_Surface* texture_data) {
   auto* scheduler = context()->canvas_scheduler;
   auto& render_device = *scheduler->GetRenderDevice();
+  const int32_t max_texture_size =
+      context()->render_device->MaxTextureSize();
 
   if (texture_data) {
     // Make sure surface format
     MakeSureSurfaceFormat(texture_data);
 
-    // Setup GPU texture if necessary
-    renderer::CreateTexture2D(
-        *render_device, &gpu_.data, gpu_.name, texture_data,
-        Diligent::USAGE_DEFAULT,
-        Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
+    // Logical bitmap size: always the whole image, also when it is paged, so
+    // every script-visible coordinate stays unchanged.
+    gpu_.size = base::Vec2i(texture_data->w, texture_data->h);
+
+    if (texture_data->h > max_texture_size) {
+      // Split into row-aligned pages. Page 0 doubles as the single-texture
+      // handle (|data| / views) so the existing single-texture paths still
+      // sample something sensible; writes switch to |pages_rtv| /
+      // |pages_world| page by page (see BeginPageTargetInternal).
+      gpu_.page_height = max_texture_size;
+      const int32_t page_count =
+          (texture_data->h + gpu_.page_height - 1) / gpu_.page_height;
+      for (int32_t i = 0; i < page_count; ++i) {
+        const int32_t top = i * gpu_.page_height;
+        const int32_t rows = std::min(gpu_.page_height, texture_data->h - top);
+        RRefPtr<Diligent::ITexture> page;
+        CreatePageTexture2D(*render_device, &page, gpu_.name, texture_data, top,
+                            rows);
+        if (!page)
+          continue;
+
+        RRefPtr<Diligent::ITextureView> page_view;
+        page_view = page->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+        RRefPtr<Diligent::ITextureView> page_rtv;
+        page_rtv = page->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+
+        const base::Vec2i page_size(texture_data->w, rows);
+        RRefPtr<Diligent::ITexture> page_depth;
+        renderer::CreateTexture2D(*render_device, &page_depth, gpu_.name,
+                                  page_size, Diligent::USAGE_DEFAULT,
+                                  Diligent::BIND_DEPTH_STENCIL,
+                                  Diligent::CPU_ACCESS_NONE,
+                                  Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
+        RRefPtr<Diligent::ITextureView> page_dsv;
+        if (page_depth) {
+          page_dsv =
+              page_depth->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
+        }
+
+        renderer::WorldTransform page_world;
+        renderer::MakeProjectionMatrix(page_world.projection,
+                                       page_size.Recast<float>());
+        renderer::MakeIdentityMatrix(page_world.transform);
+        RRefPtr<Diligent::IBuffer> page_world_buffer;
+        Diligent::CreateUniformBuffer(
+            *render_device, sizeof(page_world), "bitmap.page.world",
+            &page_world_buffer, Diligent::USAGE_IMMUTABLE,
+            Diligent::BIND_UNIFORM_BUFFER, Diligent::CPU_ACCESS_WRITE,
+            &page_world);
+
+        gpu_.pages.push_back(page);
+        gpu_.pages_srv.push_back(page_view);
+        gpu_.pages_depth.push_back(page_depth);
+        gpu_.pages_dsv.push_back(page_dsv);
+        gpu_.pages_rtv.push_back(page_rtv);
+        gpu_.pages_world.push_back(page_world_buffer);
+      }
+
+      if (!gpu_.pages.empty()) {
+        gpu_.data = gpu_.pages.front();
+        gpu_.shader_resource_view = gpu_.pages_srv.front();
+        gpu_.render_target_view = gpu_.pages_rtv.front();
+
+      }
+
+      LOG(INFO) << "[Canvas] Paged bitmap \"" << gpu_.name << "\" "
+                << gpu_.size.x << "x" << gpu_.size.y << " into "
+                << gpu_.PageCount() << " page(s) of " << gpu_.page_height
+                << " rows (limit " << max_texture_size << ")";
+    } else {
+      // Setup GPU texture if necessary
+      renderer::CreateTexture2D(
+          *render_device, &gpu_.data, gpu_.name, texture_data,
+          Diligent::USAGE_DEFAULT,
+          Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
+    }
+  } else {
+    // Bitmap size comes from the texture we were handed.
+    gpu_.size =
+        base::Vec2i(gpu_.data->GetDesc().Width, gpu_.data->GetDesc().Height);
   }
 
-  // Bitmap size
-  gpu_.size =
-      base::Vec2i(gpu_.data->GetDesc().Width, gpu_.data->GetDesc().Height);
-
-  // Depth-Stencil
+  // Depth-Stencil. Only page 0 gets one for now: it is the page the canvas
+  // currently paints into (see the write paths).
+  const base::Vec2i depth_size =
+      gpu_.IsPaged() ? base::Vec2i(gpu_.size.x, gpu_.PageHeightAt(0))
+                     : gpu_.size;
   renderer::CreateTexture2D(
-      *render_device, &gpu_.depth, gpu_.name, gpu_.size,
+      *render_device, &gpu_.depth, gpu_.name, depth_size,
       Diligent::USAGE_DEFAULT, Diligent::BIND_DEPTH_STENCIL,
       Diligent::CPU_ACCESS_NONE, Diligent::TEX_FORMAT_D24_UNORM_S8_UINT);
 
@@ -1014,6 +1382,46 @@ void CanvasImpl::GPUCreateTextureInternal(SDL_Surface* texture_data) {
   gpu_.blt_binding = loader->bitmapblt.CreateBinding();
   gpu_.clipblt_binding = loader->bitmapclipblt.CreateBinding();
   gpu_.hue_binding = loader->bitmaphue.CreateBinding();
+}
+
+void CanvasImpl::BeginPageTargetInternal(int32_t page) {
+  saved_page_data_ = gpu_.data;
+  saved_page_srv_ = gpu_.shader_resource_view;
+  saved_page_rtv_ = gpu_.render_target_view;
+  saved_page_dsv_ = gpu_.depth_stencil_view;
+  saved_page_world_ = gpu_.world_buffer;
+
+  gpu_.active_page = page;
+  gpu_.data = gpu_.pages[page];
+  gpu_.shader_resource_view = gpu_.pages_srv[page];
+  gpu_.render_target_view = gpu_.pages_rtv[page];
+  gpu_.depth_stencil_view = gpu_.pages_dsv[page];
+  gpu_.world_buffer = gpu_.pages_world[page];
+}
+
+base::Vec2i CanvasImpl::CurrentTargetSizeInternal() {
+  if (gpu_.data) {
+    const auto& desc = gpu_.data->GetDesc();
+    return base::Vec2i(static_cast<int32_t>(desc.Width),
+                       static_cast<int32_t>(desc.Height));
+  }
+  return gpu_.size;
+}
+
+void CanvasImpl::EndPageTargetInternal() {
+  gpu_.data = saved_page_data_;
+  gpu_.shader_resource_view = saved_page_srv_;
+  gpu_.render_target_view = saved_page_rtv_;
+  gpu_.depth_stencil_view = saved_page_dsv_;
+  gpu_.world_buffer = saved_page_world_;
+
+  gpu_.active_page = -1;
+
+  saved_page_data_.Release();
+  saved_page_srv_.Release();
+  saved_page_rtv_.Release();
+  saved_page_dsv_.Release();
+  saved_page_world_.Release();
 }
 
 void CanvasImpl::GPUBlendBlitTextureInternal(const base::Rect& dst_region,
@@ -1076,7 +1484,8 @@ void CanvasImpl::GPUApproximateBlitTextureInternal(const base::Rect& dst_region,
   auto* render_context = scheduler->GetDiscreteRenderContext();
 
   // Clamp blit region
-  const auto blit_region = base::MakeIntersect(dst_region, gpu_.size);
+  const auto blit_region =
+      base::MakeIntersect(dst_region, CurrentTargetSizeInternal());
   if (!blit_region.width || !blit_region.height)
     return;
 
@@ -1172,7 +1581,8 @@ void CanvasImpl::GPUClipTextureInternal(const base::Rect& dst_region,
   auto* render_context = scheduler->GetDiscreteRenderContext();
 
   // Clamp blit region
-  const auto blit_region = base::MakeIntersect(dst_region, gpu_.size);
+  const auto blit_region =
+      base::MakeIntersect(dst_region, CurrentTargetSizeInternal());
   if (!blit_region.width || !blit_region.height)
     return;
 
@@ -1266,6 +1676,60 @@ void CanvasImpl::GPUFetchTexturePixelsDataInternal() {
   auto& render_device = *scheduler->GetRenderDevice();
   auto* render_context = scheduler->GetDiscreteRenderContext();
 
+  // Reset render target
+  scheduler->SetupRenderTarget(nullptr, nullptr, false);
+
+  // A paged bitmap reads back page by page into the rows it occupies.
+  if (gpu_.IsPaged()) {
+    for (int32_t page = 0; page < gpu_.PageCount(); ++page) {
+      Diligent::ITexture* page_texture = gpu_.pages[page].RawPtr();
+      if (!page_texture)
+        continue;
+
+      Diligent::TextureDesc stage_buffer_desc = page_texture->GetDesc();
+      stage_buffer_desc.Name = "bitmap.readstage.page";
+      stage_buffer_desc.Usage = Diligent::USAGE_STAGING;
+      stage_buffer_desc.BindFlags = Diligent::BIND_NONE;
+      stage_buffer_desc.CPUAccessFlags = Diligent::CPU_ACCESS_READ;
+
+      RRefPtr<Diligent::ITexture> stage_read_buffer;
+      render_device->CreateTexture(stage_buffer_desc, nullptr,
+                                   &stage_read_buffer);
+      if (!stage_read_buffer)
+        continue;
+
+      Diligent::CopyTextureAttribs copy_texture_attribs(
+          page_texture, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+          stage_read_buffer.RawPtr(),
+          Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+      render_context->CopyTexture(copy_texture_attribs);
+      render_context->WaitForIdle();
+
+      Diligent::MappedTextureSubresource MappedData;
+      render_context->MapTextureSubresource(
+          stage_read_buffer, 0, 0, Diligent::MAP_READ,
+          Diligent::MAP_FLAG_DO_NOT_WAIT, nullptr, MappedData);
+
+      if (MappedData.pData) {
+        const int32_t top = gpu_.PageTop(page);
+        const int32_t rows = std::min(gpu_.PageHeightAt(page),
+                                      surface_cache_->h - top);
+        uint8_t* dst_data = static_cast<uint8_t*>(surface_cache_->pixels) +
+                            static_cast<size_t>(top) * surface_cache_->pitch;
+        uint8_t* src_data = static_cast<uint8_t*>(MappedData.pData);
+        for (int32_t i = 0; i < rows; ++i) {
+          std::memcpy(dst_data, src_data, surface_cache_->pitch);
+          dst_data += surface_cache_->pitch;
+          src_data += MappedData.Stride;
+        }
+      }
+
+      render_context->UnmapTextureSubresource(stage_read_buffer, 0, 0);
+    }
+
+    return;
+  }
+
   // Create transient read stage texture
   Diligent::TextureDesc stage_buffer_desc = gpu_.data->GetDesc();
   stage_buffer_desc.Name = "bitmap.readstage.buffer";
@@ -1275,9 +1739,6 @@ void CanvasImpl::GPUFetchTexturePixelsDataInternal() {
 
   RRefPtr<Diligent::ITexture> stage_read_buffer;
   render_device->CreateTexture(stage_buffer_desc, nullptr, &stage_read_buffer);
-
-  // Reset render target
-  scheduler->SetupRenderTarget(nullptr, nullptr, false);
 
   // Copy textrue to temp buffer
   Diligent::CopyTextureAttribs copy_texture_attribs(
@@ -1375,11 +1836,30 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
   auto& render_device = *scheduler->GetRenderDevice();
   auto* render_context = scheduler->GetDiscreteRenderContext();
 
-  // Reset text upload stage buffer if need
-  if (!gpu_.text_cache_texture || gpu_.text_cache_size.x < text->w ||
-      gpu_.text_cache_size.y < text->h) {
-    gpu_.text_cache_size.x = std::max<int32_t>(gpu_.text_cache_size.x, text->w);
-    gpu_.text_cache_size.y = std::max<int32_t>(gpu_.text_cache_size.y, text->h);
+
+  // Reset text upload stage buffer if need. A paged draw runs one pass per page,
+  // so the surface handed in changes height from slice to slice: round the cache
+  // up instead of rebuilding it for every slice (re-creating a texture in the
+  // middle of a command stream is what the backends dislike).
+  const int32_t required_cache_width = std::max<int32_t>(text->w, 256);
+  int32_t required_cache_height = std::max<int32_t>(text->h, 256);
+  if (gpu_.IsPaged()) {
+    // A paged bitmap draws the same text once per page and the slices differ
+    // in height, so size the cache for the tallest slice straight away. Letting
+    // it grow inside the per-page loop would create a texture mid-render.
+    required_cache_height =
+        std::max<int32_t>(required_cache_height,
+                          std::min<int32_t>(
+                              gpu_.page_height,
+                              context()->render_device->MaxTextureSize()));
+  }
+  if (!gpu_.text_cache_texture ||
+      gpu_.text_cache_size.x < required_cache_width ||
+      gpu_.text_cache_size.y < required_cache_height) {
+    gpu_.text_cache_size.x =
+        std::max<int32_t>(gpu_.text_cache_size.x, required_cache_width);
+    gpu_.text_cache_size.y =
+        std::max<int32_t>(gpu_.text_cache_size.y, required_cache_height);
 
     renderer::DeferredTextureRelease(gpu_.text_cache_texture);
     renderer::CreateTexture2D(*render_device, &gpu_.text_cache_texture,
@@ -1428,7 +1908,9 @@ void CanvasImpl::GPUCanvasDrawTextSurfaceInternal(const base::Rect& region,
   SDL_DestroySurface(text);
 
   // Clamp blit region
-  const auto blit_region = base::MakeIntersect(compose_position, gpu_.size);
+  const base::Vec2i text_target_size = CurrentTargetSizeInternal();
+  const auto blit_region =
+      base::MakeIntersect(compose_position, text_target_size);
   if (!blit_region.width || !blit_region.height)
     return;
 
@@ -1520,9 +2002,11 @@ void CanvasImpl::GPUCanvasHueChange(int32_t hue) {
   auto* scheduler = context()->canvas_scheduler;
   auto* render_context = scheduler->GetDiscreteRenderContext();
 
-  // Intermediate layer
+  // Intermediate layer. A paged bitmap runs one pass per page, so the pass
+  // covers the page that is currently bound, not the whole bitmap.
+  const base::Vec2i hue_target_size = CurrentTargetSizeInternal();
   auto* intermediate_effect_layer =
-      scheduler->RequireBltCacheTexture(gpu_.size);
+      scheduler->RequireBltCacheTexture(hue_target_size);
 
   // Pipeline state
   auto* pipeline = context()->render.pipeline_states->bitmap.bitmaphue.RawPtr();
@@ -1547,7 +2031,7 @@ void CanvasImpl::GPUCanvasHueChange(int32_t hue) {
   renderer::Quad::SetPositionRect(&transient_quad,
                                   base::RectF(-1.0f, 1.0f, 2.0f, -2.0f));
   renderer::Quad::SetTexCoordRect(
-      &transient_quad, gpu_.size.Recast<float>(),
+      &transient_quad, hue_target_size.Recast<float>(),
       base::Vec2(intermediate_effect_layer->GetDesc().Width,
                  intermediate_effect_layer->GetDesc().Height));
   renderer::Quad::SetColor(&transient_quad, base::Vec4(hue / 360.0f));

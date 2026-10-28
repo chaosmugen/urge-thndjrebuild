@@ -41,6 +41,11 @@ class SpriteBatch {
   using TextureID = void*;
   TextureID GetCurrentTexture() const { return current_texture_; }
 
+  // Shader resource view the run being filled binds. A paged bitmap (taller
+  // than one GPU texture) has one view per page, so the view - not just the
+  // bitmap - is what tells two runs apart.
+  Diligent::ITextureView* GetCurrentSRV() const { return current_srv_; }
+
   // One set of upload buffers is used per frame and they rotate, so the data a
   // frame still being executed reads is never written by the next frame: the GPU
   // runs one or two frames behind the CPU, and a single shared buffer made an
@@ -57,7 +62,7 @@ class SpriteBatch {
   Diligent::IBufferView* GetUniformBinding() { return uniform_binding_; }
 
   // Setup a sprite batch
-  void BeginBatch(TextureID texture);
+  void BeginBatch(TextureID texture, Diligent::ITextureView* srv);
 
   // World transform the pending batch belongs to. A batch is drawn with a single
   // transform, so the queue must be broken when a node of another render level
@@ -135,6 +140,9 @@ class SpriteBatch {
   // pass is finally drawn in.
   struct BatchRun {
     TextureID texture = TextureID();
+    // View the run samples: page 0 for a normal bitmap, the page itself for a
+    // paged one. Null falls back to the bitmap's first view.
+    Diligent::ITextureView* srv = nullptr;
     // World transform this run was queued under: a run never spans render levels,
     // so the fallback draw can use the run's own transform instead of guessing.
     Diligent::IBuffer* world = nullptr;
@@ -158,6 +166,7 @@ class SpriteBatch {
   uint32_t audit_frame_ = 0;
 
   TextureID current_texture_;
+  Diligent::ITextureView* current_srv_ = nullptr;
   int32_t last_batch_index_;
   const bool support_storage_buffer_batch_;
 

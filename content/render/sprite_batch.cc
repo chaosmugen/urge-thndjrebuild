@@ -49,10 +49,11 @@ SpriteBatch::SpriteBatch(renderer::RenderDevice* device,
 
 SpriteBatch::~SpriteBatch() = default;
 
-void SpriteBatch::BeginBatch(TextureID texture) {
+void SpriteBatch::BeginBatch(TextureID texture, Diligent::ITextureView* srv) {
   // A new run starts: the previous one is complete and joins this pass.
   CloseCurrentRunInternal();
   current_texture_ = texture;
+  current_srv_ = srv;
   last_batch_index_ = uniform_cache_.size();
 }
 
@@ -68,6 +69,7 @@ void SpriteBatch::CloseCurrentRunInternal() {
 
   BatchRun run;
   run.texture = current_texture_;
+  run.srv = current_srv_;
   run.world = batch_world_;
   run.start = start;
   run.count = count;
@@ -122,6 +124,7 @@ void SpriteBatch::EndBatch(uint32_t* instance_offset,
   *instance_count = draw_count;
 
   current_texture_ = TextureID();
+  current_srv_ = nullptr;
   last_batch_index_ = -1;
 }
 
@@ -201,6 +204,7 @@ void SpriteBatch::FlushPass(Diligent::IDeviceContext* context,
   // A run still open when the pass closes has no node left to draw it.
   CloseCurrentRunInternal();
   current_texture_ = TextureID();
+  current_srv_ = nullptr;
   last_batch_index_ = -1;
 
   if (pass_runs_.empty() || !quad_index || !pipelines)
@@ -249,7 +253,7 @@ void SpriteBatch::FlushPass(Diligent::IDeviceContext* context,
     // Same fingerprint as the node path (see SpriteImpl::GPUOnSpriteRenderingInternal).
 
     binding_.u_transform->Set(world);
-    binding_.u_texture->Set(texture->shader_resource_view);
+    binding_.u_texture->Set(run.srv ? run.srv : texture->shader_resource_view);
 
 
     binding_.u_params->Set(uniform_binding_);
@@ -284,6 +288,7 @@ void SpriteBatch::ResetFrameCache() {
   uniform_cache_.clear();
   pass_runs_.clear();
   current_texture_ = TextureID();
+  current_srv_ = nullptr;
   last_batch_index_ = -1;
 }
 

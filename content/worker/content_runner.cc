@@ -198,6 +198,18 @@ bool ContentRunner::InitializeComponents(filesystem::IOService* io_service,
       execution_context_->render.pipeline_loader.get());
   sprite_batcher_ = std::make_unique<SpriteBatch>(
       render_device_.get(), execution_context_->render.pipeline_loader.get());
+
+  // Allocate the blit staging texture up front. RequireBltCacheTexture grows it
+  // on demand, and growing means creating a texture - which must not happen in
+  // the middle of a render pass. A paged bitmap asks for one slab per page
+  // slice, and no slice can be taller than the device texture limit, so
+  // covering that size here removes every mid-render allocation.
+  {
+    const int32_t page_slab =
+        std::min<int32_t>(4096, render_device_->MaxTextureSize());
+    canvas_scheduler_->RequireBltCacheTexture(
+        base::Vec2i(page_slab, page_slab));
+  }
   event_controller_ = std::make_unique<EventController>(window);
   audio_server_ = audioservice::AudioService::Create(io_service);
 #if !defined(OS_EMSCRIPTEN)

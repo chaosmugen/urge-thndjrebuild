@@ -8,6 +8,8 @@
 #include "renderer/device/gpu_driver.h"
 #include "renderer/utils/texture_utils.h"
 
+#include <cstdio>
+
 // Defined in content/screen/renderscreen_impl.cc, declared after the includes because it
 // names a Diligent type. Marker: URGE_SECONDPASS
 extern "C" void UrgeForcePassBoundary(Diligent::IDeviceContext* render_context);
@@ -763,9 +765,21 @@ void TilemapImpl::AboveNodeHandlerInternal(
 
 base::Vec2i TilemapImpl::MakeAtlasInternal(
     std::vector<AtlasCompositeCommand>& commands) {
+  // Rows a single atlas page can hold. A tileset taller than that is laid out
+  // sideways: page p starts at column 8 tiles * p, which is exactly the offset
+  // process_tileset() derives from max_vertical_count_.
+  const int32_t page_rows = std::max(1, max_vertical_count_);
+  const int32_t tileset_rows =
+      Disposable::IsValid(tileset_.get())
+          ? ((**tileset_)->size.y + tilesize_ - 1) / tilesize_
+          : 0;
+  const int32_t tileset_pages =
+      tileset_rows > 0 ? (tileset_rows + page_rows - 1) / page_rows : 0;
+
   int32_t atlas_height = 28 * tilesize_;
-  if (Disposable::IsValid(tileset_.get()))
-    atlas_height = std::max(atlas_height, (**tileset_)->size.y);
+  if (tileset_rows > 0)
+    atlas_height =
+        std::max(atlas_height, std::min(tileset_rows, page_rows) * tilesize_);
   atlas_height = std::min(max_atlas_size_, atlas_height);
   max_anim_index_ = 1;
 
@@ -817,14 +831,27 @@ base::Vec2i TilemapImpl::MakeAtlasInternal(
     ++autotile_offset;
   }
 
-  // Tileset part
+  // Tileset part. One composite command per page, each one copying the rows of
+  // that page into the columns it owns.
   int32_t tileset_width = 0;
   if (Disposable::IsValid(tileset_.get())) {
-    base::Vec2i tileset_size = (**tileset_)->size;
-    base::Vec2i dst_pos(3 * tilesize_ * max_autotile_frame_count_, 0);
-    tileset_width = tileset_size.x;
+    BitmapTexture* tileset_data = **tileset_;
+    const int32_t page_count = std::max(1, tileset_pages);
+    tileset_width = tileset_data->size.x * page_count;
 
-    commands.push_back({**tileset_, tileset_size, dst_pos});
+    for (int32_t page = 0; page < page_count; ++page) {
+      const int32_t top_row = page * page_rows;
+      if (top_row >= tileset_rows)
+        break;
+
+      const int32_t rows = std::min(page_rows, tileset_rows - top_row);
+      base::Rect src_rect(0, top_row * tilesize_, tileset_data->size.x,
+                          rows * tilesize_);
+      base::Vec2i dst_pos(3 * tilesize_ * max_autotile_frame_count_ +
+                              8 * tilesize_ * page,
+                          0);
+      commands.push_back({tileset_data, src_rect, dst_pos});
+    }
   }
 
   return base::Vec2i(3 * tilesize_ * max_autotile_frame_count_ + tileset_width,
@@ -1145,20 +1172,33 @@ void TilemapImpl::GPUMakeAtlasInternal(
     Diligent::CopyTextureAttribs copy_attribs;
     Diligent::Box box;
 
-    copy_attribs.pSrcTexture = it.texture->data;
-    copy_attribs.pSrcBox = &box;
-    copy_attribs.SrcTextureTransitionMode =
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-
     const base::Rect real_src_rect =
         base::MakeIntersect(it.src_rect, it.texture->size);
     if (real_src_rect.width <= 0 || real_src_rect.height <= 0)
       continue;
 
+    // A paged source (tileset taller than one texture) is copied page by page:
+    // every command covers rows of a single page, and the source box is
+    // relative to that page.
+    Diligent::ITexture* source_texture = it.texture->data.RawPtr();
+    int32_t source_y = real_src_rect.y;
+    if (it.texture->IsPaged()) {
+      const int32_t source_page = it.texture->PageIndexAt(real_src_rect.y);
+      source_texture = it.texture->pages[source_page].RawPtr();
+      if (!source_texture)
+        continue;
+      source_y -= it.texture->PageTop(source_page);
+    }
+
+    copy_attribs.pSrcTexture = source_texture;
+    copy_attribs.pSrcBox = &box;
+    copy_attribs.SrcTextureTransitionMode =
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+
     box.MinX = real_src_rect.x;
-    box.MinY = real_src_rect.y;
+    box.MinY = source_y;
     box.MaxX = real_src_rect.x + real_src_rect.width;
-    box.MaxY = real_src_rect.y + real_src_rect.height;
+    box.MaxY = source_y + real_src_rect.height;
 
     copy_attribs.pDstTexture = gpu_.atlas_texture;
     copy_attribs.DstX = it.dst_pos.x;

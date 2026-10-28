@@ -7,6 +7,7 @@
 
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "SDL3/SDL_surface.h"
 
@@ -45,6 +46,52 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
 
     // Texture based world transform
     RRefPtr<Diligent::IBuffer> world_buffer;
+
+    // Paged storage for a bitmap taller than the device texture limit. The
+    // bitmap is split into row-aligned pages of |page_height| rows; |data|,
+    // |shader_resource_view| and |render_target_view| then refer to page 0, so
+    // every single-texture path keeps working unchanged, while |pages| owns the
+    // physical texture of each page. Empty for the normal case, where the whole
+    // bitmap fits in one texture.
+    int32_t page_height = 0;
+    std::vector<RRefPtr<Diligent::ITexture>> pages;
+    std::vector<RRefPtr<Diligent::ITextureView>> pages_srv;
+    // Per-page draw targets, so a write that covers several pages can be split
+    // into one draw per page (see the canvas draw paths).
+    std::vector<RRefPtr<Diligent::ITexture>> pages_depth;
+    std::vector<RRefPtr<Diligent::ITextureView>> pages_dsv;
+    std::vector<RRefPtr<Diligent::ITextureView>> pages_rtv;
+    std::vector<RRefPtr<Diligent::IBuffer>> pages_world;
+
+    // Staging surface every page draw is rendered into; the finished page is
+    // copied into |pages[page]| afterwards. Rendering straight into a page
+    // texture crashes the D3D11 driver here, while copying into one is fine.
+    RRefPtr<Diligent::ITexture> page_scratch;
+    RRefPtr<Diligent::ITexture> page_scratch_depth;
+    RRefPtr<Diligent::ITextureView> page_scratch_srv;
+    RRefPtr<Diligent::ITextureView> page_scratch_rtv;
+    RRefPtr<Diligent::ITextureView> page_scratch_dsv;
+    RRefPtr<Diligent::IBuffer> page_scratch_world;
+    // Page currently being rendered into the scratch surface.
+    int32_t active_page = -1;
+
+    bool IsPaged() const { return !pages.empty(); }
+    int32_t PageCount() const { return static_cast<int32_t>(pages.size()); }
+    int32_t PageIndexAt(int32_t y) const {
+      return page_height > 0 ? y / page_height : 0;
+    }
+    int32_t PageTop(int32_t page) const { return page * page_height; }
+    int32_t PageHeightAt(int32_t page) const {
+      if (!IsPaged())
+        return size.y;
+      const int32_t top = PageTop(page);
+      return std::min(page_height, size.y - top);
+    }
+    Diligent::ITextureView* PageViewAt(int32_t page) const {
+      return page >= 0 && page < static_cast<int32_t>(pages_srv.size())
+                 ? pages_srv[page].RawPtr()
+                 : nullptr;
+    }
 
     // Text drawing cache texture
     base::Vec2i text_cache_size;
@@ -257,6 +304,17 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
                            CanvasImpl* clip_texture);
 
   void GPUCreateTextureInternal(SDL_Surface* texture_data);
+
+  // Retargets drawing at one page of a paged bitmap: render target, depth and
+  // world transform all switch to that page, and every coordinate passed to the
+  // draw paths in between is page-local.
+  void BeginPageTargetInternal(int32_t page);
+  void EndPageTargetInternal();
+
+  // Size of the texture drawing currently lands on: the page when the bitmap is
+  // paged (see BeginPageTargetInternal), the whole bitmap otherwise. Clamping a
+  // draw against |gpu_.size| would let it run past the end of a page.
+  base::Vec2i CurrentTargetSizeInternal();
   void GPUBlendBlitTextureInternal(const base::Rect& dst_region,
                                    GPUData* src_texture,
                                    const base::Rect& src_region,
@@ -385,6 +443,14 @@ class CanvasImpl : public base::LinkNode<CanvasImpl>,
   // Texture data
   GPUData gpu_;
   SDL_Surface* surface_cache_;
+
+  // State saved while drawing is retargeted at one page (see
+  // BeginPageTargetInternal).
+  RRefPtr<Diligent::ITexture> saved_page_data_;
+  RRefPtr<Diligent::ITextureView> saved_page_srv_;
+  RRefPtr<Diligent::ITextureView> saved_page_rtv_;
+  RRefPtr<Diligent::ITextureView> saved_page_dsv_;
+  RRefPtr<Diligent::IBuffer> saved_page_world_;
 
   // Command list storage chain
   Command* commands_ = nullptr;

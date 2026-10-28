@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <csignal>
 #include <cstdio>
+#include <exception>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #include "SDL3/SDL_main.h"
@@ -565,9 +568,62 @@ void UrgeRearmCrashHandler() {
 }
 #endif  //! OS_ANDROID
 
+namespace {
+
+// Plain-file sink for the desktop build. spdlog's own basic_file_sink aborts
+// during start-up in this build, so the formatting is done by this small
+// header-only sink instead (spdlog's formatter, our own FILE*).
+class DesktopLogSink : public spdlog::sinks::base_sink<std::mutex> {
+ public:
+  explicit DesktopLogSink(const std::string& name)
+      : file_(std::fopen(name.c_str(), "wb")) {}
+  ~DesktopLogSink() override {
+    if (file_)
+      std::fclose(file_);
+  }
+
+ protected:
+  void sink_it_(const spdlog::details::log_msg& msg) override {
+    if (!file_)
+      return;
+    spdlog::memory_buf_t formatted;
+    formatter_->format(msg, formatted);
+    std::fwrite(formatted.data(), 1, formatted.size(), file_);
+    std::fflush(file_);
+  }
+
+  void flush_() override {
+    if (file_)
+      std::fflush(file_);
+  }
+
+ private:
+  FILE* file_ = nullptr;
+};
+
+}  // namespace
+
 int main(int argc, char* argv[]) {
 #if defined(OS_ANDROID)
   InstallUrgeCrashHandler();
+#else
+  // A desktop abort otherwise leaves nothing behind to work from.
+  std::set_terminate([]() {
+    std::string message = "no active exception";
+    try {
+      if (auto current = std::current_exception())
+        std::rethrow_exception(current);
+    } catch (const std::exception& e) {
+      message = e.what();
+    } catch (...) {
+      message = "non-std exception";
+    }
+    if (FILE* fp = std::fopen("terminate_info.txt", "ab")) {
+      std::fprintf(fp, "terminate: %s\n", message.c_str());
+      std::fclose(fp);
+    }
+    std::abort();
+  });
 #endif
 #if defined(OS_WIN)
   // Allocate console if need
@@ -700,6 +756,7 @@ int main(int argc, char* argv[]) {
   logger_sinks.push_back(file_sink);
 #else
   logger_sinks.push_back(console_sink);
+  logger_sinks.push_back(std::make_shared<DesktopLogSink>(app + ".log"));
 #endif
 
   spdlog::logger logger_sink("urgecore", logger_sinks.begin(),

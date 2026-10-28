@@ -27,6 +27,22 @@ class SpriteImpl : public Sprite, public EngineObject, public Disposable {
     uint32_t instance_offset = 0;
     uint32_t instance_count = 0;
 
+    // One entry per page of a bitmap that spans several GPU textures: the run
+    // of quads queued for that page and the view it must be sampled with.
+    // Empty for the normal single-page case, which draws through
+    // |instance_offset| / |instance_count| as before.
+    struct PagedRun {
+      uint32_t offset = 0;
+      uint32_t count = 0;
+      Diligent::ITextureView* srv = nullptr;
+      // Quad to draw in the non-batched path, where each run is emitted on its
+      // own instead of going through the shared vertex batch.
+      renderer::Quad quad;
+      // Page index this run samples, for tracing.
+      int32_t page = 0;
+    };
+    std::vector<PagedRun> paged_runs;
+
     // Set when this node had to close a batch belonging to another render level:
     // that batch must be drawn with its own world transform, not this node's.
     Diligent::IBuffer* draw_world = nullptr;
@@ -95,6 +111,12 @@ class SpriteImpl : public Sprite, public EngineObject, public Disposable {
   void GPUUpdateWaveSpriteInternal(BitmapTexture* texture,
                                    const base::Rect& src_rect);
   void GPUUpdateBatchSpriteInternal(Diligent::IDeviceContext* render_context,
+                                    BitmapTexture* texture,
+                                    BitmapTexture* next_texture,
+                                    const base::Rect& src_rect);
+  // A bitmap taller than one GPU texture is sampled page by page: one run of
+  // quads per page, each run bound to that page's own view.
+  void GPUUpdatePagedSpriteInternal(Diligent::IDeviceContext* render_context,
                                     BitmapTexture* texture,
                                     BitmapTexture* next_texture,
                                     const base::Rect& src_rect);
