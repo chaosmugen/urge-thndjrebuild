@@ -317,10 +317,10 @@ void UrgeWriteCrashReport(int signal_number,
   // that needs no unwinding, so it stays trustworthy even when the unwinder
   // itself dies on a table-less frame. UrgeSetCrashTag() already turned it
   // into the report's self-describing file name.
-  int n = snprintf(line, sizeof(line),
-                   "==== crash signal=%d fault_addr=%p fault_pc=0x%zx pid=%d ====\n",
-                   signal_number, info ? info->si_addr : nullptr,
-                   static_cast<size_t>(pc), static_cast<int>(getpid()));
+  snprintf(line, sizeof(line),
+           "==== crash signal=%d fault_addr=%p fault_pc=0x%zx pid=%d ====\n",
+           signal_number, info ? info->si_addr : nullptr,
+           static_cast<size_t>(pc), static_cast<int>(getpid()));
   UrgeCrashLogLine(line);
 
   // When the faulting pc itself is null (a call through an empty vtable or
@@ -330,35 +330,35 @@ void UrgeWriteCrashReport(int signal_number,
   if (ucontext_void) {
     auto* uc = static_cast<ucontext_t*>(ucontext_void);
 #if defined(__aarch64__)
-    n = snprintf(line, sizeof(line),
-                 "regs x0=%llx x1=%llx x2=%llx x3=%llx x4=%llx x5=%llx "
-                 "x6=%llx x7=%llx\n",
-                 (unsigned long long)uc->uc_mcontext.regs[0],
-                 (unsigned long long)uc->uc_mcontext.regs[1],
-                 (unsigned long long)uc->uc_mcontext.regs[2],
-                 (unsigned long long)uc->uc_mcontext.regs[3],
-                 (unsigned long long)uc->uc_mcontext.regs[4],
-                 (unsigned long long)uc->uc_mcontext.regs[5],
-                 (unsigned long long)uc->uc_mcontext.regs[6],
-                 (unsigned long long)uc->uc_mcontext.regs[7]);
+    snprintf(line, sizeof(line),
+             "regs x0=%llx x1=%llx x2=%llx x3=%llx x4=%llx x5=%llx "
+             "x6=%llx x7=%llx\n",
+             (unsigned long long)uc->uc_mcontext.regs[0],
+             (unsigned long long)uc->uc_mcontext.regs[1],
+             (unsigned long long)uc->uc_mcontext.regs[2],
+             (unsigned long long)uc->uc_mcontext.regs[3],
+             (unsigned long long)uc->uc_mcontext.regs[4],
+             (unsigned long long)uc->uc_mcontext.regs[5],
+             (unsigned long long)uc->uc_mcontext.regs[6],
+             (unsigned long long)uc->uc_mcontext.regs[7]);
     UrgeCrashLogLine(line);
-    n = snprintf(line, sizeof(line),
-                 "regs x8=%llx x9=%llx x10=%llx x11=%llx x19=%llx x20=%llx "
-                 "x21=%llx x22=%llx\n",
-                 (unsigned long long)uc->uc_mcontext.regs[8],
-                 (unsigned long long)uc->uc_mcontext.regs[9],
-                 (unsigned long long)uc->uc_mcontext.regs[10],
-                 (unsigned long long)uc->uc_mcontext.regs[11],
-                 (unsigned long long)uc->uc_mcontext.regs[19],
-                 (unsigned long long)uc->uc_mcontext.regs[20],
-                 (unsigned long long)uc->uc_mcontext.regs[21],
-                 (unsigned long long)uc->uc_mcontext.regs[22]);
+    snprintf(line, sizeof(line),
+             "regs x8=%llx x9=%llx x10=%llx x11=%llx x19=%llx x20=%llx "
+             "x21=%llx x22=%llx\n",
+             (unsigned long long)uc->uc_mcontext.regs[8],
+             (unsigned long long)uc->uc_mcontext.regs[9],
+             (unsigned long long)uc->uc_mcontext.regs[10],
+             (unsigned long long)uc->uc_mcontext.regs[11],
+             (unsigned long long)uc->uc_mcontext.regs[19],
+             (unsigned long long)uc->uc_mcontext.regs[20],
+             (unsigned long long)uc->uc_mcontext.regs[21],
+             (unsigned long long)uc->uc_mcontext.regs[22]);
     UrgeCrashLogLine(line);
-    n = snprintf(line, sizeof(line),
-                 "regs lr(x30)=0x%llx sp=0x%llx pc=0x%llx\n",
-                 (unsigned long long)uc->uc_mcontext.regs[30],
-                 (unsigned long long)uc->uc_mcontext.sp,
-                 (unsigned long long)uc->uc_mcontext.pc);
+    snprintf(line, sizeof(line),
+             "regs lr(x30)=0x%llx sp=0x%llx pc=0x%llx\n",
+             (unsigned long long)uc->uc_mcontext.regs[30],
+             (unsigned long long)uc->uc_mcontext.sp,
+             (unsigned long long)uc->uc_mcontext.pc);
     UrgeCrashLogLine(line);
 #endif
   }
