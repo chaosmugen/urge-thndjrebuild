@@ -78,12 +78,16 @@ bool EngineImpl::Confirm(const std::string& message,
                          ExceptionState& exception_state) {
   std::string title = context()->window->GetTitle();
 
-  SDL_MessageBoxData messagebox_data;
+  // Zero initialize and clear colorScheme: the Android backend forwards a non-NULL
+  // colorScheme to the dialog, and an uninitialized one resolved to 0xFF000000, which
+  // painted the message text and the panel in the same black.
+  SDL_MessageBoxData messagebox_data{};
   messagebox_data.flags =
       SDL_MESSAGEBOX_INFORMATION | SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT;
   messagebox_data.window = context()->window->AsSDLWindow();
   messagebox_data.title = title.c_str();
   messagebox_data.message = message.c_str();
+  messagebox_data.colorScheme = nullptr;
 
   SDL_MessageBoxButtonData buttons[2];
   buttons[0].flags = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT |
