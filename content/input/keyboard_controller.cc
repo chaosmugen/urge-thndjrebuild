@@ -39,8 +39,8 @@ const KeyboardControllerImpl::KeyBinding kDefaultKeyboardBindings[] = {
     {"CTRL", SDL_SCANCODE_LCTRL},   {"CTRL", SDL_SCANCODE_RCTRL},
     {"ALT", SDL_SCANCODE_LALT},     {"ALT", SDL_SCANCODE_RALT},
 
-    {"C", SDL_SCANCODE_C},          {"C", SDL_SCANCODE_SPACE},
-    {"C", SDL_SCANCODE_RETURN},     {"C", SDL_SCANCODE_KP_ENTER},
+    {"C", SDL_SCANCODE_SPACE},      {"C", SDL_SCANCODE_RETURN},
+    {"C", SDL_SCANCODE_KP_ENTER},
     {"L", SDL_SCANCODE_Q},          {"L", SDL_SCANCODE_PAGEUP},
     {"R", SDL_SCANCODE_W},          {"R", SDL_SCANCODE_PAGEDOWN},
 

@@ -422,8 +422,15 @@ void ContentRunner::PollEventQueueInternal(bool handle_event) {
     if (queued_event.type == SDL_EVENT_QUIT)
       binding_quit_flag_.store(1);
 
-    // GUI event process
-    if (!disable_gui_input_)
+    // GUI event process. While a key binding is being captured, keep mouse and
+    // window events flowing to ImGui so the Remove button stays clickable; only
+    // keyboard/text events are withheld from the GUI.
+    const bool is_keyboard_event =
+        queued_event.type == SDL_EVENT_KEY_DOWN ||
+        queued_event.type == SDL_EVENT_KEY_UP ||
+        queued_event.type == SDL_EVENT_TEXT_INPUT ||
+        queued_event.type == SDL_EVENT_TEXT_EDITING;
+    if (!disable_gui_input_ || !is_keyboard_event)
       ImGui_ImplSDL3_ProcessEvent(&queued_event);
 
     // Shortcut
